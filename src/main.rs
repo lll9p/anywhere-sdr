@@ -125,7 +125,7 @@ pub struct channel_t {
     pub ca: [i32; 1023],
     pub f_carr: f64,
     pub f_code: f64,
-    pub carr_phase: libc::c_uint,
+    pub carr_phase: u32,
     pub carr_phasestep: i32,
     pub code_phase: f64,
     pub g0: gpstime_t,
@@ -1039,7 +1039,7 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
         let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
         let mut wn: u32 = 0;
         let mut tow: u32 = 0;
-        let mut sbfwrd: libc::c_uint = 0;
+        let mut sbfwrd: u32 = 0;
         let mut prevwrd: u32 = 0;
         let mut nib: i32 = 0;
         g0.week = g.week;
@@ -1051,11 +1051,11 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
             prevwrd = 0_u32;
             iwrd = 0_i32;
             while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[4_i32 as usize][iwrd as usize] as libc::c_uint;
+                sbfwrd = (*chan).sbf[4_i32 as usize][iwrd as usize] as u32;
                 if iwrd == 1_i32 {
-                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as libc::c_uint;
+                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as u32;
                 }
-                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as libc::c_uint;
+                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as u32;
                 nib = if iwrd == 1_i32 || iwrd == 9_i32 {
                     1_i32
                 } else {
@@ -1078,14 +1078,14 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
             tow = tow.wrapping_add(1);
             iwrd = 0_i32;
             while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[isbf as usize][iwrd as usize] as libc::c_uint;
+                sbfwrd = (*chan).sbf[isbf as usize][iwrd as usize] as u32;
                 if isbf == 0_i32 && iwrd == 2_i32 {
-                    sbfwrd = (sbfwrd as u32 | (wn & 0x3ff_u32) << 20_i32) as libc::c_uint;
+                    sbfwrd = (sbfwrd as u32 | (wn & 0x3ff_u32) << 20_i32) as u32;
                 }
                 if iwrd == 1_i32 {
-                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as libc::c_uint;
+                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as u32;
                 }
-                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as libc::c_uint;
+                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as u32;
                 nib = if iwrd == 1_i32 || iwrd == 9_i32 {
                     1_i32
                 } else {
@@ -1208,7 +1208,7 @@ pub unsafe fn allocateChannel(
                             phase_ini = 0.0f64;
                             phase_ini -= floor(phase_ini);
                             (*chan.offset(i as isize)).carr_phase =
-                                (512.0f64 * 65536.0f64 * phase_ini) as libc::c_uint;
+                                (512.0f64 * 65536.0f64 * phase_ini) as u32;
                             break;
                         } else {
                             i += 1;
@@ -1925,8 +1925,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 i = 0_i32;
                 while i < 16_i32 {
                     if chan[i as usize].prn > 0_i32 {
-                        iTable = (chan[i as usize].carr_phase >> 16_i32 & 0x1ff_i32 as libc::c_uint)
-                            as i32;
+                        iTable = (chan[i as usize].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as i32;
                         ip = chan[i as usize].dataBit
                             * chan[i as usize].codeCA
                             * cosTable512[iTable as usize]
@@ -1961,7 +1960,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                             * 2_i32
                             - 1_i32;
                         chan[i as usize].carr_phase = (chan[i as usize].carr_phase)
-                            .wrapping_add(chan[i as usize].carr_phasestep as libc::c_uint);
+                            .wrapping_add(chan[i as usize].carr_phasestep as u32);
                     }
                     i += 1;
                 }
