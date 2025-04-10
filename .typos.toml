@@ -10,11 +10,13 @@
 [default.extend-identifiers]
 wnt = "wnt"
 delt = "delt"
+FUL = "FUL"
 
 # Match Inside a Word - Case Insensitive
 [default.extend-words]
 wnt = "wnt"
 delt = "delt"
+FUL = "FUL"
 
 [files]
 # Include .github, .cargo, etc.

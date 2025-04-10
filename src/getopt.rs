@@ -1,8 +1,8 @@
 use crate::strchr;
 
-pub static mut opterr: i32 = 1 as i32;
+pub static mut opterr: i32 = 1_i32;
 
-pub static mut optind: i32 = 1 as i32;
+pub static mut optind: i32 = 1_i32;
 
 pub static mut optopt: i32 = 0;
 
@@ -20,13 +20,13 @@ pub fn getopt(
             b"\0" as *const u8 as *const libc::c_char as *mut libc::c_char;
         let mut oli: *const libc::c_char = std::ptr::null::<libc::c_char>();
         if optreset != 0 || *place == 0 {
-            optreset = 0 as i32;
+            optreset = 0_i32;
             if optind >= nargc || {
                 place = *nargv.offset(optind as isize);
                 *place as i32 != '-' as i32
             } {
                 place = b"\0" as *const u8 as *const libc::c_char as *mut libc::c_char;
-                return -(1 as i32);
+                return -1_i32;
             }
             if *place.offset(1) as i32 != 0 && {
                 place = place.offset(1);
@@ -34,7 +34,7 @@ pub fn getopt(
             } {
                 optind += 1;
                 place = b"\0" as *const u8 as *const libc::c_char as *mut libc::c_char;
-                return -(1 as i32);
+                return -1_i32;
             }
         }
         let fresh0 = place;
@@ -45,7 +45,7 @@ pub fn getopt(
             oli.is_null()
         } {
             if optopt == '-' as i32 {
-                return -(1 as i32);
+                return -1_i32;
             }
             if *place == 0 {
                 optind += 1;
