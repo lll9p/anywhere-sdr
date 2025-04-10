@@ -144,20 +144,14 @@ pub static mut allocatedSat: [i32; 32] = [0; 32];
 
 pub static mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
 
-pub unsafe fn subVect(mut y: *mut f64, mut x1: *const f64, mut x2: *const f64) {
-    unsafe {
-        *y.offset(0) = *x1.offset(0) - *x2.offset(0);
-        *y.offset(1) = *x1.offset(1) - *x2.offset(1);
-        *y.offset(2) = *x1.offset(2) - *x2.offset(2);
-    }
+pub unsafe fn subVect(mut y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
+    y[0] = x1[0] - x2[0];
+    y[1] = x1[1] - x2[1];
+    y[2] = x1[2] - x2[2];
 }
 
-pub unsafe fn normVect(mut x: *const f64) -> f64 {
-    unsafe {
-        sqrt(
-            *x.offset(0) * *x.offset(0) + *x.offset(1) * *x.offset(1) + *x.offset(2) * *x.offset(2),
-        )
-    }
+pub unsafe fn normVect(mut x: &[f64; 3]) -> f64 {
+    unsafe { sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]) }
 }
 
 pub unsafe fn dotProd(mut x1: *const f64, mut x2: *const f64) -> f64 {
@@ -264,7 +258,7 @@ pub unsafe fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) {
     }
 }
 
-pub unsafe fn xyz2llh(mut xyz_0: *const f64, mut llh: *mut f64) {
+pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     unsafe {
         let mut a: f64 = 0.;
         let mut eps: f64 = 0.;
@@ -285,14 +279,14 @@ pub unsafe fn xyz2llh(mut xyz_0: *const f64, mut llh: *mut f64) {
         eps = 1.0e-3f64;
         e2 = e * e;
         if normVect(xyz_0) < eps {
-            *llh.offset(0) = 0.0f64;
-            *llh.offset(1) = 0.0f64;
-            *llh.offset(2) = -a;
+            llh[0] = 0.0f64;
+            llh[1] = 0.0f64;
+            llh[2] = -a;
             return;
         }
-        x = *xyz_0.offset(0);
-        y = *xyz_0.offset(1);
-        z = *xyz_0.offset(2);
+        x = xyz_0[0];
+        y = xyz_0[1];
+        z = xyz_0[2];
         rho2 = x * x + y * y;
         dz = e2 * z;
         loop {
@@ -306,9 +300,9 @@ pub unsafe fn xyz2llh(mut xyz_0: *const f64, mut llh: *mut f64) {
             }
             dz = dz_new;
         }
-        *llh.offset(0) = atan2(zdz, sqrt(rho2));
-        *llh.offset(1) = atan2(y, x);
-        *llh.offset(2) = nh - n;
+        llh[0] = atan2(zdz, sqrt(rho2));
+        llh[1] = atan2(y, x);
+        llh[2] = nh - n;
     }
 }
 
@@ -867,7 +861,7 @@ pub unsafe fn computeRange(
     mut eph: ephem_t,
     mut ionoutc: *mut ionoutc_t,
     mut g: gpstime_t,
-    mut xyz_0: *mut f64,
+    xyz_0: &[f64; 3],
 ) {
     unsafe {
         let mut pos: [f64; 3] = [0.; 3];
@@ -883,8 +877,8 @@ pub unsafe fn computeRange(
         let mut neu: [f64; 3] = [0.; 3];
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
-        subVect(los.as_mut_ptr(), pos.as_mut_ptr(), xyz_0 as *const f64);
-        tau = normVect(los.as_mut_ptr()) / 2.99792458e8f64;
+        subVect(&mut los, &pos, &xyz_0);
+        tau = normVect(&los) / 2.99792458e8f64;
         pos[0_i32 as usize] -= vel[0_i32 as usize] * tau;
         pos[1_i32 as usize] -= vel[1_i32 as usize] * tau;
         pos[2_i32 as usize] -= vel[2_i32 as usize] * tau;
@@ -892,14 +886,14 @@ pub unsafe fn computeRange(
         yrot = pos[1_i32 as usize] - pos[0_i32 as usize] * 7.2921151467e-5f64 * tau;
         pos[0_i32 as usize] = xrot;
         pos[1_i32 as usize] = yrot;
-        subVect(los.as_mut_ptr(), pos.as_mut_ptr(), xyz_0 as *const f64);
-        range = normVect(los.as_mut_ptr());
+        subVect(&mut los, &pos, &xyz_0);
+        range = normVect(&los);
         (*rho).d = range;
         (*rho).range = range - 2.99792458e8f64 * clk[0_i32 as usize];
         rate = dotProd(vel.as_mut_ptr(), los.as_mut_ptr()) / range;
         (*rho).rate = rate;
         (*rho).g = g;
-        xyz2llh(xyz_0 as *const f64, llh.as_mut_ptr());
+        xyz2llh(xyz_0, &mut llh);
         ltcmat(llh.as_mut_ptr(), tmat.as_mut_ptr());
         ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
         neu2azel(((*rho).azel).as_mut_ptr(), neu.as_mut_ptr());
@@ -1105,7 +1099,7 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
 pub unsafe fn checkSatVisibility(
     mut eph: ephem_t,
     mut g: gpstime_t,
-    mut xyz_0: *mut f64,
+    xyz_0: &[f64; 3],
     mut elvMask: f64,
     mut azel: *mut f64,
 ) -> i32 {
@@ -1120,10 +1114,10 @@ pub unsafe fn checkSatVisibility(
         if eph.vflg != 1_i32 {
             return -1_i32;
         }
-        xyz2llh(xyz_0, llh.as_mut_ptr());
+        xyz2llh(xyz_0, &mut llh);
         ltcmat(llh.as_mut_ptr(), tmat.as_mut_ptr());
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
-        subVect(los.as_mut_ptr(), pos.as_mut_ptr(), xyz_0);
+        subVect(&mut los, &pos, &xyz_0);
         ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
         neu2azel(azel, neu.as_mut_ptr());
         if *azel.offset(1) * 57.2957795131f64 > elvMask {
@@ -1138,7 +1132,7 @@ pub unsafe fn allocateChannel(
     mut eph: *mut ephem_t,
     mut ionoutc: ionoutc_t,
     mut grx: gpstime_t,
-    mut xyz_0: *mut f64,
+    xyz_0: &[f64; 3],
     mut _elvMask: f64,
 ) -> i32 {
     unsafe {
@@ -1202,7 +1196,7 @@ pub unsafe fn allocateChannel(
                                 *eph.offset(sv as isize),
                                 &mut ionoutc,
                                 grx,
-                                ref_0.as_mut_ptr(),
+                                &ref_0,
                             );
                             r_ref = rho.range;
                             phase_ini = 0.0f64;
@@ -1643,7 +1637,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             if numd > iduration {
                 numd = iduration;
             }
-            xyz2llh((xyz[0_i32 as usize]).as_mut_ptr(), llh.as_mut_ptr());
+            xyz2llh(&xyz[0], &mut llh);
         } else {
             eprintln!("Using static location mode.\n\0");
             numd = iduration;
@@ -1847,7 +1841,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             (eph[ieph as usize]).as_mut_ptr(),
             ionoutc,
             grx,
-            (xyz[0_i32 as usize]).as_mut_ptr(),
+            &xyz[0],
             elvmask,
         );
         i = 0_i32;
@@ -1891,7 +1885,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                             eph[ieph as usize][sv as usize],
                             &mut ionoutc,
                             grx,
-                            (xyz[iumd as usize]).as_mut_ptr(),
+                            &xyz[iumd as usize],
                         );
                     } else {
                         computeRange(
@@ -1899,7 +1893,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                             eph[ieph as usize][sv as usize],
                             &mut ionoutc,
                             grx,
-                            (xyz[0_i32 as usize]).as_mut_ptr(),
+                            &xyz[0_i32 as usize],
                         );
                     }
                     chan[i as usize].azel[0_i32 as usize] = rho.azel[0_i32 as usize];
@@ -2051,7 +2045,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         (eph[ieph as usize]).as_mut_ptr(),
                         ionoutc,
                         grx,
-                        (xyz[iumd as usize]).as_mut_ptr(),
+                        &xyz[iumd as usize],
                         elvmask,
                     );
                 } else {
@@ -2060,7 +2054,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         (eph[ieph as usize]).as_mut_ptr(),
                         ionoutc,
                         grx,
-                        (xyz[0_i32 as usize]).as_mut_ptr(),
+                        &xyz[0_i32 as usize],
                         elvmask,
                     );
                 }
