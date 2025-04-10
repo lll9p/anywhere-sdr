@@ -229,10 +229,10 @@ pub unsafe extern "C" fn getopt(
     mut nargc: libc::c_int,
     mut nargv: *const *mut libc::c_char,
     mut ostr: *const libc::c_char,
-) -> libc::c_int {
+) -> libc::c_int { unsafe {
     static mut place: *mut libc::c_char =
         b"\0" as *const u8 as *const libc::c_char as *mut libc::c_char;
-    let mut oli: *const libc::c_char = 0 as *const libc::c_char;
+    let mut oli: *const libc::c_char = std::ptr::null::<libc::c_char>();
     if optreset != 0 || *place == 0 {
         optreset = 0 as libc::c_int;
         if optind >= nargc || {
@@ -277,7 +277,7 @@ pub unsafe extern "C" fn getopt(
     }
     oli = oli.offset(1);
     if *oli as libc::c_int != ':' as i32 {
-        optarg = 0 as *mut libc::c_char;
+        optarg = std::ptr::null_mut::<libc::c_char>();
         if *place == 0 {
             optind += 1;
             optind;
@@ -309,8 +309,8 @@ pub unsafe extern "C" fn getopt(
         optind += 1;
         optind;
     }
-    return optopt;
-}
+    optopt
+}}
 #[unsafe(no_mangle)]
 pub static mut sinTable512: [libc::c_int; 512] = [
     2 as libc::c_int,
@@ -1357,33 +1357,33 @@ pub unsafe extern "C" fn subVect(
     mut y: *mut libc::c_double,
     mut x1: *const libc::c_double,
     mut x2: *const libc::c_double,
-) {
+) { unsafe {
     *y.offset(0 as libc::c_int as isize) =
         *x1.offset(0 as libc::c_int as isize) - *x2.offset(0 as libc::c_int as isize);
     *y.offset(1 as libc::c_int as isize) =
         *x1.offset(1 as libc::c_int as isize) - *x2.offset(1 as libc::c_int as isize);
     *y.offset(2 as libc::c_int as isize) =
         *x1.offset(2 as libc::c_int as isize) - *x2.offset(2 as libc::c_int as isize);
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn normVect(mut x: *const libc::c_double) -> libc::c_double {
-    return sqrt(
+pub unsafe extern "C" fn normVect(mut x: *const libc::c_double) -> libc::c_double { unsafe {
+    sqrt(
         *x.offset(0 as libc::c_int as isize) * *x.offset(0 as libc::c_int as isize)
             + *x.offset(1 as libc::c_int as isize) * *x.offset(1 as libc::c_int as isize)
             + *x.offset(2 as libc::c_int as isize) * *x.offset(2 as libc::c_int as isize),
-    );
-}
+    )
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dotProd(
     mut x1: *const libc::c_double,
     mut x2: *const libc::c_double,
-) -> libc::c_double {
-    return *x1.offset(0 as libc::c_int as isize) * *x2.offset(0 as libc::c_int as isize)
+) -> libc::c_double { unsafe {
+    *x1.offset(0 as libc::c_int as isize) * *x2.offset(0 as libc::c_int as isize)
         + *x1.offset(1 as libc::c_int as isize) * *x2.offset(1 as libc::c_int as isize)
-        + *x1.offset(2 as libc::c_int as isize) * *x2.offset(2 as libc::c_int as isize);
-}
+        + *x1.offset(2 as libc::c_int as isize) * *x2.offset(2 as libc::c_int as isize)
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn codegen(mut ca: *mut libc::c_int, mut prn: libc::c_int) {
+pub unsafe extern "C" fn codegen(mut ca: *mut libc::c_int, mut prn: libc::c_int) { unsafe {
     let mut delay: [libc::c_int; 32] = [
         5 as libc::c_int,
         6 as libc::c_int,
@@ -1470,9 +1470,9 @@ pub unsafe extern "C" fn codegen(mut ca: *mut libc::c_int, mut prn: libc::c_int)
         j += 1;
         j;
     }
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn date2gps(mut t: *const datetime_t, mut g: *mut gpstime_t) {
+pub unsafe extern "C" fn date2gps(mut t: *const datetime_t, mut g: *mut gpstime_t) { unsafe {
     let mut doy: [libc::c_int; 12] = [
         0 as libc::c_int,
         31 as libc::c_int,
@@ -1503,9 +1503,9 @@ pub unsafe extern "C" fn date2gps(mut t: *const datetime_t, mut g: *mut gpstime_
         + (*t).hh as libc::c_double * 3600.0f64
         + (*t).mm as libc::c_double * 60.0f64
         + (*t).sec;
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) {
+pub unsafe extern "C" fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) { unsafe {
     let mut c: libc::c_int = ((7 as libc::c_int * (*g).week) as libc::c_double
         + floor((*g).sec / 86400.0f64)
         + 2444245.0f64) as libc::c_int
@@ -1519,9 +1519,9 @@ pub unsafe extern "C" fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_
     (*t).hh = ((*g).sec / 3600.0f64) as libc::c_int % 24 as libc::c_int;
     (*t).mm = ((*g).sec / 60.0f64) as libc::c_int % 60 as libc::c_int;
     (*t).sec = (*g).sec - 60.0f64 * floor((*g).sec / 60.0f64);
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn xyz2llh(mut xyz_0: *const libc::c_double, mut llh: *mut libc::c_double) {
+pub unsafe extern "C" fn xyz2llh(mut xyz_0: *const libc::c_double, mut llh: *mut libc::c_double) { unsafe {
     let mut a: libc::c_double = 0.;
     let mut eps: libc::c_double = 0.;
     let mut e: libc::c_double = 0.;
@@ -1565,9 +1565,9 @@ pub unsafe extern "C" fn xyz2llh(mut xyz_0: *const libc::c_double, mut llh: *mut
     *llh.offset(0 as libc::c_int as isize) = atan2(zdz, sqrt(rho2));
     *llh.offset(1 as libc::c_int as isize) = atan2(y, x);
     *llh.offset(2 as libc::c_int as isize) = nh - n;
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn llh2xyz(mut llh: *const libc::c_double, mut xyz_0: *mut libc::c_double) {
+pub unsafe extern "C" fn llh2xyz(mut llh: *const libc::c_double, mut xyz_0: *mut libc::c_double) { unsafe {
     let mut n: libc::c_double = 0.;
     let mut a: libc::c_double = 0.;
     let mut e: libc::c_double = 0.;
@@ -1594,9 +1594,9 @@ pub unsafe extern "C" fn llh2xyz(mut llh: *const libc::c_double, mut xyz_0: *mut
     *xyz_0.offset(1 as libc::c_int as isize) = tmp * slon;
     *xyz_0.offset(2 as libc::c_int as isize) =
         ((1.0f64 - e2) * n + *llh.offset(2 as libc::c_int as isize)) * slat;
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ltcmat(mut llh: *const libc::c_double, mut t: *mut [libc::c_double; 3]) {
+pub unsafe extern "C" fn ltcmat(mut llh: *const libc::c_double, mut t: *mut [libc::c_double; 3]) { unsafe {
     let mut slat: libc::c_double = 0.;
     let mut clat: libc::c_double = 0.;
     let mut slon: libc::c_double = 0.;
@@ -1614,13 +1614,13 @@ pub unsafe extern "C" fn ltcmat(mut llh: *const libc::c_double, mut t: *mut [lib
     (*t.offset(2 as libc::c_int as isize))[0 as libc::c_int as usize] = clat * clon;
     (*t.offset(2 as libc::c_int as isize))[1 as libc::c_int as usize] = clat * slon;
     (*t.offset(2 as libc::c_int as isize))[2 as libc::c_int as usize] = slat;
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ecef2neu(
     mut xyz_0: *const libc::c_double,
     mut t: *mut [libc::c_double; 3],
     mut neu: *mut libc::c_double,
-) {
+) { unsafe {
     *neu.offset(0 as libc::c_int as isize) = (*t.offset(0 as libc::c_int as isize))
         [0 as libc::c_int as usize]
         * *xyz_0.offset(0 as libc::c_int as isize)
@@ -1642,9 +1642,9 @@ pub unsafe extern "C" fn ecef2neu(
             * *xyz_0.offset(1 as libc::c_int as isize)
         + (*t.offset(2 as libc::c_int as isize))[2 as libc::c_int as usize]
             * *xyz_0.offset(2 as libc::c_int as isize);
-}
+}}
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn neu2azel(mut azel: *mut libc::c_double, mut neu: *const libc::c_double) {
+pub unsafe extern "C" fn neu2azel(mut azel: *mut libc::c_double, mut neu: *const libc::c_double) { unsafe {
     let mut ne: libc::c_double = 0.;
     *azel.offset(0 as libc::c_int as isize) = atan2(
         *neu.offset(1 as libc::c_int as isize),
@@ -1658,7 +1658,7 @@ pub unsafe extern "C" fn neu2azel(mut azel: *mut libc::c_double, mut neu: *const
             + *neu.offset(1 as libc::c_int as isize) * *neu.offset(1 as libc::c_int as isize),
     );
     *azel.offset(1 as libc::c_int as isize) = atan2(*neu.offset(2 as libc::c_int as isize), ne);
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn satpos(
     mut eph: ephem_t,
@@ -1666,7 +1666,7 @@ pub unsafe extern "C" fn satpos(
     mut pos: *mut libc::c_double,
     mut vel: *mut libc::c_double,
     mut clk: *mut libc::c_double,
-) {
+) { unsafe {
     let mut tk: libc::c_double = 0.;
     let mut mk: libc::c_double = 0.;
     let mut ek: libc::c_double = 0.;
@@ -1711,7 +1711,7 @@ pub unsafe extern "C" fn satpos(
     while fabs(ek - ekold) > 1.0E-14f64 {
         ekold = ek;
         OneMinusecosE = 1.0f64 - eph.ecc * cos(ekold);
-        ek = ek + (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
+        ek += (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
     }
     sek = sin(ek);
     cek = cos(ek);
@@ -1756,13 +1756,13 @@ pub unsafe extern "C" fn satpos(
     *clk.offset(0 as libc::c_int as isize) =
         eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd;
     *clk.offset(1 as libc::c_int as isize) = eph.af1 + 2.0f64 * tk * eph.af2;
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn eph2sbf(
     eph: ephem_t,
     ionoutc: ionoutc_t,
     mut sbf: *mut [libc::c_ulong; 10],
-) {
+) { unsafe {
     let mut wn: libc::c_ulong = 0;
     let mut toe: libc::c_ulong = 0;
     let mut toc: libc::c_ulong = 0;
@@ -1817,7 +1817,7 @@ pub unsafe extern "C" fn eph2sbf(
     toc = (eph.toc.sec / 16.0f64) as libc::c_ulong;
     iode = eph.iode as libc::c_ulong;
     iodc = eph.iodc as libc::c_ulong;
-    deltan = (eph.deltan / 1.136868377216160e-13f64 / 3.1415926535898f64) as libc::c_long;
+    deltan = (eph.deltan / 1.136_868_377_216_16e-13_f64 / 3.1415926535898f64) as libc::c_long;
     cuc = (eph.cuc / 1.862645149230957e-9f64) as libc::c_long;
     cus = (eph.cus / 1.862645149230957e-9f64) as libc::c_long;
     cic = (eph.cic / 1.862645149230957e-9f64) as libc::c_long;
@@ -1825,31 +1825,31 @@ pub unsafe extern "C" fn eph2sbf(
     crc = (eph.crc / 0.03125f64) as libc::c_long;
     crs = (eph.crs / 0.03125f64) as libc::c_long;
     ecc = (eph.ecc / 1.164153218269348e-10f64) as libc::c_ulong;
-    sqrta = (eph.sqrta / 1.907348632812500e-6f64) as libc::c_ulong;
+    sqrta = (eph.sqrta / 1.907_348_632_812_5e-6_f64) as libc::c_ulong;
     m0 = (eph.m0 / 4.656612873077393e-10f64 / 3.1415926535898f64) as libc::c_long;
     omg0 = (eph.omg0 / 4.656612873077393e-10f64 / 3.1415926535898f64) as libc::c_long;
     inc0 = (eph.inc0 / 4.656612873077393e-10f64 / 3.1415926535898f64) as libc::c_long;
     aop = (eph.aop / 4.656612873077393e-10f64 / 3.1415926535898f64) as libc::c_long;
-    omgdot = (eph.omgdot / 1.136868377216160e-13f64 / 3.1415926535898f64) as libc::c_long;
-    idot = (eph.idot / 1.136868377216160e-13f64 / 3.1415926535898f64) as libc::c_long;
+    omgdot = (eph.omgdot / 1.136_868_377_216_16e-13_f64 / 3.1415926535898f64) as libc::c_long;
+    idot = (eph.idot / 1.136_868_377_216_16e-13_f64 / 3.1415926535898f64) as libc::c_long;
     af0 = (eph.af0 / 4.656612873077393e-10f64) as libc::c_long;
-    af1 = (eph.af1 / 1.136868377216160e-13f64) as libc::c_long;
+    af1 = (eph.af1 / 1.136_868_377_216_16e-13_f64) as libc::c_long;
     af2 = (eph.af2 / 2.775557561562891e-17f64) as libc::c_long;
     tgd = (eph.tgd / 4.656612873077393e-10f64) as libc::c_long;
     svhlth = eph.svhlth as libc::c_ulong as libc::c_int;
     codeL2 = eph.codeL2 as libc::c_ulong as libc::c_int;
     wna = (eph.toe.week % 256 as libc::c_int) as libc::c_ulong;
     toa = (eph.toe.sec / 4096.0f64) as libc::c_ulong;
-    alpha0 = round(ionoutc.alpha0 / 9.313225746154785e-010f64) as libc::c_long;
-    alpha1 = round(ionoutc.alpha1 / 7.450580596923828e-009f64) as libc::c_long;
-    alpha2 = round(ionoutc.alpha2 / 5.960464477539063e-008f64) as libc::c_long;
-    alpha3 = round(ionoutc.alpha3 / 5.960464477539063e-008f64) as libc::c_long;
+    alpha0 = round(ionoutc.alpha0 / 9.313_225_746_154_785e-10_f64) as libc::c_long;
+    alpha1 = round(ionoutc.alpha1 / 7.450_580_596_923_828e-9_f64) as libc::c_long;
+    alpha2 = round(ionoutc.alpha2 / 5.960_464_477_539_063e-8_f64) as libc::c_long;
+    alpha3 = round(ionoutc.alpha3 / 5.960_464_477_539_063e-8_f64) as libc::c_long;
     beta0 = round(ionoutc.beta0 / 2048.0f64) as libc::c_long;
     beta1 = round(ionoutc.beta1 / 16384.0f64) as libc::c_long;
     beta2 = round(ionoutc.beta2 / 65536.0f64) as libc::c_long;
     beta3 = round(ionoutc.beta3 / 65536.0f64) as libc::c_long;
-    A0 = round(ionoutc.A0 / 9.313225746154785e-010f64) as libc::c_long;
-    A1 = round(ionoutc.A1 / 8.881784197001252e-016f64) as libc::c_long;
+    A0 = round(ionoutc.A0 / 9.313_225_746_154_785e-10_f64) as libc::c_long;
+    A1 = round(ionoutc.A1 / 8.881_784_197_001_252e-16_f64) as libc::c_long;
     dtls = ionoutc.dtls as libc::c_long;
     tot = (ionoutc.tot / 4096 as libc::c_int) as libc::c_ulong;
     wnt = (ionoutc.wnt % 256 as libc::c_int) as libc::c_ulong;
@@ -2001,7 +2001,7 @@ pub unsafe extern "C" fn eph2sbf(
     (*sbf.offset(4 as libc::c_int as isize))[7 as libc::c_int as usize] = 0 as libc::c_ulong;
     (*sbf.offset(4 as libc::c_int as isize))[8 as libc::c_int as usize] = 0 as libc::c_ulong;
     (*sbf.offset(4 as libc::c_int as isize))[9 as libc::c_int as usize] = 0 as libc::c_ulong;
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn countBits(mut v: libc::c_ulong) -> libc::c_ulong {
     let mut c: libc::c_ulong = 0;
@@ -2030,13 +2030,13 @@ pub unsafe extern "C" fn countBits(mut v: libc::c_ulong) -> libc::c_ulong {
         .wrapping_add(c & B[3 as libc::c_int as usize]);
     c = (c >> S[4 as libc::c_int as usize] & B[4 as libc::c_int as usize])
         .wrapping_add(c & B[4 as libc::c_int as usize]);
-    return c;
+    c
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn computeChecksum(
     mut source: libc::c_ulong,
     mut nib: libc::c_int,
-) -> libc::c_ulong {
+) -> libc::c_ulong { unsafe {
     let mut bmask: [libc::c_ulong; 6] = [
         0x3b1f3480 as libc::c_ulong,
         0x1d8f9a40 as libc::c_ulong,
@@ -2093,13 +2093,13 @@ pub unsafe extern "C" fn computeChecksum(
         .wrapping_add(countBits(bmask[5 as libc::c_int as usize] & d))
         .wrapping_rem(2 as libc::c_int as libc::c_ulong);
     D &= 0x3fffffff as libc::c_ulong;
-    return D;
-}
+    D
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn replaceExpDesignator(
     mut str: *mut libc::c_char,
     mut len: libc::c_int,
-) -> libc::c_int {
+) -> libc::c_int { unsafe {
     let mut i: libc::c_int = 0;
     let mut n: libc::c_int = 0 as libc::c_int;
     i = 0 as libc::c_int;
@@ -2112,17 +2112,17 @@ pub unsafe extern "C" fn replaceExpDesignator(
         i += 1;
         i;
     }
-    return n;
-}
+    n
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn subGpsTime(mut g1: gpstime_t, mut g0: gpstime_t) -> libc::c_double {
     let mut dt: libc::c_double = 0.;
     dt = g1.sec - g0.sec;
     dt += (g1.week - g0.week) as libc::c_double * 604800.0f64;
-    return dt;
+    dt
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn incGpsTime(mut g0: gpstime_t, mut dt: libc::c_double) -> gpstime_t {
+pub unsafe extern "C" fn incGpsTime(mut g0: gpstime_t, mut dt: libc::c_double) -> gpstime_t { unsafe {
     let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
@@ -2137,15 +2137,15 @@ pub unsafe extern "C" fn incGpsTime(mut g0: gpstime_t, mut dt: libc::c_double) -
         g1.week -= 1;
         g1.week;
     }
-    return g1;
-}
+    g1
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readRinexNavAll(
     mut eph: *mut [ephem_t; 32],
     mut ionoutc: *mut ionoutc_t,
     mut fname: *const libc::c_char,
-) -> libc::c_int {
-    let mut fp: *mut FILE = 0 as *mut FILE;
+) -> libc::c_int { unsafe {
+    let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
     let mut ieph: libc::c_int = 0;
     let mut sv: libc::c_int = 0;
     let mut str: [libc::c_char; 100] = [0; 100];
@@ -2639,15 +2639,15 @@ pub unsafe extern "C" fn readRinexNavAll(
     if g0.week >= 0 as libc::c_int {
         ieph += 1 as libc::c_int;
     }
-    return ieph;
-}
+    ieph
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ionosphericDelay(
     mut ionoutc: *const ionoutc_t,
     mut g: gpstime_t,
     mut llh: *mut libc::c_double,
     mut azel: *mut libc::c_double,
-) -> libc::c_double {
+) -> libc::c_double { unsafe {
     let mut iono_delay: libc::c_double = 0.0f64;
     let mut E: libc::c_double = 0.;
     let mut phi_u: libc::c_double = 0.;
@@ -2718,8 +2718,8 @@ pub unsafe extern "C" fn ionosphericDelay(
             iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
         }
     }
-    return iono_delay;
-}
+    iono_delay
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn computeRange(
     mut rho: *mut range_t,
@@ -2727,7 +2727,7 @@ pub unsafe extern "C" fn computeRange(
     mut ionoutc: *mut ionoutc_t,
     mut g: gpstime_t,
     mut xyz_0: *mut libc::c_double,
-) {
+) { unsafe {
     let mut pos: [libc::c_double; 3] = [0.; 3];
     let mut vel: [libc::c_double; 3] = [0.; 3];
     let mut clk: [libc::c_double; 2] = [0.; 2];
@@ -2773,13 +2773,13 @@ pub unsafe extern "C" fn computeRange(
     neu2azel(((*rho).azel).as_mut_ptr(), neu.as_mut_ptr());
     (*rho).iono_delay = ionosphericDelay(ionoutc, g, llh.as_mut_ptr(), ((*rho).azel).as_mut_ptr());
     (*rho).range += (*rho).iono_delay;
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn computeCodePhase(
     mut chan: *mut channel_t,
     mut rho1: range_t,
     mut dt: libc::c_double,
-) {
+) { unsafe {
     let mut ms: libc::c_double = 0.;
     let mut ims: libc::c_int = 0;
     let mut rhorate: libc::c_double = 0.;
@@ -2797,18 +2797,18 @@ pub unsafe extern "C" fn computeCodePhase(
     (*chan).icode = ims;
     (*chan).codeCA = (*chan).ca[(*chan).code_phase as libc::c_int as usize] * 2 as libc::c_int
         - 1 as libc::c_int;
-    (*chan).dataBit = ((*chan).dwrd[(*chan).iword as usize] >> 29 as libc::c_int - (*chan).ibit
+    (*chan).dataBit = ((*chan).dwrd[(*chan).iword as usize] >> (29 as libc::c_int - (*chan).ibit)
         & 0x1 as libc::c_ulong) as libc::c_int
         * 2 as libc::c_int
         - 1 as libc::c_int;
     (*chan).rho0 = rho1;
-}
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readUserMotion(
     mut xyz_0: *mut [libc::c_double; 3],
     mut filename: *const libc::c_char,
-) -> libc::c_int {
-    let mut fp: *mut FILE = 0 as *mut FILE;
+) -> libc::c_int { unsafe {
+    let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
     let mut numd: libc::c_int = 0;
     let mut str: [libc::c_char; 100] = [0; 100];
     let mut t: libc::c_double = 0.;
@@ -2843,14 +2843,14 @@ pub unsafe extern "C" fn readUserMotion(
         numd;
     }
     fclose(fp);
-    return numd;
-}
+    numd
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readUserMotionLLH(
     mut xyz_0: *mut [libc::c_double; 3],
     mut filename: *const libc::c_char,
-) -> libc::c_int {
-    let mut fp: *mut FILE = 0 as *mut FILE;
+) -> libc::c_int { unsafe {
+    let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
     let mut numd: libc::c_int = 0;
     let mut t: libc::c_double = 0.;
     let mut llh: [libc::c_double; 3] = [0.; 3];
@@ -2903,17 +2903,17 @@ pub unsafe extern "C" fn readUserMotionLLH(
         }
     }
     fclose(fp);
-    return numd;
-}
+    numd
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn readNmeaGGA(
     mut xyz_0: *mut [libc::c_double; 3],
     mut filename: *const libc::c_char,
-) -> libc::c_int {
-    let mut fp: *mut FILE = 0 as *mut FILE;
+) -> libc::c_int { unsafe {
+    let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
     let mut numd: libc::c_int = 0 as libc::c_int;
     let mut str: [libc::c_char; 100] = [0; 100];
-    let mut token: *mut libc::c_char = 0 as *mut libc::c_char;
+    let mut token: *mut libc::c_char = std::ptr::null_mut::<libc::c_char>();
     let mut llh: [libc::c_double; 3] = [0.; 3];
     let mut pos: [libc::c_double; 3] = [0.; 3];
     let mut tmp: [libc::c_char; 8] = [0; 8];
@@ -2923,20 +2923,20 @@ pub unsafe extern "C" fn readNmeaGGA(
     }
     while !(fgets(str.as_mut_ptr(), 100 as libc::c_int, fp)).is_null() {
         token = strtok(str.as_mut_ptr(), b",\0" as *const u8 as *const libc::c_char);
-        if !(strncmp(
+        if strncmp(
             token.offset(3 as libc::c_int as isize),
             b"GGA\0" as *const u8 as *const libc::c_char,
             3 as libc::c_int as libc::c_ulong,
-        ) == 0 as libc::c_int)
+        ) != 0 as libc::c_int
         {
             continue;
         }
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         strncpy(tmp.as_mut_ptr(), token, 2 as libc::c_int as libc::c_ulong);
@@ -2944,7 +2944,7 @@ pub unsafe extern "C" fn readNmeaGGA(
         llh[0 as libc::c_int as usize] =
             atof(tmp.as_mut_ptr()) + atof(token.offset(2 as libc::c_int as isize)) / 60.0f64;
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         if *token.offset(0 as libc::c_int as isize) as libc::c_int == 'S' as i32 {
@@ -2952,7 +2952,7 @@ pub unsafe extern "C" fn readNmeaGGA(
         }
         llh[0 as libc::c_int as usize] /= 57.2957795131f64;
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         strncpy(tmp.as_mut_ptr(), token, 3 as libc::c_int as libc::c_ulong);
@@ -2960,7 +2960,7 @@ pub unsafe extern "C" fn readNmeaGGA(
         llh[1 as libc::c_int as usize] =
             atof(tmp.as_mut_ptr()) + atof(token.offset(3 as libc::c_int as isize)) / 60.0f64;
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         if *token.offset(0 as libc::c_int as isize) as libc::c_int == 'W' as i32 {
@@ -2968,28 +2968,28 @@ pub unsafe extern "C" fn readNmeaGGA(
         }
         llh[1 as libc::c_int as usize] /= 57.2957795131f64;
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         llh[2 as libc::c_int as usize] = atof(token);
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         token = strtok(
-            0 as *mut libc::c_char,
+            std::ptr::null_mut::<libc::c_char>(),
             b",\0" as *const u8 as *const libc::c_char,
         );
         llh[2 as libc::c_int as usize] += atof(token);
@@ -3004,14 +3004,14 @@ pub unsafe extern "C" fn readNmeaGGA(
         }
     }
     fclose(fp);
-    return numd;
-}
+    numd
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn generateNavMsg(
     mut g: gpstime_t,
     mut chan: *mut channel_t,
     mut init: libc::c_int,
-) -> libc::c_int {
+) -> libc::c_int { unsafe {
     let mut iwrd: libc::c_int = 0;
     let mut isbf: libc::c_int = 0;
     let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
@@ -3094,8 +3094,8 @@ pub unsafe extern "C" fn generateNavMsg(
         isbf += 1;
         isbf;
     }
-    return 1 as libc::c_int;
-}
+    1 as libc::c_int
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn checkSatVisibility(
     mut eph: ephem_t,
@@ -3103,7 +3103,7 @@ pub unsafe extern "C" fn checkSatVisibility(
     mut xyz_0: *mut libc::c_double,
     mut elvMask: libc::c_double,
     mut azel: *mut libc::c_double,
-) -> libc::c_int {
+) -> libc::c_int { unsafe {
     let mut llh: [libc::c_double; 3] = [0.; 3];
     let mut neu: [libc::c_double; 3] = [0.; 3];
     let mut pos: [libc::c_double; 3] = [0.; 3];
@@ -3123,8 +3123,8 @@ pub unsafe extern "C" fn checkSatVisibility(
     if *azel.offset(1 as libc::c_int as isize) * 57.2957795131f64 > elvMask {
         return 1 as libc::c_int;
     }
-    return 0 as libc::c_int;
-}
+    0 as libc::c_int
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn allocateChannel(
     mut chan: *mut channel_t,
@@ -3133,7 +3133,7 @@ pub unsafe extern "C" fn allocateChannel(
     mut grx: gpstime_t,
     mut xyz_0: *mut libc::c_double,
     mut elvMask: libc::c_double,
-) -> libc::c_int {
+) -> libc::c_int { unsafe {
     let mut nsat: libc::c_int = 0 as libc::c_int;
     let mut i: libc::c_int = 0;
     let mut sv: libc::c_int = 0;
@@ -3213,8 +3213,8 @@ pub unsafe extern "C" fn allocateChannel(
         sv += 1;
         sv;
     }
-    return nsat;
-}
+    nsat
+}}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn usage() {
     // fprintf(
@@ -3230,10 +3230,10 @@ pub unsafe extern "C" fn usage() {
         86400 as libc::c_int,
     );
 }
-unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int {
+unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> libc::c_int { unsafe {
     let mut tstart: clock_t = 0;
     let mut tend: clock_t = 0;
-    let mut fp: *mut FILE = 0 as *mut FILE;
+    let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
     let mut sv: libc::c_int = 0;
     let mut neph: libc::c_int = 0;
     let mut ieph: libc::c_int = 0;
@@ -3310,8 +3310,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
     let mut ip: libc::c_int = 0;
     let mut qp: libc::c_int = 0;
     let mut iTable: libc::c_int = 0;
-    let mut iq_buff: *mut libc::c_short = 0 as *mut libc::c_short;
-    let mut iq8_buff: *mut libc::c_schar = 0 as *mut libc::c_schar;
+    let mut iq_buff: *mut libc::c_short = std::ptr::null_mut::<libc::c_short>();
+    let mut iq8_buff: *mut libc::c_schar = std::ptr::null_mut::<libc::c_schar>();
     let mut grx: gpstime_t = gpstime_t { week: 0, sec: 0. };
     let mut delt: libc::c_double = 0.;
     let mut isamp: libc::c_int = 0;
@@ -3411,7 +3411,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
             argv as *const *mut libc::c_char,
             b"e:u:x:g:c:l:o:s:b:L:T:t:d:ipv\0" as *const u8 as *const libc::c_char,
         );
-        if !(result != -(1 as libc::c_int)) {
+        if result == -(1 as libc::c_int) {
             break;
         }
         let mut current_block_85: u64;
@@ -3465,8 +3465,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                     &mut *llh.as_mut_ptr().offset(1 as libc::c_int as isize) as *mut libc::c_double,
                     &mut *llh.as_mut_ptr().offset(2 as libc::c_int as isize) as *mut libc::c_double,
                 );
-                llh[0 as libc::c_int as usize] = llh[0 as libc::c_int as usize] / 57.2957795131f64;
-                llh[1 as libc::c_int as usize] = llh[1 as libc::c_int as usize] / 57.2957795131f64;
+                llh[0 as libc::c_int as usize] /= 57.2957795131f64;
+                llh[1 as libc::c_int as usize] /= 57.2957795131f64;
                 llh2xyz(
                     llh.as_mut_ptr(),
                     (xyz[0 as libc::c_int as usize]).as_mut_ptr(),
@@ -3549,7 +3549,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                 ) == 0 as libc::c_int
                 {
                     let mut timer: time_t = 0;
-                    let mut gmt: *mut tm = 0 as *mut tm;
+                    let mut gmt: *mut tm = std::ptr::null_mut::<tm>();
                     time(&mut timer);
                     gmt = gmtime(&mut timer);
                     t0.y = (*gmt).tm_year + 1900 as libc::c_int;
@@ -3609,41 +3609,38 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                 current_block_85 = 2750570471926810434;
             }
         }
-        match current_block_85 {
-            4676144417340510455 => {
-                sscanf(
-                    optarg,
-                    b"%d/%d/%d,%d:%d:%lf\0" as *const u8 as *const libc::c_char,
-                    &mut t0.y as *mut libc::c_int,
-                    &mut t0.m as *mut libc::c_int,
-                    &mut t0.d as *mut libc::c_int,
-                    &mut t0.hh as *mut libc::c_int,
-                    &mut t0.mm as *mut libc::c_int,
-                    &mut t0.sec as *mut libc::c_double,
-                );
-                if t0.y <= 1980 as libc::c_int
-                    || t0.m < 1 as libc::c_int
-                    || t0.m > 12 as libc::c_int
-                    || t0.d < 1 as libc::c_int
-                    || t0.d > 31 as libc::c_int
-                    || t0.hh < 0 as libc::c_int
-                    || t0.hh > 23 as libc::c_int
-                    || t0.mm < 0 as libc::c_int
-                    || t0.mm > 59 as libc::c_int
-                    || t0.sec < 0.0f64
-                    || t0.sec >= 60.0f64
-                {
-                    // fprintf(
-                    //     stderr,
-                    //     b"ERROR: Invalid date and time.\n\0" as *const u8 as *const libc::c_char,
-                    // );
-                    eprintln!("ERROR: Invalid date and time.\n");
-                    exit(1 as libc::c_int);
-                }
-                t0.sec = floor(t0.sec);
-                date2gps(&mut t0, &mut g0);
+        if current_block_85 == 4676144417340510455 {
+            sscanf(
+                optarg,
+                b"%d/%d/%d,%d:%d:%lf\0" as *const u8 as *const libc::c_char,
+                &mut t0.y as *mut libc::c_int,
+                &mut t0.m as *mut libc::c_int,
+                &mut t0.d as *mut libc::c_int,
+                &mut t0.hh as *mut libc::c_int,
+                &mut t0.mm as *mut libc::c_int,
+                &mut t0.sec as *mut libc::c_double,
+            );
+            if t0.y <= 1980 as libc::c_int
+                || t0.m < 1 as libc::c_int
+                || t0.m > 12 as libc::c_int
+                || t0.d < 1 as libc::c_int
+                || t0.d > 31 as libc::c_int
+                || t0.hh < 0 as libc::c_int
+                || t0.hh > 23 as libc::c_int
+                || t0.mm < 0 as libc::c_int
+                || t0.mm > 59 as libc::c_int
+                || t0.sec < 0.0f64
+                || t0.sec >= 60.0f64
+            {
+                // fprintf(
+                //     stderr,
+                //     b"ERROR: Invalid date and time.\n\0" as *const u8 as *const libc::c_char,
+                // );
+                eprintln!("ERROR: Invalid date and time.\n");
+                exit(1 as libc::c_int);
             }
-            _ => {}
+            t0.sec = floor(t0.sec);
+            date2gps(&mut t0, &mut g0);
         }
     }
     if navfile[0 as libc::c_int as usize] as libc::c_int == 0 as libc::c_int {
@@ -3952,7 +3949,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
         while sv < 32 as libc::c_int {
             if eph[i as usize][sv as usize].vflg == 1 as libc::c_int {
                 dt = subGpsTime(g0, eph[i as usize][sv as usize].toc);
-                if dt >= -3600.0f64 && dt < 3600.0f64 {
+                if (-3600.0f64..3600.0f64).contains(&dt) {
                     ieph = i;
                     break;
                 }
@@ -4175,8 +4172,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                                 chan[i as usize].iword;
                             }
                             chan[i as usize].dataBit = (chan[i as usize].dwrd
-                                [chan[i as usize].iword as usize]
-                                >> 29 as libc::c_int - chan[i as usize].ibit
+                                [chan[i as usize].iword as usize] >> (29 as libc::c_int - chan[i as usize].ibit)
                                 & 0x1 as libc::c_ulong)
                                 as libc::c_int
                                 * 2 as libc::c_int
@@ -4193,8 +4189,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                 i += 1;
                 i;
             }
-            i_acc = i_acc + 64 as libc::c_int >> 7 as libc::c_int;
-            q_acc = q_acc + 64 as libc::c_int >> 7 as libc::c_int;
+            i_acc = (i_acc + 64 as libc::c_int) >> 7 as libc::c_int;
+            q_acc = (q_acc + 64 as libc::c_int) >> 7 as libc::c_int;
             *iq_buff.offset((isamp * 2 as libc::c_int) as isize) = i_acc as libc::c_short;
             *iq_buff.offset((isamp * 2 as libc::c_int + 1 as libc::c_int) as isize) =
                 q_acc as libc::c_short;
@@ -4208,13 +4204,13 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
                     *iq8_buff.offset((isamp / 8 as libc::c_int) as isize) =
                         0 as libc::c_int as libc::c_schar;
                 }
-                let ref mut fresh1 = *iq8_buff.offset((isamp / 8 as libc::c_int) as isize);
+                let fresh1 = &mut (*iq8_buff.offset((isamp / 8 as libc::c_int) as isize));
                 *fresh1 = (*fresh1 as libc::c_int
                     | (if *iq_buff.offset(isamp as isize) as libc::c_int > 0 as libc::c_int {
                         0x1 as libc::c_int
                     } else {
                         0 as libc::c_int
-                    }) << 7 as libc::c_int - isamp % 8 as libc::c_int)
+                    }) << (7 as libc::c_int - isamp % 8 as libc::c_int))
                     as libc::c_schar;
                 isamp += 1;
                 isamp;
@@ -4313,7 +4309,7 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
             }
             if verb == 1 as libc::c_int {
                 // fprintf(stderr, b"\n\0" as *const u8 as *const libc::c_char);
-                eprintln!("");
+                eprintln!();
                 i = 0 as libc::c_int;
                 while i < 16 as libc::c_int {
                     if chan[i as usize].prn > 0 as libc::c_int {
@@ -4366,8 +4362,8 @@ unsafe fn main_0(mut argc: libc::c_int, mut argv: *mut *mut libc::c_char) -> lib
         "Process time = {:.1} [sec]\n\0",
         (tend - tstart) as libc::c_double / 1000000 as libc::c_int as __clock_t as libc::c_double,
     );
-    return 0 as libc::c_int;
-}
+    0 as libc::c_int
+}}
 pub fn main() {
     let mut args: Vec<*mut libc::c_char> = Vec::new();
     for arg in ::std::env::args() {
