@@ -138,22 +138,18 @@ pub static mut allocatedSat: [i32; 32] = [0; 32];
 
 pub static mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
 
-pub unsafe fn subVect(mut y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
+pub fn subVect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
     y[0] = x1[0] - x2[0];
     y[1] = x1[1] - x2[1];
     y[2] = x1[2] - x2[2];
 }
 
-pub unsafe fn normVect(mut x: &[f64; 3]) -> f64 {
+pub fn normVect(x: &[f64; 3]) -> f64 {
     sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2])
 }
 
-pub unsafe fn dotProd(mut x1: *const f64, mut x2: *const f64) -> f64 {
-    unsafe {
-        *x1.offset(0) * *x2.offset(0)
-            + *x1.offset(1) * *x2.offset(1)
-            + *x1.offset(2) * *x2.offset(2)
-    }
+pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
+    x1[0] * x2[0] + x1[1] * x2[1] + x1[2] * x2[2]
 }
 
 pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
@@ -253,51 +249,49 @@ pub unsafe fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) {
 }
 
 pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
-    unsafe {
-        let mut a: f64 = 0.;
-        let mut eps: f64 = 0.;
-        let mut e: f64 = 0.;
-        let mut e2: f64 = 0.;
-        let mut x: f64 = 0.;
-        let mut y: f64 = 0.;
-        let mut z: f64 = 0.;
-        let mut rho2: f64 = 0.;
-        let mut dz: f64 = 0.;
-        let mut zdz: f64 = 0.;
-        let mut nh: f64 = 0.;
-        let mut slat: f64 = 0.;
-        let mut n: f64 = 0.;
-        let mut dz_new: f64 = 0.;
-        a = 6378137.0f64;
-        e = 0.0818191908426f64;
-        eps = 1.0e-3f64;
-        e2 = e * e;
-        if normVect(xyz_0) < eps {
-            llh[0] = 0.0f64;
-            llh[1] = 0.0f64;
-            llh[2] = -a;
-            return;
-        }
-        x = xyz_0[0];
-        y = xyz_0[1];
-        z = xyz_0[2];
-        rho2 = x * x + y * y;
-        dz = e2 * z;
-        loop {
-            zdz = z + dz;
-            nh = sqrt(rho2 + zdz * zdz);
-            slat = zdz / nh;
-            n = a / sqrt(1.0f64 - e2 * slat * slat);
-            dz_new = n * e2 * slat;
-            if fabs(dz - dz_new) < eps {
-                break;
-            }
-            dz = dz_new;
-        }
-        llh[0] = atan2(zdz, sqrt(rho2));
-        llh[1] = atan2(y, x);
-        llh[2] = nh - n;
+    let mut a: f64 = 0.;
+    let mut eps: f64 = 0.;
+    let mut e: f64 = 0.;
+    let mut e2: f64 = 0.;
+    let mut x: f64 = 0.;
+    let mut y: f64 = 0.;
+    let mut z: f64 = 0.;
+    let mut rho2: f64 = 0.;
+    let mut dz: f64 = 0.;
+    let mut zdz: f64 = 0.;
+    let mut nh: f64 = 0.;
+    let mut slat: f64 = 0.;
+    let mut n: f64 = 0.;
+    let mut dz_new: f64 = 0.;
+    a = 6378137.0f64;
+    e = 0.0818191908426f64;
+    eps = 1.0e-3f64;
+    e2 = e * e;
+    if normVect(xyz_0) < eps {
+        llh[0] = 0.0f64;
+        llh[1] = 0.0f64;
+        llh[2] = -a;
+        return;
     }
+    x = xyz_0[0];
+    y = xyz_0[1];
+    z = xyz_0[2];
+    rho2 = x * x + y * y;
+    dz = e2 * z;
+    loop {
+        zdz = z + dz;
+        nh = sqrt(rho2 + zdz * zdz);
+        slat = zdz / nh;
+        n = a / sqrt(1.0f64 - e2 * slat * slat);
+        dz_new = n * e2 * slat;
+        if fabs(dz - dz_new) < eps {
+            break;
+        }
+        dz = dz_new;
+    }
+    llh[0] = atan2(zdz, sqrt(rho2));
+    llh[1] = atan2(y, x);
+    llh[2] = nh - n;
 }
 
 pub unsafe fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
@@ -880,7 +874,7 @@ pub unsafe fn computeRange(
         range = normVect(&los);
         (*rho).d = range;
         (*rho).range = range - 2.99792458e8f64 * clk[0_i32 as usize];
-        rate = dotProd(vel.as_mut_ptr(), los.as_mut_ptr()) / range;
+        rate = dotProd(&vel, &los) / range;
         (*rho).rate = rate;
         (*rho).g = g;
         xyz2llh(xyz_0, &mut llh);
