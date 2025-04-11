@@ -59,11 +59,11 @@ use read_rinex::readRinexNavAll;
 use table::{ant_pat_db, cosTable512, sinTable512};
 use utils::*;
 
-pub type size_t = u32;
-pub type __off_t = libc::c_long;
-pub type __off64_t = libc::c_long;
-pub type __clock_t = libc::c_long;
-pub type __time_t = libc::c_long;
+// type size_t = u32;
+// type __off_t = libc::c_long;
+// type __off64_t = libc::c_long;
+// type __clock_t = libc::c_long;
+// type __time_t = libc::c_long;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct _IO_FILE {
@@ -83,24 +83,24 @@ pub struct _IO_FILE {
     pub _chain: *mut _IO_FILE,
     pub _fileno: i32,
     pub _flags2: i32,
-    pub _old_offset: __off_t,
+    pub _old_offset: libc::c_long,
     pub _cur_column: libc::c_ushort,
     pub _vtable_offset: libc::c_schar,
     pub _shortbuf: [libc::c_char; 1],
     pub _lock: *mut libc::c_void,
-    pub _offset: __off64_t,
+    pub _offset: libc::c_long,
     pub _codecvt: *mut _IO_codecvt,
     pub _wide_data: *mut _IO_wide_data,
     pub _freeres_list: *mut _IO_FILE,
     pub _freeres_buf: *mut libc::c_void,
-    pub __pad5: size_t,
+    pub __pad5: u32,
     pub _mode: i32,
     pub _unused2: [libc::c_char; 20],
 }
 pub type _IO_lock_t = ();
 pub type FILE = _IO_FILE;
-pub type clock_t = __clock_t;
-pub type time_t = __time_t;
+type clock_t = libc::c_long;
+type time_t = libc::c_long;
 
 #[derive(Copy, Clone, Default)]
 #[repr(C)]
@@ -163,7 +163,7 @@ pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
         let mut r2: [i32; 10] = [0; 10];
         let mut c1: i32 = 0;
         let mut c2: i32 = 0;
-        let mut i: i32 = 0;
+        // let mut i: i32 = 0;
         let mut j: i32 = 0;
         if !(1_i32..=32_i32).contains(&prn) {
             return;
@@ -1980,7 +1980,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
 
         eprintln!(
             "Process time = {:.1} [sec]",
-            (tend - tstart) as f64 / 1000000_i32 as __clock_t as f64,
+            (tend - tstart) as f64 / 1000000_i32 as clock_t as f64,
         );
         0_i32
     }
