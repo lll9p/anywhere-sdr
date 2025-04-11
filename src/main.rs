@@ -431,196 +431,191 @@ pub fn satpos(
     clk[1] = eph.af1 + 2.0f64 * tk * eph.af2;
 }
 
-pub unsafe fn eph2sbf(eph: ephem_t, ionoutc: ionoutc_t, mut sbf: *mut [u32; 10]) {
-    unsafe {
-        let mut wn: u32 = 0;
-        let mut toe: u32 = 0;
-        let mut toc: u32 = 0;
-        let mut iode: u32 = 0;
-        let mut iodc: u32 = 0;
-        let mut deltan: i32 = 0;
-        let mut cuc: i32 = 0;
-        let mut cus: i32 = 0;
-        let mut cic: i32 = 0;
-        let mut cis: i32 = 0;
-        let mut crc: i32 = 0;
-        let mut crs: i32 = 0;
-        let mut ecc: u32 = 0;
-        let mut sqrta: u32 = 0;
-        let mut m0: i32 = 0;
-        let mut omg0: i32 = 0;
-        let mut inc0: i32 = 0;
-        let mut aop: i32 = 0;
-        let mut omgdot: i32 = 0;
-        let mut idot: i32 = 0;
-        let mut af0: i32 = 0;
-        let mut af1: i32 = 0;
-        let mut af2: i32 = 0;
-        let mut tgd: i32 = 0;
-        let mut svhlth: i32 = 0;
-        let mut codeL2: i32 = 0;
-        let mut ura: u32 = 0_u32;
-        let mut dataId: u32 = 1_u32;
-        let mut sbf4_page25_svId: u32 = 63_u32;
-        let mut sbf5_page25_svId: u32 = 51_u32;
-        let mut wna: u32 = 0;
-        let mut toa: u32 = 0;
-        let mut alpha0: i32 = 0;
-        let mut alpha1: i32 = 0;
-        let mut alpha2: i32 = 0;
-        let mut alpha3: i32 = 0;
-        let mut beta0: i32 = 0;
-        let mut beta1: i32 = 0;
-        let mut beta2: i32 = 0;
-        let mut beta3: i32 = 0;
-        let mut A0: i32 = 0;
-        let mut A1: i32 = 0;
-        let mut dtls: i32 = 0;
-        let mut tot: u32 = 0;
-        let mut wnt: u32 = 0;
-        let mut wnlsf: u32 = 0;
-        let mut dtlsf: u32 = 0;
-        let mut dn: u32 = 0;
-        let mut sbf4_page18_svId: u32 = 56_u32;
-        wn = 0_u32;
-        toe = (eph.toe.sec / 16.0f64) as u32;
-        toc = (eph.toc.sec / 16.0f64) as u32;
-        iode = eph.iode as u32;
-        iodc = eph.iodc as u32;
-        deltan = (eph.deltan / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-        cuc = (eph.cuc / 1.862645149230957e-9f64) as i32;
-        cus = (eph.cus / 1.862645149230957e-9f64) as i32;
-        cic = (eph.cic / 1.862645149230957e-9f64) as i32;
-        cis = (eph.cis / 1.862645149230957e-9f64) as i32;
-        crc = (eph.crc / 0.03125f64) as i32;
-        crs = (eph.crs / 0.03125f64) as i32;
-        ecc = (eph.ecc / 1.164153218269348e-10f64) as u32;
-        sqrta = (eph.sqrta / 1.907_348_632_812_5e-6_f64) as u32;
-        m0 = (eph.m0 / 4.656612873077393e-10f64 / PI) as i32;
-        omg0 = (eph.omg0 / 4.656612873077393e-10f64 / PI) as i32;
-        inc0 = (eph.inc0 / 4.656612873077393e-10f64 / PI) as i32;
-        aop = (eph.aop / 4.656612873077393e-10f64 / PI) as i32;
-        omgdot = (eph.omgdot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-        idot = (eph.idot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-        af0 = (eph.af0 / 4.656612873077393e-10f64) as i32;
-        af1 = (eph.af1 / 1.136_868_377_216_16e-13_f64) as i32;
-        af2 = (eph.af2 / 2.775557561562891e-17f64) as i32;
-        tgd = (eph.tgd / 4.656612873077393e-10f64) as i32;
-        svhlth = eph.svhlth as u32 as i32;
-        codeL2 = eph.codeL2 as u32 as i32;
-        wna = (eph.toe.week % 256_i32) as u32;
-        toa = (eph.toe.sec / 4096.0f64) as u32;
-        alpha0 = round(ionoutc.alpha0 / 9.313_225_746_154_785e-10_f64) as i32;
-        alpha1 = round(ionoutc.alpha1 / 7.450_580_596_923_828e-9_f64) as i32;
-        alpha2 = round(ionoutc.alpha2 / 5.960_464_477_539_063e-8_f64) as i32;
-        alpha3 = round(ionoutc.alpha3 / 5.960_464_477_539_063e-8_f64) as i32;
-        beta0 = round(ionoutc.beta0 / 2048.0f64) as i32;
-        beta1 = round(ionoutc.beta1 / 16384.0f64) as i32;
-        beta2 = round(ionoutc.beta2 / 65536.0f64) as i32;
-        beta3 = round(ionoutc.beta3 / 65536.0f64) as i32;
-        A0 = round(ionoutc.A0 / 9.313_225_746_154_785e-10_f64) as i32;
-        A1 = round(ionoutc.A1 / 8.881_784_197_001_252e-16_f64) as i32;
-        dtls = ionoutc.dtls;
-        tot = (ionoutc.tot / 4096_i32) as u32;
-        wnt = (ionoutc.wnt % 256_i32) as u32;
-        if ionoutc.leapen == 1_i32 {
-            wnlsf = (ionoutc.wnlsf % 256_i32) as u32;
-            dn = ionoutc.dn as u32;
-            dtlsf = ionoutc.dtlsf as u32;
-        } else {
-            wnlsf = (1929_i32 % 256_i32) as u32;
-            dn = 7_i32 as u32;
-            dtlsf = 18_i32 as u32;
-        }
-        (*sbf.offset(0))[0] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(0))[1] = 0x1_u32 << 8_i32;
-        (*sbf.offset(0))[2] = (wn & 0x3ff_u32) << 20_i32
-            | (codeL2 as u32 & 0x3_u32) << 18_i32
-            | (ura & 0xf_u32) << 14_i32
-            | (svhlth as u32 & 0x3f_u32) << 8_i32
-            | (iodc >> 8_i32 & 0x3_u32) << 6_i32;
-        (*sbf.offset(0))[3] = 0_u32;
-        (*sbf.offset(0))[4] = 0_u32;
-        (*sbf.offset(0))[5] = 0_u32;
-        (*sbf.offset(0))[6] = (tgd as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(0))[7] = (iodc & 0xff_u32) << 22_i32 | (toc & 0xffff_u32) << 6_i32;
-        (*sbf.offset(0))[8] =
-            (af2 as u32 & 0xff_u32) << 22_i32 | (af1 as u32 & 0xffff_u32) << 6_i32;
-        (*sbf.offset(0))[9] = (af0 as u32 & 0x3fffff_u32) << 8_i32;
-        (*sbf.offset(1))[0] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(1))[1] = 0x2_u32 << 8_i32;
-        (*sbf.offset(1))[2] = (iode & 0xff_u32) << 22_i32 | (crs as u32 & 0xffff_u32) << 6_i32;
-        (*sbf.offset(1))[3] =
-            (deltan as u32 & 0xffff_u32) << 14_i32 | ((m0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[4] = (m0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[5] =
-            (cuc as u32 & 0xffff_u32) << 14_i32 | (ecc >> 24_i32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[6] = (ecc & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[7] =
-            (cus as u32 & 0xffff_u32) << 14_i32 | (sqrta >> 24_i32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[8] = (sqrta & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[9] = (toe & 0xffff_u32) << 14_i32;
-        (*sbf.offset(2))[0] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(2))[1] = 0x3_u32 << 8_i32;
-        (*sbf.offset(2))[2] =
-            (cic as u32 & 0xffff_u32) << 14_i32 | ((omg0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[3] = (omg0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[4] =
-            (cis as u32 & 0xffff_u32) << 14_i32 | ((inc0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[5] = (inc0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[6] =
-            (crc as u32 & 0xffff_u32) << 14_i32 | ((aop >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[7] = (aop as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[8] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[9] = (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
-        if ionoutc.vflg == 1_i32 {
-            (*sbf.offset(3))[0] = 0x8b0000_u32 << 6_i32;
-            (*sbf.offset(3))[1] = 0x4_u32 << 8_i32;
-            (*sbf.offset(3))[2] = dataId << 28_i32
-                | sbf4_page18_svId << 22_i32
-                | (alpha0 as u32 & 0xff_u32) << 14_i32
-                | (alpha1 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[3] = (alpha2 as u32 & 0xff_u32) << 22_i32
-                | (alpha3 as u32 & 0xff_u32) << 14_i32
-                | (beta0 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[4] = (beta1 as u32 & 0xff_u32) << 22_i32
-                | (beta2 as u32 & 0xff_u32) << 14_i32
-                | (beta3 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[5] = (A1 as u32 & 0xffffff_u32) << 6_i32;
-            (*sbf.offset(3))[6] = ((A0 >> 8_i32) as u32 & 0xffffff_u32) << 6_i32;
-            (*sbf.offset(3))[7] = (A0 as u32 & 0xff_u32) << 22_i32
-                | (tot & 0xff_u32) << 14_i32
-                | (wnt & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[8] = (dtls as u32 & 0xff_u32) << 22_i32
-                | (wnlsf & 0xff_u32) << 14_i32
-                | (dn & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[9] = (dtlsf & 0xff_u32) << 22_i32;
-        } else {
-            (*sbf.offset(3))[0] = 0x8b0000_u32 << 6_i32;
-            (*sbf.offset(3))[1] = 0x4_u32 << 8_i32;
-            (*sbf.offset(3))[2] = dataId << 28_i32 | sbf4_page25_svId << 22_i32;
-            (*sbf.offset(3))[3] = 0_u32;
-            (*sbf.offset(3))[4] = 0_u32;
-            (*sbf.offset(3))[5] = 0_u32;
-            (*sbf.offset(3))[6] = 0_u32;
-            (*sbf.offset(3))[7] = 0_u32;
-            (*sbf.offset(3))[8] = 0_u32;
-            (*sbf.offset(3))[9] = 0_u32;
-        }
-        (*sbf.offset(4))[0] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(4))[1] = 0x5_u32 << 8_i32;
-        (*sbf.offset(4))[2] = dataId << 28_i32
-            | sbf5_page25_svId << 22_i32
-            | (toa & 0xff_u32) << 14_i32
-            | (wna & 0xff_u32) << 6_i32;
-        (*sbf.offset(4))[3] = 0_u32;
-        (*sbf.offset(4))[4] = 0_u32;
-        (*sbf.offset(4))[5] = 0_u32;
-        (*sbf.offset(4))[6] = 0_u32;
-        (*sbf.offset(4))[7] = 0_u32;
-        (*sbf.offset(4))[8] = 0_u32;
-        (*sbf.offset(4))[9] = 0_u32;
+pub fn eph2sbf(eph: ephem_t, ionoutc: ionoutc_t, sbf: &mut [[u32; 10]; 5]) {
+    let mut wn: u32 = 0;
+    let mut toe: u32 = 0;
+    let mut toc: u32 = 0;
+    let mut iode: u32 = 0;
+    let mut iodc: u32 = 0;
+    let mut deltan: i32 = 0;
+    let mut cuc: i32 = 0;
+    let mut cus: i32 = 0;
+    let mut cic: i32 = 0;
+    let mut cis: i32 = 0;
+    let mut crc: i32 = 0;
+    let mut crs: i32 = 0;
+    let mut ecc: u32 = 0;
+    let mut sqrta: u32 = 0;
+    let mut m0: i32 = 0;
+    let mut omg0: i32 = 0;
+    let mut inc0: i32 = 0;
+    let mut aop: i32 = 0;
+    let mut omgdot: i32 = 0;
+    let mut idot: i32 = 0;
+    let mut af0: i32 = 0;
+    let mut af1: i32 = 0;
+    let mut af2: i32 = 0;
+    let mut tgd: i32 = 0;
+    let mut svhlth: i32 = 0;
+    let mut codeL2: i32 = 0;
+    let mut ura: u32 = 0_u32;
+    let mut dataId: u32 = 1_u32;
+    let mut sbf4_page25_svId: u32 = 63_u32;
+    let mut sbf5_page25_svId: u32 = 51_u32;
+    let mut wna: u32 = 0;
+    let mut toa: u32 = 0;
+    let mut alpha0: i32 = 0;
+    let mut alpha1: i32 = 0;
+    let mut alpha2: i32 = 0;
+    let mut alpha3: i32 = 0;
+    let mut beta0: i32 = 0;
+    let mut beta1: i32 = 0;
+    let mut beta2: i32 = 0;
+    let mut beta3: i32 = 0;
+    let mut A0: i32 = 0;
+    let mut A1: i32 = 0;
+    let mut dtls: i32 = 0;
+    let mut tot: u32 = 0;
+    let mut wnt: u32 = 0;
+    let mut wnlsf: u32 = 0;
+    let mut dtlsf: u32 = 0;
+    let mut dn: u32 = 0;
+    let mut sbf4_page18_svId: u32 = 56_u32;
+    wn = 0_u32;
+    toe = (eph.toe.sec / 16.0f64) as u32;
+    toc = (eph.toc.sec / 16.0f64) as u32;
+    iode = eph.iode as u32;
+    iodc = eph.iodc as u32;
+    deltan = (eph.deltan / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    cuc = (eph.cuc / 1.862645149230957e-9f64) as i32;
+    cus = (eph.cus / 1.862645149230957e-9f64) as i32;
+    cic = (eph.cic / 1.862645149230957e-9f64) as i32;
+    cis = (eph.cis / 1.862645149230957e-9f64) as i32;
+    crc = (eph.crc / 0.03125f64) as i32;
+    crs = (eph.crs / 0.03125f64) as i32;
+    ecc = (eph.ecc / 1.164153218269348e-10f64) as u32;
+    sqrta = (eph.sqrta / 1.907_348_632_812_5e-6_f64) as u32;
+    m0 = (eph.m0 / 4.656612873077393e-10f64 / PI) as i32;
+    omg0 = (eph.omg0 / 4.656612873077393e-10f64 / PI) as i32;
+    inc0 = (eph.inc0 / 4.656612873077393e-10f64 / PI) as i32;
+    aop = (eph.aop / 4.656612873077393e-10f64 / PI) as i32;
+    omgdot = (eph.omgdot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    idot = (eph.idot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    af0 = (eph.af0 / 4.656612873077393e-10f64) as i32;
+    af1 = (eph.af1 / 1.136_868_377_216_16e-13_f64) as i32;
+    af2 = (eph.af2 / 2.775557561562891e-17f64) as i32;
+    tgd = (eph.tgd / 4.656612873077393e-10f64) as i32;
+    svhlth = eph.svhlth as u32 as i32;
+    codeL2 = eph.codeL2 as u32 as i32;
+    wna = (eph.toe.week % 256_i32) as u32;
+    toa = (eph.toe.sec / 4096.0f64) as u32;
+    alpha0 = round(ionoutc.alpha0 / 9.313_225_746_154_785e-10_f64) as i32;
+    alpha1 = round(ionoutc.alpha1 / 7.450_580_596_923_828e-9_f64) as i32;
+    alpha2 = round(ionoutc.alpha2 / 5.960_464_477_539_063e-8_f64) as i32;
+    alpha3 = round(ionoutc.alpha3 / 5.960_464_477_539_063e-8_f64) as i32;
+    beta0 = round(ionoutc.beta0 / 2048.0f64) as i32;
+    beta1 = round(ionoutc.beta1 / 16384.0f64) as i32;
+    beta2 = round(ionoutc.beta2 / 65536.0f64) as i32;
+    beta3 = round(ionoutc.beta3 / 65536.0f64) as i32;
+    A0 = round(ionoutc.A0 / 9.313_225_746_154_785e-10_f64) as i32;
+    A1 = round(ionoutc.A1 / 8.881_784_197_001_252e-16_f64) as i32;
+    dtls = ionoutc.dtls;
+    tot = (ionoutc.tot / 4096_i32) as u32;
+    wnt = (ionoutc.wnt % 256_i32) as u32;
+    if ionoutc.leapen == 1_i32 {
+        wnlsf = (ionoutc.wnlsf % 256_i32) as u32;
+        dn = ionoutc.dn as u32;
+        dtlsf = ionoutc.dtlsf as u32;
+    } else {
+        wnlsf = (1929_i32 % 256_i32) as u32;
+        dn = 7_i32 as u32;
+        dtlsf = 18_i32 as u32;
     }
+    (sbf[0])[0] = 0x8b0000_u32 << 6_i32;
+    (sbf[0])[1] = 0x1_u32 << 8_i32;
+    (sbf[0])[2] = (wn & 0x3ff_u32) << 20_i32
+        | (codeL2 as u32 & 0x3_u32) << 18_i32
+        | (ura & 0xf_u32) << 14_i32
+        | (svhlth as u32 & 0x3f_u32) << 8_i32
+        | (iodc >> 8_i32 & 0x3_u32) << 6_i32;
+    (sbf[0])[3] = 0_u32;
+    (sbf[0])[4] = 0_u32;
+    (sbf[0])[5] = 0_u32;
+    (sbf[0])[6] = (tgd as u32 & 0xff_u32) << 6_i32;
+    (sbf[0])[7] = (iodc & 0xff_u32) << 22_i32 | (toc & 0xffff_u32) << 6_i32;
+    (sbf[0])[8] = (af2 as u32 & 0xff_u32) << 22_i32 | (af1 as u32 & 0xffff_u32) << 6_i32;
+    (sbf[0])[9] = (af0 as u32 & 0x3fffff_u32) << 8_i32;
+    (sbf[1])[0] = 0x8b0000_u32 << 6_i32;
+    (sbf[1])[1] = 0x2_u32 << 8_i32;
+    (sbf[1])[2] = (iode & 0xff_u32) << 22_i32 | (crs as u32 & 0xffff_u32) << 6_i32;
+    (sbf[1])[3] =
+        (deltan as u32 & 0xffff_u32) << 14_i32 | ((m0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
+    (sbf[1])[4] = (m0 as u32 & 0xffffff_u32) << 6_i32;
+    (sbf[1])[5] = (cuc as u32 & 0xffff_u32) << 14_i32 | (ecc >> 24_i32 & 0xff_u32) << 6_i32;
+    (sbf[1])[6] = (ecc & 0xffffff_u32) << 6_i32;
+    (sbf[1])[7] = (cus as u32 & 0xffff_u32) << 14_i32 | (sqrta >> 24_i32 & 0xff_u32) << 6_i32;
+    (sbf[1])[8] = (sqrta & 0xffffff_u32) << 6_i32;
+    (sbf[1])[9] = (toe & 0xffff_u32) << 14_i32;
+    (sbf[2])[0] = 0x8b0000_u32 << 6_i32;
+    (sbf[2])[1] = 0x3_u32 << 8_i32;
+    (sbf[2])[2] =
+        (cic as u32 & 0xffff_u32) << 14_i32 | ((omg0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
+    (sbf[2])[3] = (omg0 as u32 & 0xffffff_u32) << 6_i32;
+    (sbf[2])[4] =
+        (cis as u32 & 0xffff_u32) << 14_i32 | ((inc0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
+    (sbf[2])[5] = (inc0 as u32 & 0xffffff_u32) << 6_i32;
+    (sbf[2])[6] =
+        (crc as u32 & 0xffff_u32) << 14_i32 | ((aop >> 24_i32) as u32 & 0xff_u32) << 6_i32;
+    (sbf[2])[7] = (aop as u32 & 0xffffff_u32) << 6_i32;
+    (sbf[2])[8] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
+    (sbf[2])[9] = (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
+    if ionoutc.vflg == 1_i32 {
+        (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
+        (sbf[3])[1] = 0x4_u32 << 8_i32;
+        (sbf[3])[2] = dataId << 28_i32
+            | sbf4_page18_svId << 22_i32
+            | (alpha0 as u32 & 0xff_u32) << 14_i32
+            | (alpha1 as u32 & 0xff_u32) << 6_i32;
+        (sbf[3])[3] = (alpha2 as u32 & 0xff_u32) << 22_i32
+            | (alpha3 as u32 & 0xff_u32) << 14_i32
+            | (beta0 as u32 & 0xff_u32) << 6_i32;
+        (sbf[3])[4] = (beta1 as u32 & 0xff_u32) << 22_i32
+            | (beta2 as u32 & 0xff_u32) << 14_i32
+            | (beta3 as u32 & 0xff_u32) << 6_i32;
+        (sbf[3])[5] = (A1 as u32 & 0xffffff_u32) << 6_i32;
+        (sbf[3])[6] = ((A0 >> 8_i32) as u32 & 0xffffff_u32) << 6_i32;
+        (sbf[3])[7] = (A0 as u32 & 0xff_u32) << 22_i32
+            | (tot & 0xff_u32) << 14_i32
+            | (wnt & 0xff_u32) << 6_i32;
+        (sbf[3])[8] = (dtls as u32 & 0xff_u32) << 22_i32
+            | (wnlsf & 0xff_u32) << 14_i32
+            | (dn & 0xff_u32) << 6_i32;
+        (sbf[3])[9] = (dtlsf & 0xff_u32) << 22_i32;
+    } else {
+        (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
+        (sbf[3])[1] = 0x4_u32 << 8_i32;
+        (sbf[3])[2] = dataId << 28_i32 | sbf4_page25_svId << 22_i32;
+        (sbf[3])[3] = 0_u32;
+        (sbf[3])[4] = 0_u32;
+        (sbf[3])[5] = 0_u32;
+        (sbf[3])[6] = 0_u32;
+        (sbf[3])[7] = 0_u32;
+        (sbf[3])[8] = 0_u32;
+        (sbf[3])[9] = 0_u32;
+    }
+    (sbf[4])[0] = 0x8b0000_u32 << 6_i32;
+    (sbf[4])[1] = 0x5_u32 << 8_i32;
+    (sbf[4])[2] = dataId << 28_i32
+        | sbf5_page25_svId << 22_i32
+        | (toa & 0xff_u32) << 14_i32
+        | (wna & 0xff_u32) << 6_i32;
+    (sbf[4])[3] = 0_u32;
+    (sbf[4])[4] = 0_u32;
+    (sbf[4])[5] = 0_u32;
+    (sbf[4])[6] = 0_u32;
+    (sbf[4])[7] = 0_u32;
+    (sbf[4])[8] = 0_u32;
+    (sbf[4])[9] = 0_u32;
 }
 
 pub fn countBits(v: u32) -> u32 {
@@ -1103,7 +1098,7 @@ pub unsafe fn allocateChannel(
                             chan[i].azel[0] = azel[0];
                             chan[i].azel[1] = azel[1];
                             codegen(&mut chan[i].ca, (chan[i]).prn);
-                            eph2sbf(eph[sv as usize], ionoutc, ((chan[i]).sbf).as_mut_ptr());
+                            eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
                             generateNavMsg(grx, &mut chan[i], 1_i32);
                             computeRange(&mut rho, eph[sv as usize], &mut ionoutc, grx, xyz_0);
                             (chan[i]).rho0 = rho;
@@ -1837,7 +1832,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                                     eph2sbf(
                                         eph[ieph as usize][(chan[i as usize].prn - 1_i32) as usize],
                                         ionoutc,
-                                        (chan[i as usize].sbf).as_mut_ptr(),
+                                        &mut chan[i as usize].sbf,
                                     );
                                 }
                                 i += 1;
