@@ -216,24 +216,21 @@ pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
         + (t).sec;
 }
 
-pub unsafe fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) {
-    unsafe {
-        let mut c: i32 = ((7_i32 * (*g).week) as f64 + floor((*g).sec / 86400.0f64) + 2444245.0f64)
-            as i32
-            + 1537_i32;
-        let mut d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
-        let mut e: i32 = 365_i32 * d + d / 4_i32;
-        let mut f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
-        (*t).d = c - e - (30.6001f64 * f as f64) as i32;
-        (*t).m = f - 1_i32 - 12_i32 * (f / 14_i32);
-        (*t).y = d - 4715_i32 - (7_i32 + (*t).m) / 10_i32;
-        (*t).hh = ((*g).sec / 3600.0f64) as i32 % 24_i32;
-        (*t).mm = ((*g).sec / 60.0f64) as i32 % 60_i32;
-        (*t).sec = (*g).sec - 60.0f64 * floor((*g).sec / 60.0f64);
-    }
+pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
+    let mut c: i32 =
+        ((7_i32 * (g).week) as f64 + floor((g).sec / 86400.0f64) + 2444245.0f64) as i32 + 1537_i32;
+    let mut d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
+    let mut e: i32 = 365_i32 * d + d / 4_i32;
+    let mut f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
+    (t).d = c - e - (30.6001f64 * f as f64) as i32;
+    (t).m = f - 1_i32 - 12_i32 * (f / 14_i32);
+    (t).y = d - 4715_i32 - (7_i32 + (t).m) / 10_i32;
+    (t).hh = ((g).sec / 3600.0f64) as i32 % 24_i32;
+    (t).mm = ((g).sec / 60.0f64) as i32 % 60_i32;
+    (t).sec = g.sec - 60.0f64 * floor((g).sec / 60.0f64);
 }
 
-pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
+pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     let mut a: f64 = 0.;
     let mut eps: f64 = 0.;
     let mut e: f64 = 0.;
@@ -329,16 +326,14 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
     neu[2] = t[2][0] * xyz_0[0] + t[2][1] * xyz_0[1] + t[2][2] * xyz_0[2];
 }
 
-pub unsafe fn neu2azel(mut azel: *mut f64, mut neu: *const f64) {
-    unsafe {
-        let mut ne: f64 = 0.;
-        *azel.offset(0) = atan2(*neu.offset(1), *neu.offset(0));
-        if *azel.offset(0) < 0.0f64 {
-            *azel.offset(0) += 2.0f64 * PI;
-        }
-        ne = sqrt(*neu.offset(0) * *neu.offset(0) + *neu.offset(1) * *neu.offset(1));
-        *azel.offset(1) = atan2(*neu.offset(2), ne);
+pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
+    let mut ne: f64 = 0.;
+    azel[0] = atan2(neu[1], neu[0]);
+    if azel[0] < 0.0f64 {
+        azel[0] += 2.0f64 * PI;
     }
+    ne = sqrt(neu[0] * neu[0] + neu[1] * neu[1]);
+    azel[1] = atan2(neu[2], ne);
 }
 
 pub unsafe fn satpos(
@@ -848,7 +843,7 @@ pub unsafe fn computeRange(
         xyz2llh(xyz_0, &mut llh);
         ltcmat(&llh, &mut tmat);
         ecef2neu(&los, &tmat, &mut neu);
-        neu2azel(((*rho).azel).as_mut_ptr(), neu.as_mut_ptr());
+        neu2azel(&mut (*rho).azel, &neu);
         (*rho).iono_delay =
             ionosphericDelay(ionoutc, g, llh.as_mut_ptr(), ((*rho).azel).as_mut_ptr());
         (*rho).range += (*rho).iono_delay;
@@ -1045,8 +1040,8 @@ pub unsafe fn checkSatVisibility(
     mut eph: ephem_t,
     mut g: gpstime_t,
     xyz_0: &[f64; 3],
-    mut elvMask: f64,
-    mut azel: *mut f64,
+    elvMask: f64,
+    azel: &mut [f64; 2],
 ) -> i32 {
     unsafe {
         let mut llh: [f64; 3] = [0.; 3];
@@ -1064,8 +1059,8 @@ pub unsafe fn checkSatVisibility(
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
         subVect(&mut los, &pos, xyz_0);
         ecef2neu(&los, &tmat, &mut neu);
-        neu2azel(azel, neu.as_mut_ptr());
-        if *azel.offset(1) * 57.2957795131f64 > elvMask {
+        neu2azel(azel, &neu);
+        if azel[1] * 57.2957795131f64 > elvMask {
             return 1_i32;
         }
         0_i32
@@ -1074,7 +1069,7 @@ pub unsafe fn checkSatVisibility(
 
 pub unsafe fn allocateChannel(
     chan: &mut [channel_t; 16],
-    mut eph: *mut ephem_t,
+    eph: &mut [ephem_t; 32],
     mut ionoutc: ionoutc_t,
     mut grx: gpstime_t,
     xyz_0: &[f64; 3],
@@ -1101,14 +1096,7 @@ pub unsafe fn allocateChannel(
         let mut phase_ini: f64 = 0.;
         sv = 0;
         while sv < 32_i32 {
-            if checkSatVisibility(
-                *eph.offset(sv as isize),
-                grx,
-                xyz_0,
-                0.0f64,
-                azel.as_mut_ptr(),
-            ) == 1_i32
-            {
+            if checkSatVisibility(eph[sv as usize], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
                 nsat += 1;
                 if allocatedSat[sv as usize] == -1_i32 {
                     let mut i = 0;
@@ -1118,28 +1106,12 @@ pub unsafe fn allocateChannel(
                             chan[i].azel[0] = azel[0];
                             chan[i].azel[1] = azel[1];
                             codegen(&mut chan[i].ca, (chan[i]).prn);
-                            eph2sbf(
-                                *eph.offset(sv as isize),
-                                ionoutc,
-                                ((chan[i]).sbf).as_mut_ptr(),
-                            );
+                            eph2sbf(eph[sv as usize], ionoutc, ((chan[i]).sbf).as_mut_ptr());
                             generateNavMsg(grx, &mut chan[i], 1_i32);
-                            computeRange(
-                                &mut rho,
-                                *eph.offset(sv as isize),
-                                &mut ionoutc,
-                                grx,
-                                xyz_0,
-                            );
+                            computeRange(&mut rho, eph[sv as usize], &mut ionoutc, grx, xyz_0);
                             (chan[i]).rho0 = rho;
                             r_xyz = rho.range;
-                            computeRange(
-                                &mut rho,
-                                *eph.offset(sv as isize),
-                                &mut ionoutc,
-                                grx,
-                                &ref_0,
-                            );
+                            computeRange(&mut rho, eph[sv as usize], &mut ionoutc, grx, &ref_0);
                             r_ref = rho.range;
                             phase_ini = 0.0f64;
                             phase_ini -= floor(phase_ini);
@@ -1680,7 +1652,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         grx = incGpsTime(g0, 0.0f64);
         allocateChannel(
             &mut chan,
-            (eph[ieph as usize]).as_mut_ptr(),
+            &mut eph[ieph as usize],
             ionoutc,
             grx,
             &xyz[0],
@@ -1882,7 +1854,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 if staticLocationMode == 0 {
                     allocateChannel(
                         &mut chan,
-                        (eph[ieph as usize]).as_mut_ptr(),
+                        &mut eph[ieph as usize],
                         ionoutc,
                         grx,
                         &xyz[iumd as usize],
@@ -1891,7 +1863,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 } else {
                     allocateChannel(
                         &mut chan,
-                        (eph[ieph as usize]).as_mut_ptr(),
+                        &mut eph[ieph as usize],
                         ionoutc,
                         grx,
                         &xyz[0],
