@@ -860,74 +860,63 @@ pub fn computeCodePhase(chan: &mut channel_t, mut rho1: range_t, mut dt: f64) {
     chan.rho0 = rho1;
 }
 
-pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut init: i32) -> i32 {
-    unsafe {
-        let mut iwrd: i32 = 0;
-        let mut isbf: i32 = 0;
-        let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut wn: u32 = 0;
-        let mut tow: u32 = 0;
-        let mut sbfwrd: u32 = 0;
-        let mut prevwrd: u32 = 0;
-        let mut nib: i32 = 0;
-        g0.week = g.week;
-        g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30) as f64 * 30.0f64;
-        (*chan).g0 = g0;
-        wn = (g0.week % 1024_i32) as u32;
-        tow = (g0.sec as u32).wrapping_div(6);
-        if init == 1_i32 {
-            prevwrd = 0_u32;
-            iwrd = 0_i32;
-            while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[4][iwrd as usize];
-                if iwrd == 1_i32 {
-                    sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
-                }
-                sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
-                nib = if iwrd == 1_i32 || iwrd == 9_i32 {
-                    1_i32
-                } else {
-                    0_i32
-                };
-                (*chan).dwrd[iwrd as usize] = computeChecksum(sbfwrd, nib);
-                prevwrd = (*chan).dwrd[iwrd as usize];
-                iwrd += 1;
+pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
+    let mut iwrd: usize = 0;
+    let mut isbf: usize = 0;
+    let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
+    let mut wn: u32 = 0;
+    let mut tow: u32 = 0;
+    let mut sbfwrd: u32 = 0;
+    let mut prevwrd: u32 = 0;
+    let mut nib: i32 = 0;
+    g0.week = g.week;
+    g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30) as f64 * 30.0f64;
+    chan.g0 = g0;
+    wn = (g0.week % 1024_i32) as u32;
+    tow = (g0.sec as u32).wrapping_div(6);
+    if init == 1_i32 {
+        prevwrd = 0_u32;
+        iwrd = 0;
+        while iwrd < 10 {
+            sbfwrd = chan.sbf[4][iwrd];
+            if iwrd == 1 {
+                sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
             }
-        } else {
-            iwrd = 0_i32;
-            while iwrd < 10_i32 {
-                (*chan).dwrd[iwrd as usize] = (*chan).dwrd[(10_i32 * 5_i32 + iwrd) as usize];
-                prevwrd = (*chan).dwrd[iwrd as usize];
-                iwrd += 1;
-            }
+            sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
+            nib = if iwrd == 1 || iwrd == 9 { 1_i32 } else { 0_i32 };
+            chan.dwrd[iwrd] = computeChecksum(sbfwrd, nib);
+            prevwrd = chan.dwrd[iwrd];
+            iwrd += 1;
         }
-        isbf = 0_i32;
-        while isbf < 5_i32 {
-            tow = tow.wrapping_add(1);
-            iwrd = 0_i32;
-            while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[isbf as usize][iwrd as usize];
-                if isbf == 0_i32 && iwrd == 2_i32 {
-                    sbfwrd |= (wn & 0x3ff_u32) << 20_i32;
-                }
-                if iwrd == 1_i32 {
-                    sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
-                }
-                sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
-                nib = if iwrd == 1_i32 || iwrd == 9_i32 {
-                    1_i32
-                } else {
-                    0_i32
-                };
-                (*chan).dwrd[((isbf + 1_i32) * 10_i32 + iwrd) as usize] =
-                    computeChecksum(sbfwrd, nib);
-                prevwrd = (*chan).dwrd[((isbf + 1_i32) * 10_i32 + iwrd) as usize];
-                iwrd += 1;
-            }
-            isbf += 1;
+    } else {
+        iwrd = 0;
+        while iwrd < 10 {
+            chan.dwrd[iwrd] = chan.dwrd[10 * 5 + iwrd];
+            prevwrd = chan.dwrd[iwrd];
+            iwrd += 1;
         }
-        1_i32
     }
+    isbf = 0;
+    while isbf < 5 {
+        tow = tow.wrapping_add(1);
+        iwrd = 0;
+        while iwrd < 10 {
+            sbfwrd = chan.sbf[isbf][iwrd];
+            if isbf == 0 && iwrd == 2 {
+                sbfwrd |= (wn & 0x3ff_u32) << 20_i32;
+            }
+            if iwrd == 1 {
+                sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
+            }
+            sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
+            nib = if iwrd == 1 || iwrd == 9 { 1_i32 } else { 0_i32 };
+            chan.dwrd[(isbf + 1) * 10 + iwrd] = computeChecksum(sbfwrd, nib);
+            prevwrd = chan.dwrd[(isbf + 1) * 10 + iwrd];
+            iwrd += 1;
+        }
+        isbf += 1;
+    }
+    1_i32
 }
 
 pub fn checkSatVisibility(
@@ -1000,7 +989,7 @@ pub unsafe fn allocateChannel(
                             chan[i].azel[1] = azel[1];
                             codegen(&mut chan[i].ca, (chan[i]).prn);
                             eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
-                            generateNavMsg(grx, &mut chan[i], 1_i32);
+                            generateNavMsg(&grx, &mut chan[i], 1_i32);
                             computeRange(&mut rho, &eph[sv as usize], &mut ionoutc, &grx, xyz_0);
                             (chan[i]).rho0 = rho;
                             r_xyz = rho.range;
@@ -1717,7 +1706,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 let mut i = 0_i32;
                 while i < 16_i32 {
                     if chan[i as usize].prn > 0_i32 {
-                        generateNavMsg(grx, &mut *chan.as_mut_ptr().offset(i as isize), 0_i32);
+                        generateNavMsg(&grx, &mut *chan.as_mut_ptr().offset(i as isize), 0_i32);
                     }
                     i += 1;
                 }
