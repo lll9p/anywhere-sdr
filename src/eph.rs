@@ -1,5 +1,5 @@
 use crate::{datetime_t, gpstime_t};
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct ephem_t {
     pub vflg: i32,

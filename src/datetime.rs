@@ -13,13 +13,13 @@ pub struct tm {
     pub tm_gmtoff: libc::c_long,
     pub tm_zone: *const libc::c_char,
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct gpstime_t {
     pub week: i32,
     pub sec: f64,
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 #[repr(C)]
 pub struct datetime_t {
     pub y: i32,
