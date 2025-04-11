@@ -153,7 +153,7 @@ pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
 
 pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
     unsafe {
-        let mut delay: [i32; 32] = [
+        let mut delay: [usize; 32] = [
             5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258, 469, 470, 471,
             472, 473, 474, 509, 512, 513, 514, 515, 516, 859, 860, 861, 862,
         ];
@@ -164,41 +164,36 @@ pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
         let mut c1: i32 = 0;
         let mut c2: i32 = 0;
         // let mut i: i32 = 0;
-        let mut j: i32 = 0;
-        if !(1_i32..=32_i32).contains(&prn) {
+        let mut j = 0;
+        if !(1..=32).contains(&prn) {
             return;
         }
-        let mut i = 0_i32;
-        while i < 10_i32 {
-            r2[i as usize] = -1_i32;
-            r1[i as usize] = r2[i as usize];
+        let mut i = 0;
+        while i < 10 {
+            r2[i] = -1_i32;
+            r1[i] = r2[i];
             i += 1;
         }
-        let mut i = 0_i32;
-        while i < 1023_i32 {
-            g1[i as usize] = r1[9_i32 as usize];
-            g2[i as usize] = r2[9_i32 as usize];
-            c1 = r1[2_i32 as usize] * r1[9_i32 as usize];
-            c2 = r2[1_i32 as usize]
-                * r2[2_i32 as usize]
-                * r2[5_i32 as usize]
-                * r2[7_i32 as usize]
-                * r2[8_i32 as usize]
-                * r2[9_i32 as usize];
-            j = 9_i32;
-            while j > 0_i32 {
-                r1[j as usize] = r1[(j - 1_i32) as usize];
-                r2[j as usize] = r2[(j - 1_i32) as usize];
+        let mut i = 0;
+        while i < 1023 {
+            g1[i] = r1[9];
+            g2[i] = r2[9];
+            c1 = r1[2] * r1[9];
+            c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
+            j = 9;
+            while j > 0 {
+                r1[j] = r1[j - 1];
+                r2[j] = r2[j - 1];
                 j -= 1;
             }
-            r1[0_i32 as usize] = c1;
-            r2[0_i32 as usize] = c2;
+            r1[0] = c1;
+            r2[0] = c2;
             i += 1;
         }
         let mut i = 0_i32;
-        j = 1023_i32 - delay[(prn - 1_i32) as usize];
+        j = 1023 - delay[(prn - 1) as usize];
         while i < 1023_i32 {
-            *ca.offset(i as isize) = (1_i32 - g1[i as usize] * g2[(j % 1023_i32) as usize]) / 2_i32;
+            *ca.offset(i as isize) = (1_i32 - g1[i as usize] * g2[j % 1023]) / 2_i32;
             i += 1;
             j += 1;
         }
