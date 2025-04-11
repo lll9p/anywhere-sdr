@@ -136,8 +136,6 @@ pub struct channel_t {
     pub rho0: range_t,
 }
 
-pub static mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
-
 pub fn subVect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
     y[0] = x1[0] - x2[0];
     y[1] = x1[1] - x2[1];
@@ -1042,6 +1040,8 @@ Options:
 }
 unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
     let mut allocatedSat: [i32; 32] = [0; 32];
+
+    let mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
     unsafe {
         let mut tstart: clock_t = 0;
         let mut tend: clock_t = 0;
