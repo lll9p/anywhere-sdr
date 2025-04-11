@@ -336,101 +336,99 @@ pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
     azel[1] = atan2(neu[2], ne);
 }
 
-pub unsafe fn satpos(
+pub fn satpos(
     mut eph: ephem_t,
     mut g: gpstime_t,
-    mut pos: *mut f64,
-    mut vel: *mut f64,
-    mut clk: *mut f64,
+    pos: &mut [f64; 3],
+    vel: &mut [f64; 3],
+    clk: &mut [f64; 2],
 ) {
-    unsafe {
-        let mut tk: f64 = 0.;
-        let mut mk: f64 = 0.;
-        let mut ek: f64 = 0.;
-        let mut ekold: f64 = 0.;
-        let mut ekdot: f64 = 0.;
-        let mut cek: f64 = 0.;
-        let mut sek: f64 = 0.;
-        let mut pk: f64 = 0.;
-        let mut pkdot: f64 = 0.;
-        let mut c2pk: f64 = 0.;
-        let mut s2pk: f64 = 0.;
-        let mut uk: f64 = 0.;
-        let mut ukdot: f64 = 0.;
-        let mut cuk: f64 = 0.;
-        let mut suk: f64 = 0.;
-        let mut ok: f64 = 0.;
-        let mut sok: f64 = 0.;
-        let mut cok: f64 = 0.;
-        let mut ik: f64 = 0.;
-        let mut ikdot: f64 = 0.;
-        let mut sik: f64 = 0.;
-        let mut cik: f64 = 0.;
-        let mut rk: f64 = 0.;
-        let mut rkdot: f64 = 0.;
-        let mut xpk: f64 = 0.;
-        let mut ypk: f64 = 0.;
-        let mut xpkdot: f64 = 0.;
-        let mut ypkdot: f64 = 0.;
-        let mut relativistic: f64 = 0.;
-        let mut OneMinusecosE: f64 = 0.;
-        let mut tmp: f64 = 0.;
-        tk = g.sec - eph.toe.sec;
-        if tk > 302400.0f64 {
-            tk -= 604800.0f64;
-        } else if tk < -302400.0f64 {
-            tk += 604800.0f64;
-        }
-        mk = eph.m0 + eph.n * tk;
-        ek = mk;
-        ekold = ek + 1.0f64;
-        OneMinusecosE = 0_i32 as f64;
-        while fabs(ek - ekold) > 1.0E-14f64 {
-            ekold = ek;
-            OneMinusecosE = 1.0f64 - eph.ecc * cos(ekold);
-            ek += (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
-        }
-        sek = sin(ek);
-        cek = cos(ek);
-        ekdot = eph.n / OneMinusecosE;
-        relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
-        pk = atan2(eph.sq1e2 * sek, cek - eph.ecc) + eph.aop;
-        pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
-        s2pk = sin(2.0f64 * pk);
-        c2pk = cos(2.0f64 * pk);
-        uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
-        suk = sin(uk);
-        cuk = cos(uk);
-        ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
-        rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
-        rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
-        ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
-        sik = sin(ik);
-        cik = cos(ik);
-        ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
-        xpk = rk * cuk;
-        ypk = rk * suk;
-        xpkdot = rkdot * cuk - ypk * ukdot;
-        ypkdot = rkdot * suk + xpk * ukdot;
-        ok = eph.omg0 + tk * eph.omgkdot - 7.2921151467e-5f64 * eph.toe.sec;
-        sok = sin(ok);
-        cok = cos(ok);
-        *pos.offset(0) = xpk * cok - ypk * cik * sok;
-        *pos.offset(1) = xpk * sok + ypk * cik * cok;
-        *pos.offset(2) = ypk * sik;
-        tmp = ypkdot * cik - ypk * sik * ikdot;
-        *vel.offset(0) = -eph.omgkdot * *pos.offset(1) + xpkdot * cok - tmp * sok;
-        *vel.offset(1) = eph.omgkdot * *pos.offset(0) + xpkdot * sok + tmp * cok;
-        *vel.offset(2) = ypk * cik * ikdot + ypkdot * sik;
-        tk = g.sec - eph.toc.sec;
-        if tk > 302400.0f64 {
-            tk -= 604800.0f64;
-        } else if tk < -302400.0f64 {
-            tk += 604800.0f64;
-        }
-        *clk.offset(0) = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd;
-        *clk.offset(1) = eph.af1 + 2.0f64 * tk * eph.af2;
+    let mut tk: f64 = 0.;
+    let mut mk: f64 = 0.;
+    let mut ek: f64 = 0.;
+    let mut ekold: f64 = 0.;
+    let mut ekdot: f64 = 0.;
+    let mut cek: f64 = 0.;
+    let mut sek: f64 = 0.;
+    let mut pk: f64 = 0.;
+    let mut pkdot: f64 = 0.;
+    let mut c2pk: f64 = 0.;
+    let mut s2pk: f64 = 0.;
+    let mut uk: f64 = 0.;
+    let mut ukdot: f64 = 0.;
+    let mut cuk: f64 = 0.;
+    let mut suk: f64 = 0.;
+    let mut ok: f64 = 0.;
+    let mut sok: f64 = 0.;
+    let mut cok: f64 = 0.;
+    let mut ik: f64 = 0.;
+    let mut ikdot: f64 = 0.;
+    let mut sik: f64 = 0.;
+    let mut cik: f64 = 0.;
+    let mut rk: f64 = 0.;
+    let mut rkdot: f64 = 0.;
+    let mut xpk: f64 = 0.;
+    let mut ypk: f64 = 0.;
+    let mut xpkdot: f64 = 0.;
+    let mut ypkdot: f64 = 0.;
+    let mut relativistic: f64 = 0.;
+    let mut OneMinusecosE: f64 = 0.;
+    let mut tmp: f64 = 0.;
+    tk = g.sec - eph.toe.sec;
+    if tk > 302400.0f64 {
+        tk -= 604800.0f64;
+    } else if tk < -302400.0f64 {
+        tk += 604800.0f64;
     }
+    mk = eph.m0 + eph.n * tk;
+    ek = mk;
+    ekold = ek + 1.0f64;
+    OneMinusecosE = 0_i32 as f64;
+    while fabs(ek - ekold) > 1.0E-14f64 {
+        ekold = ek;
+        OneMinusecosE = 1.0f64 - eph.ecc * cos(ekold);
+        ek += (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
+    }
+    sek = sin(ek);
+    cek = cos(ek);
+    ekdot = eph.n / OneMinusecosE;
+    relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
+    pk = atan2(eph.sq1e2 * sek, cek - eph.ecc) + eph.aop;
+    pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
+    s2pk = sin(2.0f64 * pk);
+    c2pk = cos(2.0f64 * pk);
+    uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
+    suk = sin(uk);
+    cuk = cos(uk);
+    ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
+    rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
+    rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
+    ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
+    sik = sin(ik);
+    cik = cos(ik);
+    ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
+    xpk = rk * cuk;
+    ypk = rk * suk;
+    xpkdot = rkdot * cuk - ypk * ukdot;
+    ypkdot = rkdot * suk + xpk * ukdot;
+    ok = eph.omg0 + tk * eph.omgkdot - 7.2921151467e-5f64 * eph.toe.sec;
+    sok = sin(ok);
+    cok = cos(ok);
+    pos[0] = xpk * cok - ypk * cik * sok;
+    pos[1] = xpk * sok + ypk * cik * cok;
+    pos[2] = ypk * sik;
+    tmp = ypkdot * cik - ypk * sik * ikdot;
+    vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
+    vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
+    vel[2] = ypk * cik * ikdot + ypkdot * sik;
+    tk = g.sec - eph.toc.sec;
+    if tk > 302400.0f64 {
+        tk -= 604800.0f64;
+    } else if tk < -302400.0f64 {
+        tk += 604800.0f64;
+    }
+    clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd;
+    clk[1] = eph.af1 + 2.0f64 * tk * eph.af2;
 }
 
 pub unsafe fn eph2sbf(eph: ephem_t, ionoutc: ionoutc_t, mut sbf: *mut [u32; 10]) {
@@ -823,7 +821,7 @@ pub unsafe fn computeRange(
         let mut llh: [f64; 3] = [0.; 3];
         let mut neu: [f64; 3] = [0.; 3];
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-        satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
+        satpos(eph, g, &mut pos, &mut vel, &mut clk);
         subVect(&mut los, &pos, xyz_0);
         tau = normVect(&los) / 2.99792458e8f64;
         pos[0] -= vel[0] * tau;
@@ -1036,35 +1034,34 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
     }
 }
 
-pub unsafe fn checkSatVisibility(
+pub fn checkSatVisibility(
     mut eph: ephem_t,
     mut g: gpstime_t,
     xyz_0: &[f64; 3],
     elvMask: f64,
     azel: &mut [f64; 2],
 ) -> i32 {
-    unsafe {
-        let mut llh: [f64; 3] = [0.; 3];
-        let mut neu: [f64; 3] = [0.; 3];
-        let mut pos: [f64; 3] = [0.; 3];
-        let mut vel: [f64; 3] = [0.; 3];
-        let mut clk: [f64; 3] = [0.; 3];
-        let mut los: [f64; 3] = [0.; 3];
-        let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-        if eph.vflg != 1_i32 {
-            return -1_i32;
-        }
-        xyz2llh(xyz_0, &mut llh);
-        ltcmat(&llh, &mut tmat);
-        satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
-        subVect(&mut los, &pos, xyz_0);
-        ecef2neu(&los, &tmat, &mut neu);
-        neu2azel(azel, &neu);
-        if azel[1] * 57.2957795131f64 > elvMask {
-            return 1_i32;
-        }
-        0_i32
+    let mut llh: [f64; 3] = [0.; 3];
+    let mut neu: [f64; 3] = [0.; 3];
+    let mut pos: [f64; 3] = [0.; 3];
+    let mut vel: [f64; 3] = [0.; 3];
+    // modified from [f64;3] to [f64;2]
+    let mut clk: [f64; 2] = [0.; 2];
+    let mut los: [f64; 3] = [0.; 3];
+    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
+    if eph.vflg != 1_i32 {
+        return -1_i32;
     }
+    xyz2llh(xyz_0, &mut llh);
+    ltcmat(&llh, &mut tmat);
+    satpos(eph, g, &mut pos, &mut vel, &mut clk);
+    subVect(&mut los, &pos, xyz_0);
+    ecef2neu(&los, &tmat, &mut neu);
+    neu2azel(azel, &neu);
+    if azel[1] * 57.2957795131f64 > elvMask {
+        return 1_i32;
+    }
+    0_i32
 }
 
 pub unsafe fn allocateChannel(
