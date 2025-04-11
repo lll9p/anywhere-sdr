@@ -433,7 +433,7 @@ pub fn satpos(
     clk[1] = eph.af1 + 2.0f64 * tk * eph.af2;
 }
 
-pub fn eph2sbf(eph: ephem_t, ionoutc: ionoutc_t, sbf: &mut [[u32; 10]; 5]) {
+pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; 10]; 5]) {
     let mut wn: u32 = 0;
     let mut toe: u32 = 0;
     let mut toc: u32 = 0;
@@ -921,7 +921,7 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
 
 pub fn checkSatVisibility(
     mut eph: ephem_t,
-    mut g: gpstime_t,
+    g: &gpstime_t,
     xyz_0: &[f64; 3],
     elvMask: f64,
     azel: &mut [f64; 2],
@@ -939,7 +939,7 @@ pub fn checkSatVisibility(
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
-    satpos(&eph, &g, &mut pos, &mut vel, &mut clk);
+    satpos(&eph, g, &mut pos, &mut vel, &mut clk);
     subVect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
@@ -952,8 +952,8 @@ pub fn checkSatVisibility(
 pub unsafe fn allocateChannel(
     chan: &mut [channel_t; 16],
     eph: &mut [ephem_t; 32],
-    mut ionoutc: ionoutc_t,
-    mut grx: gpstime_t,
+    mut ionoutc: &mut ionoutc_t,
+    grx: &gpstime_t,
     xyz_0: &[f64; 3],
     mut _elvMask: f64,
 ) -> i32 {
@@ -989,11 +989,11 @@ pub unsafe fn allocateChannel(
                             chan[i].azel[1] = azel[1];
                             codegen(&mut chan[i].ca, (chan[i]).prn);
                             eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
-                            generateNavMsg(&grx, &mut chan[i], 1_i32);
-                            computeRange(&mut rho, &eph[sv as usize], &mut ionoutc, &grx, xyz_0);
+                            generateNavMsg(grx, &mut chan[i], 1_i32);
+                            computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, xyz_0);
                             (chan[i]).rho0 = rho;
                             r_xyz = rho.range;
-                            computeRange(&mut rho, &eph[sv as usize], &mut ionoutc, &grx, &ref_0);
+                            computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, &ref_0);
                             r_ref = rho.range;
                             phase_ini = 0.0f64;
                             phase_ini -= floor(phase_ini);
@@ -1535,8 +1535,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         allocateChannel(
             &mut chan,
             &mut eph[ieph as usize],
-            ionoutc,
-            grx,
+            &mut ionoutc,
+            &grx,
             &xyz[0],
             elvmask,
         );
@@ -1721,7 +1721,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                                 if chan[i as usize].prn != 0_i32 {
                                     eph2sbf(
                                         eph[ieph as usize][(chan[i as usize].prn - 1_i32) as usize],
-                                        ionoutc,
+                                        &ionoutc,
                                         &mut chan[i as usize].sbf,
                                     );
                                 }
@@ -1737,8 +1737,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     allocateChannel(
                         &mut chan,
                         &mut eph[ieph as usize],
-                        ionoutc,
-                        grx,
+                        &mut ionoutc,
+                        &grx,
                         &xyz[iumd as usize],
                         elvmask,
                     );
@@ -1746,8 +1746,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     allocateChannel(
                         &mut chan,
                         &mut eph[ieph as usize],
-                        ionoutc,
-                        grx,
+                        &mut ionoutc,
+                        &grx,
                         &xyz[0],
                         elvmask,
                     );
