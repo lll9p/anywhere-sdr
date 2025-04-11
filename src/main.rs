@@ -151,52 +151,50 @@ pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
     x1[0] * x2[0] + x1[1] * x2[1] + x1[2] * x2[2]
 }
 
-pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
-    unsafe {
-        let mut delay: [usize; 32] = [
-            5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258, 469, 470, 471,
-            472, 473, 474, 509, 512, 513, 514, 515, 516, 859, 860, 861, 862,
-        ];
-        let mut g1: [i32; 1023] = [0; 1023];
-        let mut g2: [i32; 1023] = [0; 1023];
-        let mut r1: [i32; 10] = [0; 10];
-        let mut r2: [i32; 10] = [0; 10];
-        let mut c1: i32 = 0;
-        let mut c2: i32 = 0;
-        // let mut i: i32 = 0;
-        let mut j = 0;
-        if !(1..=32).contains(&prn) {
-            return;
+pub unsafe fn codegen(mut ca: &mut [i32; 1023], mut prn: i32) {
+    let mut delay: [usize; 32] = [
+        5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258, 469, 470, 471, 472,
+        473, 474, 509, 512, 513, 514, 515, 516, 859, 860, 861, 862,
+    ];
+    let mut g1: [i32; 1023] = [0; 1023];
+    let mut g2: [i32; 1023] = [0; 1023];
+    let mut r1: [i32; 10] = [0; 10];
+    let mut r2: [i32; 10] = [0; 10];
+    let mut c1: i32 = 0;
+    let mut c2: i32 = 0;
+    // let mut i: i32 = 0;
+    let mut j = 0;
+    if !(1..=32).contains(&prn) {
+        return;
+    }
+    let mut i = 0;
+    while i < 10 {
+        r2[i] = -1_i32;
+        r1[i] = r2[i];
+        i += 1;
+    }
+    let mut i = 0;
+    while i < 1023 {
+        g1[i] = r1[9];
+        g2[i] = r2[9];
+        c1 = r1[2] * r1[9];
+        c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
+        j = 9;
+        while j > 0 {
+            r1[j] = r1[j - 1];
+            r2[j] = r2[j - 1];
+            j -= 1;
         }
-        let mut i = 0;
-        while i < 10 {
-            r2[i] = -1_i32;
-            r1[i] = r2[i];
-            i += 1;
-        }
-        let mut i = 0;
-        while i < 1023 {
-            g1[i] = r1[9];
-            g2[i] = r2[9];
-            c1 = r1[2] * r1[9];
-            c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
-            j = 9;
-            while j > 0 {
-                r1[j] = r1[j - 1];
-                r2[j] = r2[j - 1];
-                j -= 1;
-            }
-            r1[0] = c1;
-            r2[0] = c2;
-            i += 1;
-        }
-        let mut i = 0;
-        j = 1023 - delay[(prn - 1) as usize];
-        while i < 1023 {
-            *ca.offset(i as isize) = (1_i32 - g1[i as usize] * g2[j % 1023]) / 2_i32;
-            i += 1;
-            j += 1;
-        }
+        r1[0] = c1;
+        r2[0] = c2;
+        i += 1;
+    }
+    let mut i = 0;
+    j = 1023 - delay[(prn - 1) as usize];
+    while i < 1023 {
+        ca[i] = (1_i32 - g1[i] * g2[j % 1023]) / 2_i32;
+        i += 1;
+        j += 1;
     }
 }
 
@@ -286,7 +284,7 @@ pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     llh[2] = nh - n;
 }
 
-pub unsafe fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
+pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let mut n: f64 = 0.;
     let mut a: f64 = 0.;
     let mut e: f64 = 0.;
@@ -1145,7 +1143,7 @@ pub unsafe fn allocateChannel(
                             chan[i].prn = sv + 1_i32;
                             chan[i].azel[0_i32 as usize] = azel[0_i32 as usize];
                             chan[i].azel[1_i32 as usize] = azel[1_i32 as usize];
-                            codegen((chan[i]).ca.as_mut_ptr(), (chan[i]).prn);
+                            codegen(&mut chan[i].ca, (chan[i]).prn);
                             eph2sbf(
                                 *eph.offset(sv as isize),
                                 ionoutc,
