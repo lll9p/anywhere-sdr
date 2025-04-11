@@ -19,8 +19,8 @@ pub fn replaceExpDesignator(mut str: *mut libc::c_char, mut len: isize) -> i32 {
 }
 
 pub fn readRinexNavAll(
-    mut eph: *mut [ephem_t; 32],
-    mut ionoutc: *mut ionoutc_t,
+    eph: &mut [[ephem_t; 32]; 15],
+    ionoutc: &mut ionoutc_t,
     mut fname: *const libc::c_char,
 ) -> i32 {
     unsafe {
@@ -49,7 +49,7 @@ pub fn readRinexNavAll(
         while ieph < 15_i32 {
             sv = 0_i32;
             while sv < 32_i32 {
-                (*eph.offset(ieph as isize))[sv as usize].vflg = 0_i32;
+                eph[ieph as usize][sv as usize].vflg = 0_i32;
                 sv += 1;
             }
             ieph += 1;
@@ -72,19 +72,19 @@ pub fn readRinexNavAll(
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(2), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).alpha0 = atof(tmp.as_mut_ptr());
+                ionoutc.alpha0 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(14), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).alpha1 = atof(tmp.as_mut_ptr());
+                ionoutc.alpha1 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(26), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).alpha2 = atof(tmp.as_mut_ptr());
+                ionoutc.alpha2 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(38), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).alpha3 = atof(tmp.as_mut_ptr());
+                ionoutc.alpha3 = atof(tmp.as_mut_ptr());
                 flags |= 0x1_i32;
             } else if strncmp(
                 str.as_mut_ptr().offset(60),
@@ -95,19 +95,19 @@ pub fn readRinexNavAll(
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(2), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).beta0 = atof(tmp.as_mut_ptr());
+                ionoutc.beta0 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(14), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).beta1 = atof(tmp.as_mut_ptr());
+                ionoutc.beta1 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(26), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).beta2 = atof(tmp.as_mut_ptr());
+                ionoutc.beta2 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(38), 12);
                 tmp[12] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 12);
-                (*ionoutc).beta3 = atof(tmp.as_mut_ptr());
+                ionoutc.beta3 = atof(tmp.as_mut_ptr());
                 flags |= 0x1_i32 << 1_i32;
             } else if strncmp(
                 str.as_mut_ptr().offset(60),
@@ -118,18 +118,18 @@ pub fn readRinexNavAll(
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
                 tmp[19] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 19);
-                (*ionoutc).A0 = atof(tmp.as_mut_ptr());
+                ionoutc.A0 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
                 tmp[19] = 0_i32 as libc::c_char;
                 replaceExpDesignator(tmp.as_mut_ptr(), 19);
-                (*ionoutc).A1 = atof(tmp.as_mut_ptr());
+                ionoutc.A1 = atof(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 9);
                 tmp[9] = 0_i32 as libc::c_char;
-                (*ionoutc).tot = atoi(tmp.as_mut_ptr());
+                ionoutc.tot = atoi(tmp.as_mut_ptr());
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(50), 9);
                 tmp[9] = 0_i32 as libc::c_char;
-                (*ionoutc).wnt = atoi(tmp.as_mut_ptr());
-                if (*ionoutc).tot % 4096_i32 == 0_i32 {
+                ionoutc.wnt = atoi(tmp.as_mut_ptr());
+                if ionoutc.tot % 4096_i32 == 0_i32 {
                     flags |= 0x1_i32 << 2_i32;
                 }
             } else if strncmp(
@@ -140,13 +140,13 @@ pub fn readRinexNavAll(
             {
                 strncpy(tmp.as_mut_ptr(), str.as_mut_ptr(), 6);
                 tmp[6] = 0_i32 as libc::c_char;
-                (*ionoutc).dtls = atoi(tmp.as_mut_ptr());
+                ionoutc.dtls = atoi(tmp.as_mut_ptr());
                 flags |= 0x1_i32 << 3_i32;
             }
         }
-        (*ionoutc).vflg = 0_i32;
+        ionoutc.vflg = 0_i32;
         if flags == 0xf_i32 {
-            (*ionoutc).vflg = 1_i32;
+            ionoutc.vflg = 1_i32;
         }
         g0.week = -1_i32;
         ieph = 0_i32;
@@ -184,152 +184,148 @@ pub fn readRinexNavAll(
                     break;
                 }
             }
-            (*eph.offset(ieph as isize))[sv as usize].t = t;
-            (*eph.offset(ieph as isize))[sv as usize].toc = g;
+            eph[ieph as usize][sv as usize].t = t;
+            eph[ieph as usize][sv as usize].toc = g;
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].af0 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].af0 = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].af1 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].af1 = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].af2 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].af2 = atof(tmp.as_mut_ptr());
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].iode = atof(tmp.as_mut_ptr()) as i32;
+            eph[ieph as usize][sv as usize].iode = atof(tmp.as_mut_ptr()) as i32;
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].crs = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].crs = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].deltan = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].deltan = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].m0 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].m0 = atof(tmp.as_mut_ptr());
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].cuc = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].cuc = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].ecc = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].ecc = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].cus = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].cus = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].sqrta = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].sqrta = atof(tmp.as_mut_ptr());
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].toe.sec = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].toe.sec = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].cic = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].cic = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].omg0 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].omg0 = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].cis = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].cis = atof(tmp.as_mut_ptr());
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].inc0 = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].inc0 = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].crc = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].crc = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].aop = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].aop = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].omgdot = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].omgdot = atof(tmp.as_mut_ptr());
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].idot = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].idot = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].codeL2 = atof(tmp.as_mut_ptr()) as i32;
+            eph[ieph as usize][sv as usize].codeL2 = atof(tmp.as_mut_ptr()) as i32;
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].toe.week = atof(tmp.as_mut_ptr()) as i32;
+            eph[ieph as usize][sv as usize].toe.week = atof(tmp.as_mut_ptr()) as i32;
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(22), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].svhlth = atof(tmp.as_mut_ptr()) as i32;
-            if (*eph.offset(ieph as isize))[sv as usize].svhlth > 0_i32
-                && (*eph.offset(ieph as isize))[sv as usize].svhlth < 32_i32
+            eph[ieph as usize][sv as usize].svhlth = atof(tmp.as_mut_ptr()) as i32;
+            if eph[ieph as usize][sv as usize].svhlth > 0_i32
+                && eph[ieph as usize][sv as usize].svhlth < 32_i32
             {
-                (*eph.offset(ieph as isize))[sv as usize].svhlth += 32_i32;
+                eph[ieph as usize][sv as usize].svhlth += 32_i32;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].tgd = atof(tmp.as_mut_ptr());
+            eph[ieph as usize][sv as usize].tgd = atof(tmp.as_mut_ptr());
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(60), 19);
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
-            (*eph.offset(ieph as isize))[sv as usize].iodc = atof(tmp.as_mut_ptr()) as i32;
+            eph[ieph as usize][sv as usize].iodc = atof(tmp.as_mut_ptr()) as i32;
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
             }
-            (*eph.offset(ieph as isize))[sv as usize].vflg = 1_i32;
-            (*eph.offset(ieph as isize))[sv as usize].A = (*eph.offset(ieph as isize))[sv as usize]
-                .sqrta
-                * (*eph.offset(ieph as isize))[sv as usize].sqrta;
-            (*eph.offset(ieph as isize))[sv as usize].n =
-                sqrt(
-                    3.986005e14f64
-                        / ((*eph.offset(ieph as isize))[sv as usize].A
-                            * (*eph.offset(ieph as isize))[sv as usize].A
-                            * (*eph.offset(ieph as isize))[sv as usize].A),
-                ) + (*eph.offset(ieph as isize))[sv as usize].deltan;
-            (*eph.offset(ieph as isize))[sv as usize].sq1e2 = sqrt(
-                1.0f64
-                    - (*eph.offset(ieph as isize))[sv as usize].ecc
-                        * (*eph.offset(ieph as isize))[sv as usize].ecc,
+            eph[ieph as usize][sv as usize].vflg = 1_i32;
+            eph[ieph as usize][sv as usize].A =
+                eph[ieph as usize][sv as usize].sqrta * eph[ieph as usize][sv as usize].sqrta;
+            eph[ieph as usize][sv as usize].n = sqrt(
+                3.986005e14f64
+                    / (eph[ieph as usize][sv as usize].A
+                        * eph[ieph as usize][sv as usize].A
+                        * eph[ieph as usize][sv as usize].A),
+            ) + eph[ieph as usize][sv as usize].deltan;
+            eph[ieph as usize][sv as usize].sq1e2 = sqrt(
+                1.0f64 - eph[ieph as usize][sv as usize].ecc * eph[ieph as usize][sv as usize].ecc,
             );
-            (*eph.offset(ieph as isize))[sv as usize].omgkdot =
-                (*eph.offset(ieph as isize))[sv as usize].omgdot - 7.2921151467e-5f64;
+            eph[ieph as usize][sv as usize].omgkdot =
+                eph[ieph as usize][sv as usize].omgdot - 7.2921151467e-5f64;
         }
         fclose(fp);
         if g0.week >= 0_i32 {

@@ -1,6 +1,6 @@
 use crate::{
     atof, atoi, constants::USER_MOTION_SIZE, date2gps, datetime::gpstime_t, datetime_t, exit,
-    gmtime, ionoutc_t, llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm, usage, utils::*,
+    gmtime, ionoutc_t, llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm, utils::*,
 };
 
 pub static mut opterr: i32 = 1_i32;
@@ -9,6 +9,31 @@ pub static mut optopt: i32 = 0;
 pub static mut optreset: i32 = 0;
 pub static mut optarg: *mut libc::c_char = 0 as *const libc::c_char as *mut libc::c_char;
 
+pub fn usage() {
+    eprintln!(
+        r#"Usage: gps-sdr-sim [options]
+Options:
+  -e <gps_nav>     RINEX navigation file for GPS ephemerides (required)
+  -u <user_motion> User motion file in ECEF x, y, z format (dynamic mode)
+  -x <user_motion> User motion file in lat, lon, height format (dynamic mode)
+  -g <nmea_gga>    NMEA GGA stream (dynamic mode)
+  -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
+  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
+  -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
+  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss
+  -T <date,time>   Overwrite TOC and TOE to scenario start time
+  -d <duration>    Duration [sec] (dynamic mode max: {}, static mode max: {})
+  -o <output>      I/Q sampling data file (default: gpssim.bin)
+  -s <frequency>   Sampling frequency [Hz] (default: 2600000)
+  -b <iq_bits>     I/Q data format [1/8/16] (default: 16)
+  -i               Disable ionospheric delay for spacecraft scenario
+  -p [fixed_gain]  Disable path loss and hold power level constant
+  -v               Show details about simulated channels
+"#,
+        USER_MOTION_SIZE as f64 / 10.0f64,
+        86400,
+    );
+}
 pub fn getopt(
     mut nargc: i32,
     mut nargv: *const *mut libc::c_char,

@@ -53,7 +53,7 @@ mod utils;
 use constants::{PI, USER_MOTION_SIZE};
 use datetime::{datetime_t, gpstime_t, tm};
 use eph::ephem_t;
-use getopt::{getopt, loop_through_opts, optarg, optind};
+use getopt::{loop_through_opts, usage};
 use ionoutc::ionoutc_t;
 use read_nmea_gga::readNmeaGGA;
 use read_rinex::readRinexNavAll;
@@ -1013,31 +1013,6 @@ pub fn allocateChannel(
     nsat
 }
 
-pub fn usage() {
-    eprintln!(
-        r#"Usage: gps-sdr-sim [options]
-Options:
-  -e <gps_nav>     RINEX navigation file for GPS ephemerides (required)
-  -u <user_motion> User motion file in ECEF x, y, z format (dynamic mode)
-  -x <user_motion> User motion file in lat, lon, height format (dynamic mode)
-  -g <nmea_gga>    NMEA GGA stream (dynamic mode)
-  -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
-  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
-  -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
-  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss
-  -T <date,time>   Overwrite TOC and TOE to scenario start time
-  -d <duration>    Duration [sec] (dynamic mode max: {}, static mode max: {})
-  -o <output>      I/Q sampling data file (default: gpssim.bin)
-  -s <frequency>   Sampling frequency [Hz] (default: 2600000)
-  -b <iq_bits>     I/Q data format [1/8/16] (default: 16)
-  -i               Disable ionospheric delay for spacecraft scenario
-  -p [fixed_gain]  Disable path loss and hold power level constant
-  -v               Show details about simulated channels
-"#,
-        USER_MOTION_SIZE as f64 / 10.0f64,
-        86400,
-    );
-}
 unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
     let mut allocatedSat: [i32; 32] = [0; 32];
 
@@ -1125,10 +1100,6 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         verb = 0_i32;
         ionoutc.enable = 1_i32;
         ionoutc.leapen = 0_i32;
-        if argc < 3_i32 {
-            usage();
-            exit(1_i32);
-        }
         loop_through_opts(
             argc,
             argv,
@@ -1206,7 +1177,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             llh[1] * 57.2957795131f64,
             llh[2],
         );
-        neph = readRinexNavAll(eph.as_mut_ptr(), &mut ionoutc, navfile.as_mut_ptr());
+        neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
         if neph == 0_i32 {
             eprintln!("ERROR: No ephemeris available.",);
             exit(1_i32);
@@ -1640,6 +1611,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
     }
 }
 pub fn main() {
+    // let mut args: Vec<String> = std::env::args().collect();
     let mut args: Vec<*mut libc::c_char> = Vec::new();
     for arg in ::std::env::args() {
         args.push(
@@ -1649,5 +1621,10 @@ pub fn main() {
         );
     }
     args.push(::core::ptr::null_mut());
+
+    if args.len() - 1 < 3 {
+        usage();
+        panic!();
+    }
     unsafe { ::std::process::exit(process((args.len() - 1) as i32, args.as_mut_ptr())) }
 }
