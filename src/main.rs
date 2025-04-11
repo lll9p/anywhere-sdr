@@ -720,86 +720,77 @@ pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
     g1
 }
 
-pub unsafe fn ionosphericDelay(
-    mut ionoutc: *const ionoutc_t,
-    mut g: gpstime_t,
-    mut llh: *mut f64,
-    mut azel: *mut f64,
-) -> f64 {
-    unsafe {
-        let mut iono_delay: f64 = 0.0f64;
-        let mut E: f64 = 0.;
-        let mut phi_u: f64 = 0.;
-        let mut lam_u: f64 = 0.;
-        let mut F: f64 = 0.;
-        if (*ionoutc).enable == 0_i32 {
-            return 0.0f64;
-        }
-        E = *azel.offset(1) / PI;
-        phi_u = *llh.offset(0) / PI;
-        lam_u = *llh.offset(1) / PI;
-        F = 1.0f64 + 16.0f64 * pow(0.53f64 - E, 3.0f64);
-        if (*ionoutc).vflg == 0_i32 {
-            iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
-        } else {
-            let mut t: f64 = 0.;
-            let mut psi: f64 = 0.;
-            let mut phi_i: f64 = 0.;
-            let mut lam_i: f64 = 0.;
-            let mut phi_m: f64 = 0.;
-            let mut phi_m2: f64 = 0.;
-            let mut phi_m3: f64 = 0.;
-            let mut AMP: f64 = 0.;
-            let mut PER: f64 = 0.;
-            let mut X: f64 = 0.;
-            let mut X2: f64 = 0.;
-            let mut X4: f64 = 0.;
-            psi = 0.0137f64 / (E + 0.11f64) - 0.022f64;
-            phi_i = phi_u + psi * cos(*azel.offset(0));
-            phi_i = phi_i.clamp(-0.416f64, 0.416f64);
-            lam_i = lam_u + psi * sin(*azel.offset(0)) / cos(phi_i * PI);
-            phi_m = phi_i + 0.064f64 * cos((lam_i - 1.617f64) * PI);
-            phi_m2 = phi_m * phi_m;
-            phi_m3 = phi_m2 * phi_m;
-            AMP = (*ionoutc).alpha0
-                + (*ionoutc).alpha1 * phi_m
-                + (*ionoutc).alpha2 * phi_m2
-                + (*ionoutc).alpha3 * phi_m3;
-            if AMP < 0.0f64 {
-                AMP = 0.0f64;
-            }
-            PER = (*ionoutc).beta0
-                + (*ionoutc).beta1 * phi_m
-                + (*ionoutc).beta2 * phi_m2
-                + (*ionoutc).beta3 * phi_m3;
-            if PER < 72000.0f64 {
-                PER = 72000.0f64;
-            }
-            t = 86400.0f64 / 2.0f64 * lam_i + g.sec;
-            while t >= 86400.0f64 {
-                t -= 86400.0f64;
-            }
-            while t < 0_i32 as f64 {
-                t += 86400.0f64;
-            }
-            X = 2.0f64 * PI * (t - 50400.0f64) / PER;
-            if fabs(X) < 1.57f64 {
-                X2 = X * X;
-                X4 = X2 * X2;
-                iono_delay =
-                    F * (5.0e-9f64 + AMP * (1.0f64 - X2 / 2.0f64 + X4 / 24.0f64)) * 2.99792458e8f64;
-            } else {
-                iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
-            }
-        }
-        iono_delay
+pub fn ionosphericDelay(ionoutc: &ionoutc_t, g: gpstime_t, llh: &[f64; 3], azel: &[f64; 2]) -> f64 {
+    let mut iono_delay: f64 = 0.0f64;
+    let mut E: f64 = 0.;
+    let mut phi_u: f64 = 0.;
+    let mut lam_u: f64 = 0.;
+    let mut F: f64 = 0.;
+    if ionoutc.enable == 0_i32 {
+        return 0.0f64;
     }
+    E = azel[1] / PI;
+    phi_u = llh[0] / PI;
+    lam_u = llh[1] / PI;
+    F = 1.0f64 + 16.0f64 * pow(0.53f64 - E, 3.0f64);
+    if ionoutc.vflg == 0_i32 {
+        iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
+    } else {
+        let mut t: f64 = 0.;
+        let mut psi: f64 = 0.;
+        let mut phi_i: f64 = 0.;
+        let mut lam_i: f64 = 0.;
+        let mut phi_m: f64 = 0.;
+        let mut phi_m2: f64 = 0.;
+        let mut phi_m3: f64 = 0.;
+        let mut AMP: f64 = 0.;
+        let mut PER: f64 = 0.;
+        let mut X: f64 = 0.;
+        let mut X2: f64 = 0.;
+        let mut X4: f64 = 0.;
+        psi = 0.0137f64 / (E + 0.11f64) - 0.022f64;
+        phi_i = phi_u + psi * cos(azel[0]);
+        phi_i = phi_i.clamp(-0.416f64, 0.416f64);
+        lam_i = lam_u + psi * sin(azel[0]) / cos(phi_i * PI);
+        phi_m = phi_i + 0.064f64 * cos((lam_i - 1.617f64) * PI);
+        phi_m2 = phi_m * phi_m;
+        phi_m3 = phi_m2 * phi_m;
+        AMP = ionoutc.alpha0
+            + ionoutc.alpha1 * phi_m
+            + ionoutc.alpha2 * phi_m2
+            + ionoutc.alpha3 * phi_m3;
+        if AMP < 0.0f64 {
+            AMP = 0.0f64;
+        }
+        PER =
+            ionoutc.beta0 + ionoutc.beta1 * phi_m + ionoutc.beta2 * phi_m2 + ionoutc.beta3 * phi_m3;
+        if PER < 72000.0f64 {
+            PER = 72000.0f64;
+        }
+        t = 86400.0f64 / 2.0f64 * lam_i + g.sec;
+        while t >= 86400.0f64 {
+            t -= 86400.0f64;
+        }
+        while t < 0_i32 as f64 {
+            t += 86400.0f64;
+        }
+        X = 2.0f64 * PI * (t - 50400.0f64) / PER;
+        if fabs(X) < 1.57f64 {
+            X2 = X * X;
+            X4 = X2 * X2;
+            iono_delay =
+                F * (5.0e-9f64 + AMP * (1.0f64 - X2 / 2.0f64 + X4 / 24.0f64)) * 2.99792458e8f64;
+        } else {
+            iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
+        }
+    }
+    iono_delay
 }
 
 pub unsafe fn computeRange(
     mut rho: *mut range_t,
     mut eph: ephem_t,
-    mut ionoutc: *mut ionoutc_t,
+    ionoutc: &mut ionoutc_t,
     mut g: gpstime_t,
     xyz_0: &[f64; 3],
 ) {
@@ -837,8 +828,7 @@ pub unsafe fn computeRange(
         ltcmat(&llh, &mut tmat);
         ecef2neu(&los, &tmat, &mut neu);
         neu2azel(&mut (*rho).azel, &neu);
-        (*rho).iono_delay =
-            ionosphericDelay(ionoutc, g, llh.as_mut_ptr(), ((*rho).azel).as_mut_ptr());
+        (*rho).iono_delay = ionosphericDelay(ionoutc, g, &llh, &(*rho).azel);
         (*rho).range += (*rho).iono_delay;
     }
 }
