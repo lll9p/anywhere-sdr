@@ -14,7 +14,6 @@ unsafe extern "C" {
     pub type _IO_wide_data;
     pub type _IO_codecvt;
     pub type _IO_marker;
-    // static mut stdout: *mut FILE;
 
     fn fclose(__stream: *mut FILE) -> i32;
     fn fflush(__stream: *mut FILE) -> i32;
@@ -64,11 +63,6 @@ use std::time::Instant;
 use table::{ant_pat_db, cosTable512, sinTable512};
 use utils::*;
 
-// type size_t = u32;
-// type __off_t = libc::c_long;
-// type __off64_t = libc::c_long;
-// type __clock_t = libc::c_long;
-// type __time_t = libc::c_long;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct _IO_FILE {
@@ -1021,9 +1015,6 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
 
     let mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
     unsafe {
-        // let mut tstart: clock_t = 0;
-        // let mut tend: clock_t = 0;
-        // let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
         let mut fp_out: Option<std::fs::File> = None;
         let mut sv: i32 = 0;
         let mut neph: usize = 0;
@@ -1055,8 +1046,6 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         let mut ip: i32 = 0;
         let mut qp: i32 = 0;
         let mut iTable: i32 = 0;
-        // let mut iq_buff: *mut libc::c_short = std::ptr::null_mut::<libc::c_short>();
-        // let mut iq8_buff: *mut libc::c_schar = std::ptr::null_mut::<libc::c_schar>();
         let mut grx: gpstime_t = gpstime_t::default();
         let mut delt: f64 = 0.;
         let mut isamp: i32 = 0;
@@ -1310,27 +1299,12 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             eprintln!("ERROR: No current set of ephemerides has been found.",);
             exit(1_i32);
         }
-        // iq_buff = calloc((2_i32 * iq_buff_size) as u32, 2_i32 as u32) as *mut libc::c_short;
-        let mut iq_buff_new: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
-        let mut iq8_buff_new: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
-        // if iq_buff.is_null() {
-        //     eprintln!("ERROR: Failed to allocate 16-bit I/Q buffer.");
-        //     exit(1_i32);
-        // }
+        let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
+        let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
         if data_format == 8_i32 {
-            // iq8_buff = calloc((2_i32 * iq_buff_size) as u32, 1_i32 as u32) as *mut libc::c_schar;
-            iq8_buff_new = vec![0i8; 2 * iq_buff_size as usize];
-            // if iq8_buff.is_null() {
-            //     eprintln!("ERROR: Failed to allocate 8-bit I/Q buffer.");
-            //     exit(1_i32);
-            // }
+            iq8_buff = vec![0i8; 2 * iq_buff_size as usize];
         } else if data_format == 1_i32 {
-            // iq8_buff = calloc((iq_buff_size / 4_i32) as u32, 1_i32 as u32) as *mut libc::c_schar;
-            iq8_buff_new = vec![0i8; iq_buff_size as usize / 4];
-            // if iq8_buff.is_null() {
-            //     eprintln!("ERROR: Failed to allocate compressed 1-bit I/Q buffer.");
-            //     exit(1_i32);
-            // }
+            iq8_buff = vec![0i8; iq_buff_size as usize / 4];
         }
         // if strcmp(
         //     b"-\0" as *const u8 as *const libc::c_char,
@@ -1398,7 +1372,6 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             ant_pat[i as usize] = pow(10.0f64, -ant_pat_db[i as usize] / 20.0f64);
             i += 1;
         }
-        // tstart = clock();
         let time_start = Instant::now();
         grx = incGpsTime(grx, 0.1f64);
         iumd = 1_i32;
@@ -1494,90 +1467,57 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 i_acc = (i_acc + 64_i32) >> 7_i32;
                 q_acc = (q_acc + 64_i32) >> 7_i32;
-                iq_buff_new[isamp as usize * 2] = i_acc as i16;
-                iq_buff_new[isamp as usize * 2 + 1] = i_acc as i16;
-                // *iq_buff.offset((isamp * 2_i32) as isize) = i_acc as libc::c_short;
-                // *iq_buff.offset((isamp * 2_i32 + 1_i32) as isize) = q_acc as libc::c_short;
+                iq_buff[isamp as usize * 2] = i_acc as i16;
+                iq_buff[isamp as usize * 2 + 1] = q_acc as i16;
                 isamp += 1;
             }
             if data_format == 1_i32 {
                 isamp = 0_i32;
                 while isamp < 2_i32 * iq_buff_size {
                     if isamp % 8_i32 == 0_i32 {
-                        iq8_buff_new[(isamp / 8) as usize] = 0i8;
-                        // *iq8_buff.offset((isamp / 8_i32) as isize) = 0_i32 as libc::c_schar;
+                        iq8_buff[(isamp / 8) as usize] = 0i8;
                     }
-                    let fresh1_new = &mut iq8_buff_new[(isamp / 8) as usize];
+                    let fresh1_new = &mut iq8_buff[(isamp / 8) as usize];
 
                     *fresh1_new = (*fresh1_new as i32
-                        | (if iq_buff_new[isamp as usize] as i32 > 0_i32 {
+                        | (if iq_buff[isamp as usize] as i32 > 0_i32 {
                             0x1_i32
                         } else {
                             0_i32
                         }) << (7_i32 - isamp % 8_i32))
                         as libc::c_schar;
-                    // let fresh1 = &mut (*iq8_buff.offset((isamp / 8_i32) as isize));
-                    // *fresh1 = (*fresh1 as i32
-                    //     | (if *iq_buff.offset(isamp as isize) as i32 > 0_i32 {
-                    //         0x1_i32
-                    //     } else {
-                    //         0_i32
-                    //     }) << (7_i32 - isamp % 8_i32))
-                    //     as libc::c_schar;
+
                     isamp += 1;
                 }
 
                 if let Some(file) = &mut fp_out {
                     file.write_all(std::slice::from_raw_parts(
-                        iq8_buff_new.as_ptr() as *const u8,
+                        iq8_buff.as_ptr() as *const u8,
                         (iq_buff_size / 4_i32) as usize,
                     ))
                     .ok();
                 }
-                // fwrite(
-                //     iq8_buff as *const libc::c_void,
-                //     1_i32 as u32,
-                //     (iq_buff_size / 4_i32) as u32,
-                //     fp,
-                // );
             } else if data_format == 8_i32 {
                 isamp = 0_i32;
                 while isamp < 2_i32 * iq_buff_size {
-                    iq8_buff_new[isamp as usize] =
-                        (iq_buff_new[isamp as usize] as i32 >> 4_i32) as libc::c_schar;
-                    // *iq8_buff.offset(isamp as isize) =
-                    //     (*iq_buff.offset(isamp as isize) as i32 >> 4_i32) as libc::c_schar;
+                    iq8_buff[isamp as usize] =
+                        (iq_buff[isamp as usize] as i32 >> 4_i32) as libc::c_schar;
                     isamp += 1;
                 }
 
                 if let Some(file) = &mut fp_out {
                     file.write_all(std::slice::from_raw_parts(
-                        iq8_buff_new.as_ptr() as *const u8,
+                        iq8_buff.as_ptr() as *const u8,
                         (2_i32 * iq_buff_size) as usize,
                     ))
                     .ok();
                 }
-                // fwrite(
-                //     iq8_buff as *const libc::c_void,
-                //     1_i32 as u32,
-                //     (2_i32 * iq_buff_size) as u32,
-                //     fp,
-                // );
-            } else {
-                println!("use data_format 16");
-                if let Some(file) = &mut fp_out {
-                    let byte_slice = std::slice::from_raw_parts(
-                        iq_buff_new.as_ptr() as *const u8,
-                        (2_i32 * iq_buff_size * 2) as usize, // 2 bytes per sample
-                    );
-                    file.write_all(byte_slice).ok();
-                }
-                // fwrite(
-                //     iq_buff as *const libc::c_void,
-                //     2_i32 as u32,
-                //     (2_i32 * iq_buff_size) as u32,
-                //     fp,
-                // );
+            } else if let Some(file) = &mut fp_out {
+                let byte_slice = std::slice::from_raw_parts(
+                    iq_buff.as_ptr() as *const u8,
+                    (2_i32 * iq_buff_size * 2) as usize, // 2 bytes per sample
+                );
+                file.write_all(byte_slice).ok();
             }
             igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
             if igrx % 300_i32 == 0_i32 {
@@ -1657,16 +1597,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             // fflush(stdout);
             iumd += 1;
         }
-        // tend = clock();
 
         eprintln!("\nDone!");
-        // free(iq_buff as *mut libc::c_void);
-        // fclose(fp);
-
-        // eprintln!(
-        //     "Process time = {:.1} [sec]",
-        //     (tend - tstart) as f64 / 1000000_i32 as clock_t as f64,
-        // );
         eprintln!(
             "Process time = {:.1} [sec]",
             time_start.elapsed().as_secs_f32()
