@@ -836,31 +836,27 @@ pub fn computeRange(
     (rho).range += (rho).iono_delay;
 }
 
-pub unsafe fn computeCodePhase(mut chan: *mut channel_t, mut rho1: range_t, mut dt: f64) {
-    unsafe {
-        let mut ms: f64 = 0.;
-        let mut ims: i32 = 0;
-        let mut rhorate: f64 = 0.;
-        rhorate = (rho1.range - (*chan).rho0.range) / dt;
-        (*chan).f_carr = -rhorate / 0.190293672798365f64;
-        (*chan).f_code = 1.023e6f64 + (*chan).f_carr * (1.0f64 / 1540.0f64);
-        ms = (subGpsTime((*chan).rho0.g, (*chan).g0) + 6.0f64
-            - (*chan).rho0.range / 2.99792458e8f64)
-            * 1000.0f64;
-        ims = ms as i32;
-        (*chan).code_phase = (ms - ims as f64) * 1023_f64;
-        (*chan).iword = ims / 600_i32;
-        ims -= (*chan).iword * 600_i32;
-        (*chan).ibit = ims / 20_i32;
-        ims -= (*chan).ibit * 20_i32;
-        (*chan).icode = ims;
-        (*chan).codeCA = (*chan).ca[(*chan).code_phase as i32 as usize] * 2_i32 - 1_i32;
-        (*chan).dataBit = ((*chan).dwrd[(*chan).iword as usize] >> (29_i32 - (*chan).ibit)
-            & 0x1_u32) as i32
-            * 2_i32
+pub fn computeCodePhase(chan: &mut channel_t, mut rho1: range_t, mut dt: f64) {
+    let mut ms: f64 = 0.;
+    let mut ims: i32 = 0;
+    let mut rhorate: f64 = 0.;
+    rhorate = (rho1.range - (chan).rho0.range) / dt;
+    (chan).f_carr = -rhorate / 0.190293672798365f64;
+    (chan).f_code = 1.023e6f64 + (chan).f_carr * (1.0f64 / 1540.0f64);
+    ms = (subGpsTime((chan).rho0.g, (chan).g0) + 6.0f64 - (chan).rho0.range / 2.99792458e8f64)
+        * 1000.0f64;
+    ims = ms as i32;
+    (chan).code_phase = (ms - ims as f64) * 1023_f64;
+    (chan).iword = ims / 600_i32;
+    ims -= (chan).iword * 600_i32;
+    (chan).ibit = ims / 20_i32;
+    ims -= (chan).ibit * 20_i32;
+    (chan).icode = ims;
+    (chan).codeCA = (chan).ca[(chan).code_phase as i32 as usize] * 2_i32 - 1_i32;
+    (chan).dataBit =
+        ((chan).dwrd[(chan).iword as usize] >> (29_i32 - (chan).ibit) & 0x1_u32) as i32 * 2_i32
             - 1_i32;
-        (*chan).rho0 = rho1;
-    }
+    (chan).rho0 = rho1;
 }
 
 pub unsafe fn readUserMotion(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) -> i32 {
