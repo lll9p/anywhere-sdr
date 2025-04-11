@@ -151,7 +151,7 @@ pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
     x1[0] * x2[0] + x1[1] * x2[1] + x1[2] * x2[2]
 }
 
-pub unsafe fn codegen(mut ca: &mut [i32; 1023], mut prn: i32) {
+pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
     let mut delay: [usize; 32] = [
         5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258, 469, 470, 471, 472,
         473, 474, 509, 512, 513, 514, 515, 516, 859, 860, 861, 862,
@@ -198,27 +198,22 @@ pub unsafe fn codegen(mut ca: &mut [i32; 1023], mut prn: i32) {
     }
 }
 
-pub unsafe fn date2gps(mut t: *const datetime_t, mut g: *mut gpstime_t) {
-    unsafe {
-        let mut doy: [i32; 12] = [
-            0_i32, 31_i32, 59_i32, 90_i32, 120_i32, 151_i32, 181_i32, 212_i32, 243_i32, 273_i32,
-            304_i32, 334_i32,
-        ];
-        let mut ye: i32 = 0;
-        let mut de: i32 = 0;
-        let mut lpdays: i32 = 0;
-        ye = (*t).y - 1980_i32;
-        lpdays = ye / 4_i32 + 1_i32;
-        if ye % 4_i32 == 0_i32 && (*t).m <= 2_i32 {
-            lpdays -= 1;
-        }
-        de = ye * 365_i32 + doy[((*t).m - 1_i32) as usize] + (*t).d + lpdays - 6_i32;
-        (*g).week = de / 7_i32;
-        (*g).sec = (de % 7_i32) as f64 * 86400.0f64
-            + (*t).hh as f64 * 3600.0f64
-            + (*t).mm as f64 * 60.0f64
-            + (*t).sec;
+pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
+    let mut doy: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let mut ye: i32 = 0;
+    let mut de: i32 = 0;
+    let mut lpdays: i32 = 0;
+    ye = (t).y - 1980_i32;
+    lpdays = ye / 4_i32 + 1_i32;
+    if ye % 4_i32 == 0_i32 && (t).m <= 2_i32 {
+        lpdays -= 1;
     }
+    de = ye * 365_i32 + doy[((t).m - 1_i32) as usize] + (t).d + lpdays - 6_i32;
+    (g).week = de / 7_i32;
+    (g).sec = (de % 7_i32) as f64 * 86400.0f64
+        + (t).hh as f64 * 3600.0f64
+        + (t).mm as f64 * 60.0f64
+        + (t).sec;
 }
 
 pub unsafe fn gps2date(mut g: *const gpstime_t, mut t: *mut datetime_t) {
@@ -328,18 +323,10 @@ pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
     t[2][2] = slat;
 }
 
-pub unsafe fn ecef2neu(mut xyz_0: *const f64, mut t: *mut [f64; 3], mut neu: *mut f64) {
-    unsafe {
-        *neu.offset(0) = (*t.offset(0))[0_i32 as usize] * *xyz_0.offset(0)
-            + (*t.offset(0))[1_i32 as usize] * *xyz_0.offset(1)
-            + (*t.offset(0))[2_i32 as usize] * *xyz_0.offset(2);
-        *neu.offset(1) = (*t.offset(1))[0_i32 as usize] * *xyz_0.offset(0)
-            + (*t.offset(1))[1_i32 as usize] * *xyz_0.offset(1)
-            + (*t.offset(1))[2_i32 as usize] * *xyz_0.offset(2);
-        *neu.offset(2) = (*t.offset(2))[0_i32 as usize] * *xyz_0.offset(0)
-            + (*t.offset(2))[1_i32 as usize] * *xyz_0.offset(1)
-            + (*t.offset(2))[2_i32 as usize] * *xyz_0.offset(2);
-    }
+pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
+    neu[0] = t[0][0] * xyz_0[0] + t[0][1] * xyz_0[1] + t[0][2] * xyz_0[2];
+    neu[1] = t[1][0] * xyz_0[0] + t[1][1] * xyz_0[1] + t[1][2] * xyz_0[2];
+    neu[2] = t[2][0] * xyz_0[0] + t[2][1] * xyz_0[1] + t[2][2] * xyz_0[2];
 }
 
 pub unsafe fn neu2azel(mut azel: *mut f64, mut neu: *const f64) {
@@ -552,101 +539,98 @@ pub unsafe fn eph2sbf(eph: ephem_t, ionoutc: ionoutc_t, mut sbf: *mut [u32; 10])
             dn = 7_i32 as u32;
             dtlsf = 18_i32 as u32;
         }
-        (*sbf.offset(0))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(0))[1_i32 as usize] = 0x1_u32 << 8_i32;
-        (*sbf.offset(0))[2_i32 as usize] = (wn & 0x3ff_u32) << 20_i32
+        (*sbf.offset(0))[0] = 0x8b0000_u32 << 6_i32;
+        (*sbf.offset(0))[1] = 0x1_u32 << 8_i32;
+        (*sbf.offset(0))[2] = (wn & 0x3ff_u32) << 20_i32
             | (codeL2 as u32 & 0x3_u32) << 18_i32
             | (ura & 0xf_u32) << 14_i32
             | (svhlth as u32 & 0x3f_u32) << 8_i32
             | (iodc >> 8_i32 & 0x3_u32) << 6_i32;
-        (*sbf.offset(0))[3_i32 as usize] = 0_u32;
-        (*sbf.offset(0))[4_i32 as usize] = 0_u32;
-        (*sbf.offset(0))[5_i32 as usize] = 0_u32;
-        (*sbf.offset(0))[6_i32 as usize] = (tgd as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(0))[7_i32 as usize] =
-            (iodc & 0xff_u32) << 22_i32 | (toc & 0xffff_u32) << 6_i32;
-        (*sbf.offset(0))[8_i32 as usize] =
+        (*sbf.offset(0))[3] = 0_u32;
+        (*sbf.offset(0))[4] = 0_u32;
+        (*sbf.offset(0))[5] = 0_u32;
+        (*sbf.offset(0))[6] = (tgd as u32 & 0xff_u32) << 6_i32;
+        (*sbf.offset(0))[7] = (iodc & 0xff_u32) << 22_i32 | (toc & 0xffff_u32) << 6_i32;
+        (*sbf.offset(0))[8] =
             (af2 as u32 & 0xff_u32) << 22_i32 | (af1 as u32 & 0xffff_u32) << 6_i32;
-        (*sbf.offset(0))[9_i32 as usize] = (af0 as u32 & 0x3fffff_u32) << 8_i32;
-        (*sbf.offset(1))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(1))[1_i32 as usize] = 0x2_u32 << 8_i32;
-        (*sbf.offset(1))[2_i32 as usize] =
-            (iode & 0xff_u32) << 22_i32 | (crs as u32 & 0xffff_u32) << 6_i32;
-        (*sbf.offset(1))[3_i32 as usize] =
+        (*sbf.offset(0))[9] = (af0 as u32 & 0x3fffff_u32) << 8_i32;
+        (*sbf.offset(1))[0] = 0x8b0000_u32 << 6_i32;
+        (*sbf.offset(1))[1] = 0x2_u32 << 8_i32;
+        (*sbf.offset(1))[2] = (iode & 0xff_u32) << 22_i32 | (crs as u32 & 0xffff_u32) << 6_i32;
+        (*sbf.offset(1))[3] =
             (deltan as u32 & 0xffff_u32) << 14_i32 | ((m0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[4_i32 as usize] = (m0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[5_i32 as usize] =
+        (*sbf.offset(1))[4] = (m0 as u32 & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(1))[5] =
             (cuc as u32 & 0xffff_u32) << 14_i32 | (ecc >> 24_i32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[6_i32 as usize] = (ecc & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[7_i32 as usize] =
+        (*sbf.offset(1))[6] = (ecc & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(1))[7] =
             (cus as u32 & 0xffff_u32) << 14_i32 | (sqrta >> 24_i32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(1))[8_i32 as usize] = (sqrta & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(1))[9_i32 as usize] = (toe & 0xffff_u32) << 14_i32;
-        (*sbf.offset(2))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(2))[1_i32 as usize] = 0x3_u32 << 8_i32;
-        (*sbf.offset(2))[2_i32 as usize] =
+        (*sbf.offset(1))[8] = (sqrta & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(1))[9] = (toe & 0xffff_u32) << 14_i32;
+        (*sbf.offset(2))[0] = 0x8b0000_u32 << 6_i32;
+        (*sbf.offset(2))[1] = 0x3_u32 << 8_i32;
+        (*sbf.offset(2))[2] =
             (cic as u32 & 0xffff_u32) << 14_i32 | ((omg0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[3_i32 as usize] = (omg0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[4_i32 as usize] =
+        (*sbf.offset(2))[3] = (omg0 as u32 & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(2))[4] =
             (cis as u32 & 0xffff_u32) << 14_i32 | ((inc0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[5_i32 as usize] = (inc0 as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[6_i32 as usize] =
+        (*sbf.offset(2))[5] = (inc0 as u32 & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(2))[6] =
             (crc as u32 & 0xffff_u32) << 14_i32 | ((aop >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-        (*sbf.offset(2))[7_i32 as usize] = (aop as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[8_i32 as usize] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
-        (*sbf.offset(2))[9_i32 as usize] =
-            (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
+        (*sbf.offset(2))[7] = (aop as u32 & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(2))[8] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
+        (*sbf.offset(2))[9] = (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
         if ionoutc.vflg == 1_i32 {
-            (*sbf.offset(3))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-            (*sbf.offset(3))[1_i32 as usize] = 0x4_u32 << 8_i32;
-            (*sbf.offset(3))[2_i32 as usize] = dataId << 28_i32
+            (*sbf.offset(3))[0] = 0x8b0000_u32 << 6_i32;
+            (*sbf.offset(3))[1] = 0x4_u32 << 8_i32;
+            (*sbf.offset(3))[2] = dataId << 28_i32
                 | sbf4_page18_svId << 22_i32
                 | (alpha0 as u32 & 0xff_u32) << 14_i32
                 | (alpha1 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[3_i32 as usize] = (alpha2 as u32 & 0xff_u32) << 22_i32
+            (*sbf.offset(3))[3] = (alpha2 as u32 & 0xff_u32) << 22_i32
                 | (alpha3 as u32 & 0xff_u32) << 14_i32
                 | (beta0 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[4_i32 as usize] = (beta1 as u32 & 0xff_u32) << 22_i32
+            (*sbf.offset(3))[4] = (beta1 as u32 & 0xff_u32) << 22_i32
                 | (beta2 as u32 & 0xff_u32) << 14_i32
                 | (beta3 as u32 & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[5_i32 as usize] = (A1 as u32 & 0xffffff_u32) << 6_i32;
-            (*sbf.offset(3))[6_i32 as usize] = ((A0 >> 8_i32) as u32 & 0xffffff_u32) << 6_i32;
-            (*sbf.offset(3))[7_i32 as usize] = (A0 as u32 & 0xff_u32) << 22_i32
+            (*sbf.offset(3))[5] = (A1 as u32 & 0xffffff_u32) << 6_i32;
+            (*sbf.offset(3))[6] = ((A0 >> 8_i32) as u32 & 0xffffff_u32) << 6_i32;
+            (*sbf.offset(3))[7] = (A0 as u32 & 0xff_u32) << 22_i32
                 | (tot & 0xff_u32) << 14_i32
                 | (wnt & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[8_i32 as usize] = (dtls as u32 & 0xff_u32) << 22_i32
+            (*sbf.offset(3))[8] = (dtls as u32 & 0xff_u32) << 22_i32
                 | (wnlsf & 0xff_u32) << 14_i32
                 | (dn & 0xff_u32) << 6_i32;
-            (*sbf.offset(3))[9_i32 as usize] = (dtlsf & 0xff_u32) << 22_i32;
+            (*sbf.offset(3))[9] = (dtlsf & 0xff_u32) << 22_i32;
         } else {
-            (*sbf.offset(3))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-            (*sbf.offset(3))[1_i32 as usize] = 0x4_u32 << 8_i32;
-            (*sbf.offset(3))[2_i32 as usize] = dataId << 28_i32 | sbf4_page25_svId << 22_i32;
-            (*sbf.offset(3))[3_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[4_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[5_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[6_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[7_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[8_i32 as usize] = 0_u32;
-            (*sbf.offset(3))[9_i32 as usize] = 0_u32;
+            (*sbf.offset(3))[0] = 0x8b0000_u32 << 6_i32;
+            (*sbf.offset(3))[1] = 0x4_u32 << 8_i32;
+            (*sbf.offset(3))[2] = dataId << 28_i32 | sbf4_page25_svId << 22_i32;
+            (*sbf.offset(3))[3] = 0_u32;
+            (*sbf.offset(3))[4] = 0_u32;
+            (*sbf.offset(3))[5] = 0_u32;
+            (*sbf.offset(3))[6] = 0_u32;
+            (*sbf.offset(3))[7] = 0_u32;
+            (*sbf.offset(3))[8] = 0_u32;
+            (*sbf.offset(3))[9] = 0_u32;
         }
-        (*sbf.offset(4))[0_i32 as usize] = 0x8b0000_u32 << 6_i32;
-        (*sbf.offset(4))[1_i32 as usize] = 0x5_u32 << 8_i32;
-        (*sbf.offset(4))[2_i32 as usize] = dataId << 28_i32
+        (*sbf.offset(4))[0] = 0x8b0000_u32 << 6_i32;
+        (*sbf.offset(4))[1] = 0x5_u32 << 8_i32;
+        (*sbf.offset(4))[2] = dataId << 28_i32
             | sbf5_page25_svId << 22_i32
             | (toa & 0xff_u32) << 14_i32
             | (wna & 0xff_u32) << 6_i32;
-        (*sbf.offset(4))[3_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[4_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[5_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[6_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[7_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[8_i32 as usize] = 0_u32;
-        (*sbf.offset(4))[9_i32 as usize] = 0_u32;
+        (*sbf.offset(4))[3] = 0_u32;
+        (*sbf.offset(4))[4] = 0_u32;
+        (*sbf.offset(4))[5] = 0_u32;
+        (*sbf.offset(4))[6] = 0_u32;
+        (*sbf.offset(4))[7] = 0_u32;
+        (*sbf.offset(4))[8] = 0_u32;
+        (*sbf.offset(4))[9] = 0_u32;
     }
 }
 
-pub fn countBits(mut v: u32) -> u32 {
+pub fn countBits(v: u32) -> u32 {
     let mut c: u32 = 0;
     let S: [i32; 5] = [1_i32, 2_i32, 4_i32, 8_i32, 16_i32];
     let B: [u32; 5] = [
@@ -657,15 +641,15 @@ pub fn countBits(mut v: u32) -> u32 {
         0xffff_i32 as u32,
     ];
     c = v;
-    c = (c >> S[0_i32 as usize] & B[0_i32 as usize]).wrapping_add(c & B[0_i32 as usize]);
-    c = (c >> S[1_i32 as usize] & B[1_i32 as usize]).wrapping_add(c & B[1_i32 as usize]);
-    c = (c >> S[2_i32 as usize] & B[2_i32 as usize]).wrapping_add(c & B[2_i32 as usize]);
-    c = (c >> S[3_i32 as usize] & B[3_i32 as usize]).wrapping_add(c & B[3_i32 as usize]);
-    c = (c >> S[4_i32 as usize] & B[4_i32 as usize]).wrapping_add(c & B[4_i32 as usize]);
+    c = (c >> S[0] & B[0]).wrapping_add(c & B[0]);
+    c = (c >> S[1] & B[1]).wrapping_add(c & B[1]);
+    c = (c >> S[2] & B[2]).wrapping_add(c & B[2]);
+    c = (c >> S[3] & B[3]).wrapping_add(c & B[3]);
+    c = (c >> S[4] & B[4]).wrapping_add(c & B[4]);
     c
 }
 
-pub fn computeChecksum(mut source: u32, mut nib: i32) -> u32 {
+pub fn computeChecksum(source: u32, nib: i32) -> u32 {
     let mut bmask: [u32; 6] = [
         0x3b1f3480_u32,
         0x1d8f9a40_u32,
@@ -680,14 +664,14 @@ pub fn computeChecksum(mut source: u32, mut nib: i32) -> u32 {
     let mut D30: u32 = source >> 30_i32 & 0x1_u32;
     if nib != 0 {
         if D30
-            .wrapping_add(countBits(bmask[4_i32 as usize] & d))
+            .wrapping_add(countBits(bmask[4] & d))
             .wrapping_rem(2_i32 as u32)
             != 0
         {
             d ^= 0x1_u32 << 6_i32;
         }
         if D29
-            .wrapping_add(countBits(bmask[5_i32 as usize] & d))
+            .wrapping_add(countBits(bmask[5] & d))
             .wrapping_rem(2_i32 as u32)
             != 0
         {
@@ -699,40 +683,40 @@ pub fn computeChecksum(mut source: u32, mut nib: i32) -> u32 {
         D ^= 0x3fffffc0_u32;
     }
     D |= D29
-        .wrapping_add(countBits(bmask[0_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[0] & d))
         .wrapping_rem(2_i32 as u32)
         << 5_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[1_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[1] & d))
         .wrapping_rem(2_i32 as u32)
         << 4_i32;
     D |= D29
-        .wrapping_add(countBits(bmask[2_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[2] & d))
         .wrapping_rem(2_i32 as u32)
         << 3_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[3_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[3] & d))
         .wrapping_rem(2_i32 as u32)
         << 2_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[4_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[4] & d))
         .wrapping_rem(2_i32 as u32)
         << 1_i32;
     D |= D29
-        .wrapping_add(countBits(bmask[5_i32 as usize] & d))
+        .wrapping_add(countBits(bmask[5] & d))
         .wrapping_rem(2_i32 as u32);
     D &= 0x3fffffff_u32;
     D
 }
 
-pub fn subGpsTime(mut g1: gpstime_t, mut g0: gpstime_t) -> f64 {
+pub fn subGpsTime(g1: gpstime_t, g0: gpstime_t) -> f64 {
     let mut dt: f64 = 0.;
     dt = g1.sec - g0.sec;
     dt += (g1.week - g0.week) as f64 * 604800.0f64;
     dt
 }
 
-pub fn incGpsTime(mut g0: gpstime_t, mut dt: f64) -> gpstime_t {
+pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
     let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
@@ -847,23 +831,23 @@ pub unsafe fn computeRange(
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
         subVect(&mut los, &pos, xyz_0);
         tau = normVect(&los) / 2.99792458e8f64;
-        pos[0_i32 as usize] -= vel[0_i32 as usize] * tau;
-        pos[1_i32 as usize] -= vel[1_i32 as usize] * tau;
-        pos[2_i32 as usize] -= vel[2_i32 as usize] * tau;
-        xrot = pos[0_i32 as usize] + pos[1_i32 as usize] * 7.2921151467e-5f64 * tau;
-        yrot = pos[1_i32 as usize] - pos[0_i32 as usize] * 7.2921151467e-5f64 * tau;
-        pos[0_i32 as usize] = xrot;
-        pos[1_i32 as usize] = yrot;
+        pos[0] -= vel[0] * tau;
+        pos[1] -= vel[1] * tau;
+        pos[2] -= vel[2] * tau;
+        xrot = pos[0] + pos[1] * 7.2921151467e-5f64 * tau;
+        yrot = pos[1] - pos[0] * 7.2921151467e-5f64 * tau;
+        pos[0] = xrot;
+        pos[1] = yrot;
         subVect(&mut los, &pos, xyz_0);
         range = normVect(&los);
         (*rho).d = range;
-        (*rho).range = range - 2.99792458e8f64 * clk[0_i32 as usize];
+        (*rho).range = range - 2.99792458e8f64 * clk[0];
         rate = dotProd(&vel, &los) / range;
         (*rho).rate = rate;
         (*rho).g = g;
         xyz2llh(xyz_0, &mut llh);
         ltcmat(&llh, &mut tmat);
-        ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
+        ecef2neu(&los, &tmat, &mut neu);
         neu2azel(((*rho).azel).as_mut_ptr(), neu.as_mut_ptr());
         (*rho).iono_delay =
             ionosphericDelay(ionoutc, g, llh.as_mut_ptr(), ((*rho).azel).as_mut_ptr());
@@ -928,9 +912,9 @@ pub unsafe fn readUserMotion(mut xyz_0: *mut [f64; 3], mut filename: *const libc
             {
                 break;
             }
-            (*xyz_0.offset(numd as isize))[0_i32 as usize] = x;
-            (*xyz_0.offset(numd as isize))[1_i32 as usize] = y;
-            (*xyz_0.offset(numd as isize))[2_i32 as usize] = z;
+            (*xyz_0.offset(numd as isize))[0] = x;
+            (*xyz_0.offset(numd as isize))[1] = y;
+            (*xyz_0.offset(numd as isize))[2] = z;
             numd += 1;
         }
         fclose(fp);
@@ -969,19 +953,15 @@ pub unsafe fn readUserMotionLLH(
             {
                 break;
             }
-            if llh[0_i32 as usize] > 90.0f64
-                || llh[0_i32 as usize] < -90.0f64
-                || llh[1_i32 as usize] > 180.0f64
-                || llh[1_i32 as usize] < -180.0f64
-            {
+            if llh[0] > 90.0f64 || llh[0] < -90.0f64 || llh[1] > 180.0f64 || llh[1] < -180.0f64 {
                 eprintln!(
                     "ERROR: Invalid file format (time[s], latitude[deg], longitude[deg], height [m].\n"
                 );
                 numd = 0_i32;
                 break;
             } else {
-                llh[0_i32 as usize] /= 57.2957795131f64;
-                llh[1_i32 as usize] /= 57.2957795131f64;
+                llh[0] /= 57.2957795131f64;
+                llh[1] /= 57.2957795131f64;
                 llh2xyz(&llh, &mut xyz_full[numd as usize]);
                 numd += 1;
             }
@@ -1010,7 +990,7 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
             prevwrd = 0_u32;
             iwrd = 0_i32;
             while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[4_i32 as usize][iwrd as usize];
+                sbfwrd = (*chan).sbf[4][iwrd as usize];
                 if iwrd == 1_i32 {
                     sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
                 }
@@ -1083,7 +1063,7 @@ pub unsafe fn checkSatVisibility(
         ltcmat(&llh, &mut tmat);
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
         subVect(&mut los, &pos, xyz_0);
-        ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
+        ecef2neu(&los, &tmat, &mut neu);
         neu2azel(azel, neu.as_mut_ptr());
         if *azel.offset(1) * 57.2957795131f64 > elvMask {
             return 1_i32;
@@ -1135,8 +1115,8 @@ pub unsafe fn allocateChannel(
                     while i < 16 {
                         if chan[i].prn == 0_i32 {
                             chan[i].prn = sv + 1_i32;
-                            chan[i].azel[0_i32 as usize] = azel[0_i32 as usize];
-                            chan[i].azel[1_i32 as usize] = azel[1_i32 as usize];
+                            chan[i].azel[0] = azel[0];
+                            chan[i].azel[1] = azel[1];
                             codegen(&mut chan[i].ca, (chan[i]).prn);
                             eph2sbf(
                                 *eph.offset(sv as isize),
@@ -1261,8 +1241,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         let mut timeoverwrite: i32 = 0_i32;
         let mut ionoutc: ionoutc_t = ionoutc_t::default();
         let mut path_loss_enable: i32 = 1_i32;
-        navfile[0_i32 as usize] = 0_i32 as libc::c_char;
-        umfile[0_i32 as usize] = 0_i32 as libc::c_char;
+        navfile[0] = 0_i32 as libc::c_char;
+        umfile[0] = 0_i32 as libc::c_char;
         strcpy(
             outfile.as_mut_ptr(),
             b"gpssim.bin\0" as *const u8 as *const libc::c_char,
@@ -1330,8 +1310,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         &mut *llh.as_mut_ptr().offset(1) as *mut f64,
                         &mut *llh.as_mut_ptr().offset(2) as *mut f64,
                     );
-                    llh[0_i32 as usize] /= 57.2957795131f64;
-                    llh[1_i32 as usize] /= 57.2957795131f64;
+                    llh[0] /= 57.2957795131f64;
+                    llh[1] /= 57.2957795131f64;
                     llh2xyz(&llh, &mut xyz[0]);
                     current_block_85 = 2750570471926810434;
                 }
@@ -1518,18 +1498,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             llh2xyz(&llh, &mut xyz[0]);
         }
 
-        eprintln!(
-            "xyz = {}, {}, {}",
-            xyz[0_i32 as usize][0_i32 as usize],
-            xyz[0_i32 as usize][1_i32 as usize],
-            xyz[0_i32 as usize][2_i32 as usize],
-        );
+        eprintln!("xyz = {}, {}, {}", xyz[0][0], xyz[0][1], xyz[0][2],);
 
         eprintln!(
             "llh = {}, {}, {}",
-            llh[0_i32 as usize] * 57.2957795131f64,
-            llh[1_i32 as usize] * 57.2957795131f64,
-            llh[2_i32 as usize],
+            llh[0] * 57.2957795131f64,
+            llh[1] * 57.2957795131f64,
+            llh[2],
         );
         neph = readRinexNavAll(eph.as_mut_ptr(), &mut ionoutc, navfile.as_mut_ptr());
         if neph == 0_i32 {
@@ -1559,9 +1534,9 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
         sv = 0_i32;
         while sv < 32_i32 {
-            if eph[0_i32 as usize][sv as usize].vflg == 1_i32 {
-                gmin = eph[0_i32 as usize][sv as usize].toc;
-                tmin = eph[0_i32 as usize][sv as usize].t;
+            if eph[0][sv as usize].vflg == 1_i32 {
+                gmin = eph[0][sv as usize].toc;
+                tmin = eph[0][sv as usize].t;
                 break;
             } else {
                 sv += 1;
@@ -1717,8 +1692,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 eprintln!(
                     "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                     chan[i as usize].prn,
-                    chan[i as usize].azel[0_i32 as usize] * 57.2957795131f64,
-                    chan[i as usize].azel[1_i32 as usize] * 57.2957795131f64,
+                    chan[i as usize].azel[0] * 57.2957795131f64,
+                    chan[i as usize].azel[1] * 57.2957795131f64,
                     chan[i as usize].rho0.d,
                     chan[i as usize].rho0.iono_delay,
                 );
@@ -1760,16 +1735,16 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                             eph[ieph as usize][sv as usize],
                             &mut ionoutc,
                             grx,
-                            &xyz[0_i32 as usize],
+                            &xyz[0],
                         );
                     }
-                    chan[i as usize].azel[0_i32 as usize] = rho.azel[0_i32 as usize];
-                    chan[i as usize].azel[1_i32 as usize] = rho.azel[1_i32 as usize];
+                    chan[i as usize].azel[0] = rho.azel[0];
+                    chan[i as usize].azel[1] = rho.azel[1];
                     computeCodePhase(&mut *chan.as_mut_ptr().offset(i as isize), rho, 0.1f64);
                     chan[i as usize].carr_phasestep =
                         round(512.0f64 * 65536.0f64 * chan[i as usize].f_carr * delt) as i32;
                     path_loss = 20200000.0f64 / rho.d;
-                    ibs = ((90.0f64 - rho.azel[1_i32 as usize] * 57.2957795131f64) / 5.0f64) as i32;
+                    ibs = ((90.0f64 - rho.azel[1] * 57.2957795131f64) / 5.0f64) as i32;
                     ant_gain = ant_pat[ibs as usize];
                     if path_loss_enable == 1_i32 {
                         gain[i as usize] = (path_loss * ant_gain * 128.0f64) as i32;
@@ -1919,7 +1894,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         (eph[ieph as usize]).as_mut_ptr(),
                         ionoutc,
                         grx,
-                        &xyz[0_i32 as usize],
+                        &xyz[0],
                         elvmask,
                     );
                 }
@@ -1931,8 +1906,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                             eprintln!(
                                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                                 chan[i as usize].prn,
-                                chan[i as usize].azel[0_i32 as usize] * 57.2957795131f64,
-                                chan[i as usize].azel[1_i32 as usize] * 57.2957795131f64,
+                                chan[i as usize].azel[0] * 57.2957795131f64,
+                                chan[i as usize].azel[1] * 57.2957795131f64,
                                 chan[i as usize].rho0.d,
                                 chan[i as usize].rho0.iono_delay,
                             );
