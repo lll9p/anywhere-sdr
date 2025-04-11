@@ -306,7 +306,7 @@ pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     }
 }
 
-pub unsafe fn llh2xyz(mut llh: *const f64, mut xyz_0: *mut f64) {
+pub unsafe fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     unsafe {
         let mut n: f64 = 0.;
         let mut a: f64 = 0.;
@@ -322,17 +322,17 @@ pub unsafe fn llh2xyz(mut llh: *const f64, mut xyz_0: *mut f64) {
         a = 6378137.0f64;
         e = 0.0818191908426f64;
         e2 = e * e;
-        clat = cos(*llh.offset(0));
-        slat = sin(*llh.offset(0));
-        clon = cos(*llh.offset(1));
-        slon = sin(*llh.offset(1));
+        clat = cos(llh[0]);
+        slat = sin(llh[0]);
+        clon = cos(llh[1]);
+        slon = sin(llh[1]);
         d = e * slat;
         n = a / sqrt(1.0f64 - d * d);
-        nph = n + *llh.offset(2);
+        nph = n + llh[2];
         tmp = nph * clat;
-        *xyz_0.offset(0) = tmp * clon;
-        *xyz_0.offset(1) = tmp * slon;
-        *xyz_0.offset(2) = ((1.0f64 - e2) * n + *llh.offset(2)) * slat;
+        xyz_0[0] = tmp * clon;
+        xyz_0[1] = tmp * slon;
+        xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
     }
 }
 
@@ -971,7 +971,7 @@ pub unsafe fn readUserMotion(mut xyz_0: *mut [f64; 3], mut filename: *const libc
 }
 
 pub unsafe fn readUserMotionLLH(
-    mut xyz_0: *mut [f64; 3],
+    mut xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
     mut filename: *const libc::c_char,
 ) -> i32 {
     unsafe {
@@ -1014,10 +1014,7 @@ pub unsafe fn readUserMotionLLH(
             } else {
                 llh[0_i32 as usize] /= 57.2957795131f64;
                 llh[1_i32 as usize] /= 57.2957795131f64;
-                llh2xyz(
-                    llh.as_mut_ptr(),
-                    (*xyz_0.offset(numd as isize)).as_mut_ptr(),
-                );
+                llh2xyz(&llh, &mut xyz_full[numd as usize]);
                 numd += 1;
             }
         }
@@ -1458,7 +1455,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     );
                     llh[0_i32 as usize] /= 57.2957795131f64;
                     llh[1_i32 as usize] /= 57.2957795131f64;
-                    llh2xyz(llh.as_mut_ptr(), (xyz[0_i32 as usize]).as_mut_ptr());
+                    llh2xyz(&llh, &mut xyz[0]);
                     current_block_85 = 2750570471926810434;
                 }
                 111 => {
@@ -1623,7 +1620,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             if nmeaGGA == 1_i32 {
                 numd = readNmeaGGA(xyz.as_mut_ptr(), umfile.as_mut_ptr());
             } else if umLLH == 1_i32 {
-                numd = readUserMotionLLH(xyz.as_mut_ptr(), umfile.as_mut_ptr());
+                numd = readUserMotionLLH(&mut xyz, umfile.as_mut_ptr());
             } else {
                 numd = readUserMotion(xyz.as_mut_ptr(), umfile.as_mut_ptr());
             }
@@ -1641,7 +1638,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         } else {
             eprintln!("Using static location mode.\n\0");
             numd = iduration;
-            llh2xyz(llh.as_mut_ptr(), (xyz[0_i32 as usize]).as_mut_ptr());
+            llh2xyz(&llh, &mut xyz[0]);
         }
 
         eprintln!(
