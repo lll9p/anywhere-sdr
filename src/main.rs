@@ -50,6 +50,8 @@ mod read_user_motion;
 mod table;
 mod utils;
 
+use std::io::Write;
+
 use constants::{PI, USER_MOTION_SIZE};
 use datetime::{datetime_t, gpstime_t, tm};
 use eph::ephem_t;
@@ -58,6 +60,7 @@ use ionoutc::ionoutc_t;
 use read_nmea_gga::readNmeaGGA;
 use read_rinex::readRinexNavAll;
 use read_user_motion::{readUserMotion, readUserMotionLLH};
+use std::time::Instant;
 use table::{ant_pat_db, cosTable512, sinTable512};
 use utils::*;
 
@@ -1018,9 +1021,10 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
 
     let mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
     unsafe {
-        let mut tstart: clock_t = 0;
-        let mut tend: clock_t = 0;
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
+        // let mut tstart: clock_t = 0;
+        // let mut tend: clock_t = 0;
+        // let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
+        let mut fp_out: Option<std::fs::File> = None;
         let mut sv: i32 = 0;
         let mut neph: usize = 0;
         let mut ieph: usize = 0;
@@ -1051,8 +1055,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         let mut ip: i32 = 0;
         let mut qp: i32 = 0;
         let mut iTable: i32 = 0;
-        let mut iq_buff: *mut libc::c_short = std::ptr::null_mut::<libc::c_short>();
-        let mut iq8_buff: *mut libc::c_schar = std::ptr::null_mut::<libc::c_schar>();
+        // let mut iq_buff: *mut libc::c_short = std::ptr::null_mut::<libc::c_short>();
+        // let mut iq8_buff: *mut libc::c_schar = std::ptr::null_mut::<libc::c_schar>();
         let mut grx: gpstime_t = gpstime_t::default();
         let mut delt: f64 = 0.;
         let mut isamp: i32 = 0;
@@ -1306,40 +1310,54 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             eprintln!("ERROR: No current set of ephemerides has been found.",);
             exit(1_i32);
         }
-        iq_buff = calloc((2_i32 * iq_buff_size) as u32, 2_i32 as u32) as *mut libc::c_short;
-        if iq_buff.is_null() {
-            eprintln!("ERROR: Failed to allocate 16-bit I/Q buffer.");
-            exit(1_i32);
-        }
+        // iq_buff = calloc((2_i32 * iq_buff_size) as u32, 2_i32 as u32) as *mut libc::c_short;
+        let mut iq_buff_new: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
+        let mut iq8_buff_new: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
+        // if iq_buff.is_null() {
+        //     eprintln!("ERROR: Failed to allocate 16-bit I/Q buffer.");
+        //     exit(1_i32);
+        // }
         if data_format == 8_i32 {
-            iq8_buff = calloc((2_i32 * iq_buff_size) as u32, 1_i32 as u32) as *mut libc::c_schar;
-            if iq8_buff.is_null() {
-                eprintln!("ERROR: Failed to allocate 8-bit I/Q buffer.");
-                exit(1_i32);
-            }
+            // iq8_buff = calloc((2_i32 * iq_buff_size) as u32, 1_i32 as u32) as *mut libc::c_schar;
+            iq8_buff_new = vec![0i8; 2 * iq_buff_size as usize];
+            // if iq8_buff.is_null() {
+            //     eprintln!("ERROR: Failed to allocate 8-bit I/Q buffer.");
+            //     exit(1_i32);
+            // }
         } else if data_format == 1_i32 {
-            iq8_buff = calloc((iq_buff_size / 4_i32) as u32, 1_i32 as u32) as *mut libc::c_schar;
-            if iq8_buff.is_null() {
-                eprintln!("ERROR: Failed to allocate compressed 1-bit I/Q buffer.");
-                exit(1_i32);
-            }
+            // iq8_buff = calloc((iq_buff_size / 4_i32) as u32, 1_i32 as u32) as *mut libc::c_schar;
+            iq8_buff_new = vec![0i8; iq_buff_size as usize / 4];
+            // if iq8_buff.is_null() {
+            //     eprintln!("ERROR: Failed to allocate compressed 1-bit I/Q buffer.");
+            //     exit(1_i32);
+            // }
         }
-        if strcmp(
-            b"-\0" as *const u8 as *const libc::c_char,
-            outfile.as_mut_ptr(),
-        ) != 0
-        {
-            fp = fopen(
-                outfile.as_mut_ptr(),
-                b"wb\0" as *const u8 as *const libc::c_char,
-            );
-            if fp.is_null() {
-                eprintln!("ERROR: Failed to open output file.");
-                exit(1_i32);
+        // if strcmp(
+        //     b"-\0" as *const u8 as *const libc::c_char,
+        //     outfile.as_mut_ptr(),
+        // ) != 0
+        // {
+        //     fp = fopen(
+        //         outfile.as_mut_ptr(),
+        //         b"wb\0" as *const u8 as *const libc::c_char,
+        //     );
+        //     if fp.is_null() {
+        //         eprintln!("ERROR: Failed to open output file.");
+        //         exit(1_i32);
+        //     }
+        // } else {
+        //     // todo: temporarily disable
+        //     // fp = stdout;
+        // }
+        let out_file = String::from_utf8(outfile.iter().map(|&c| c as u8).collect());
+        if let Ok(out_file) = out_file {
+            if out_file != "-" {
+                let file_name = out_file.trim_end_matches("\0");
+                fp_out = std::fs::File::create(file_name).ok();
+            } else {
+                // use stdout
+                unimplemented!()
             }
-        } else {
-            // todo: temporarily disable
-            // fp = stdout;
         }
         let mut i = 0;
         while i < 16 {
@@ -1380,7 +1398,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             ant_pat[i as usize] = pow(10.0f64, -ant_pat_db[i as usize] / 20.0f64);
             i += 1;
         }
-        tstart = clock();
+        // tstart = clock();
+        let time_start = Instant::now();
         grx = incGpsTime(grx, 0.1f64);
         iumd = 1_i32;
         while iumd < numd {
@@ -1475,52 +1494,90 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 i_acc = (i_acc + 64_i32) >> 7_i32;
                 q_acc = (q_acc + 64_i32) >> 7_i32;
-                *iq_buff.offset((isamp * 2_i32) as isize) = i_acc as libc::c_short;
-                *iq_buff.offset((isamp * 2_i32 + 1_i32) as isize) = q_acc as libc::c_short;
+                iq_buff_new[isamp as usize * 2] = i_acc as i16;
+                iq_buff_new[isamp as usize * 2 + 1] = i_acc as i16;
+                // *iq_buff.offset((isamp * 2_i32) as isize) = i_acc as libc::c_short;
+                // *iq_buff.offset((isamp * 2_i32 + 1_i32) as isize) = q_acc as libc::c_short;
                 isamp += 1;
             }
             if data_format == 1_i32 {
                 isamp = 0_i32;
                 while isamp < 2_i32 * iq_buff_size {
                     if isamp % 8_i32 == 0_i32 {
-                        *iq8_buff.offset((isamp / 8_i32) as isize) = 0_i32 as libc::c_schar;
+                        iq8_buff_new[(isamp / 8) as usize] = 0i8;
+                        // *iq8_buff.offset((isamp / 8_i32) as isize) = 0_i32 as libc::c_schar;
                     }
-                    let fresh1 = &mut (*iq8_buff.offset((isamp / 8_i32) as isize));
-                    *fresh1 = (*fresh1 as i32
-                        | (if *iq_buff.offset(isamp as isize) as i32 > 0_i32 {
+                    let fresh1_new = &mut iq8_buff_new[(isamp / 8) as usize];
+
+                    *fresh1_new = (*fresh1_new as i32
+                        | (if iq_buff_new[isamp as usize] as i32 > 0_i32 {
                             0x1_i32
                         } else {
                             0_i32
                         }) << (7_i32 - isamp % 8_i32))
                         as libc::c_schar;
+                    // let fresh1 = &mut (*iq8_buff.offset((isamp / 8_i32) as isize));
+                    // *fresh1 = (*fresh1 as i32
+                    //     | (if *iq_buff.offset(isamp as isize) as i32 > 0_i32 {
+                    //         0x1_i32
+                    //     } else {
+                    //         0_i32
+                    //     }) << (7_i32 - isamp % 8_i32))
+                    //     as libc::c_schar;
                     isamp += 1;
                 }
-                fwrite(
-                    iq8_buff as *const libc::c_void,
-                    1_i32 as u32,
-                    (iq_buff_size / 4_i32) as u32,
-                    fp,
-                );
+
+                if let Some(file) = &mut fp_out {
+                    file.write_all(std::slice::from_raw_parts(
+                        iq8_buff_new.as_ptr() as *const u8,
+                        (iq_buff_size / 4_i32) as usize,
+                    ))
+                    .ok();
+                }
+                // fwrite(
+                //     iq8_buff as *const libc::c_void,
+                //     1_i32 as u32,
+                //     (iq_buff_size / 4_i32) as u32,
+                //     fp,
+                // );
             } else if data_format == 8_i32 {
                 isamp = 0_i32;
                 while isamp < 2_i32 * iq_buff_size {
-                    *iq8_buff.offset(isamp as isize) =
-                        (*iq_buff.offset(isamp as isize) as i32 >> 4_i32) as libc::c_schar;
+                    iq8_buff_new[isamp as usize] =
+                        (iq_buff_new[isamp as usize] as i32 >> 4_i32) as libc::c_schar;
+                    // *iq8_buff.offset(isamp as isize) =
+                    //     (*iq_buff.offset(isamp as isize) as i32 >> 4_i32) as libc::c_schar;
                     isamp += 1;
                 }
-                fwrite(
-                    iq8_buff as *const libc::c_void,
-                    1_i32 as u32,
-                    (2_i32 * iq_buff_size) as u32,
-                    fp,
-                );
+
+                if let Some(file) = &mut fp_out {
+                    file.write_all(std::slice::from_raw_parts(
+                        iq8_buff_new.as_ptr() as *const u8,
+                        (2_i32 * iq_buff_size) as usize,
+                    ))
+                    .ok();
+                }
+                // fwrite(
+                //     iq8_buff as *const libc::c_void,
+                //     1_i32 as u32,
+                //     (2_i32 * iq_buff_size) as u32,
+                //     fp,
+                // );
             } else {
-                fwrite(
-                    iq_buff as *const libc::c_void,
-                    2_i32 as u32,
-                    (2_i32 * iq_buff_size) as u32,
-                    fp,
-                );
+                println!("use data_format 16");
+                if let Some(file) = &mut fp_out {
+                    let byte_slice = std::slice::from_raw_parts(
+                        iq_buff_new.as_ptr() as *const u8,
+                        (2_i32 * iq_buff_size * 2) as usize, // 2 bytes per sample
+                    );
+                    file.write_all(byte_slice).ok();
+                }
+                // fwrite(
+                //     iq_buff as *const libc::c_void,
+                //     2_i32 as u32,
+                //     (2_i32 * iq_buff_size) as u32,
+                //     fp,
+                // );
             }
             igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
             if igrx % 300_i32 == 0_i32 {
@@ -1600,15 +1657,19 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             // fflush(stdout);
             iumd += 1;
         }
-        tend = clock();
+        // tend = clock();
 
         eprintln!("\nDone!");
-        free(iq_buff as *mut libc::c_void);
-        fclose(fp);
+        // free(iq_buff as *mut libc::c_void);
+        // fclose(fp);
 
+        // eprintln!(
+        //     "Process time = {:.1} [sec]",
+        //     (tend - tstart) as f64 / 1000000_i32 as clock_t as f64,
+        // );
         eprintln!(
             "Process time = {:.1} [sec]",
-            (tend - tstart) as f64 / 1000000_i32 as clock_t as f64,
+            time_start.elapsed().as_secs_f32()
         );
         0_i32
     }

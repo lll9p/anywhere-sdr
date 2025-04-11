@@ -37,3 +37,12 @@ pub fn floor(value: f64) -> f64 {
 pub fn round(value: f64) -> f64 {
     value.round()
 }
+
+#[inline]
+pub fn iqbuf_to_u8(buf: &[i16]) -> Vec<u8> {
+    buf.iter().map(|v| *v as u8).collect()
+}
+#[inline]
+pub fn iq8buf_to_u8(buf: &[i8]) -> Vec<u8> {
+    buf.iter().map(|v| *v as u8).collect()
+}
