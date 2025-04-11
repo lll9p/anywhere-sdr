@@ -337,8 +337,8 @@ pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
 }
 
 pub fn satpos(
-    mut eph: ephem_t,
-    mut g: gpstime_t,
+    eph: &ephem_t,
+    g: &gpstime_t,
     pos: &mut [f64; 3],
     vel: &mut [f64; 3],
     clk: &mut [f64; 2],
@@ -720,7 +720,12 @@ pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
     g1
 }
 
-pub fn ionosphericDelay(ionoutc: &ionoutc_t, g: gpstime_t, llh: &[f64; 3], azel: &[f64; 2]) -> f64 {
+pub fn ionosphericDelay(
+    ionoutc: &ionoutc_t,
+    g: &gpstime_t,
+    llh: &[f64; 3],
+    azel: &[f64; 2],
+) -> f64 {
     let mut iono_delay: f64 = 0.0f64;
     let mut E: f64 = 0.;
     let mut phi_u: f64 = 0.;
@@ -787,50 +792,48 @@ pub fn ionosphericDelay(ionoutc: &ionoutc_t, g: gpstime_t, llh: &[f64; 3], azel:
     iono_delay
 }
 
-pub unsafe fn computeRange(
-    mut rho: *mut range_t,
-    mut eph: ephem_t,
+pub fn computeRange(
+    rho: &mut range_t,
+    eph: &ephem_t,
     ionoutc: &mut ionoutc_t,
-    mut g: gpstime_t,
+    g: &gpstime_t,
     xyz_0: &[f64; 3],
 ) {
-    unsafe {
-        let mut pos: [f64; 3] = [0.; 3];
-        let mut vel: [f64; 3] = [0.; 3];
-        let mut clk: [f64; 2] = [0.; 2];
-        let mut los: [f64; 3] = [0.; 3];
-        let mut tau: f64 = 0.;
-        let mut range: f64 = 0.;
-        let mut rate: f64 = 0.;
-        let mut xrot: f64 = 0.;
-        let mut yrot: f64 = 0.;
-        let mut llh: [f64; 3] = [0.; 3];
-        let mut neu: [f64; 3] = [0.; 3];
-        let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-        satpos(eph, g, &mut pos, &mut vel, &mut clk);
-        subVect(&mut los, &pos, xyz_0);
-        tau = normVect(&los) / 2.99792458e8f64;
-        pos[0] -= vel[0] * tau;
-        pos[1] -= vel[1] * tau;
-        pos[2] -= vel[2] * tau;
-        xrot = pos[0] + pos[1] * 7.2921151467e-5f64 * tau;
-        yrot = pos[1] - pos[0] * 7.2921151467e-5f64 * tau;
-        pos[0] = xrot;
-        pos[1] = yrot;
-        subVect(&mut los, &pos, xyz_0);
-        range = normVect(&los);
-        (*rho).d = range;
-        (*rho).range = range - 2.99792458e8f64 * clk[0];
-        rate = dotProd(&vel, &los) / range;
-        (*rho).rate = rate;
-        (*rho).g = g;
-        xyz2llh(xyz_0, &mut llh);
-        ltcmat(&llh, &mut tmat);
-        ecef2neu(&los, &tmat, &mut neu);
-        neu2azel(&mut (*rho).azel, &neu);
-        (*rho).iono_delay = ionosphericDelay(ionoutc, g, &llh, &(*rho).azel);
-        (*rho).range += (*rho).iono_delay;
-    }
+    let mut pos: [f64; 3] = [0.; 3];
+    let mut vel: [f64; 3] = [0.; 3];
+    let mut clk: [f64; 2] = [0.; 2];
+    let mut los: [f64; 3] = [0.; 3];
+    let mut tau: f64 = 0.;
+    let mut range: f64 = 0.;
+    let mut rate: f64 = 0.;
+    let mut xrot: f64 = 0.;
+    let mut yrot: f64 = 0.;
+    let mut llh: [f64; 3] = [0.; 3];
+    let mut neu: [f64; 3] = [0.; 3];
+    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
+    satpos(eph, g, &mut pos, &mut vel, &mut clk);
+    subVect(&mut los, &pos, xyz_0);
+    tau = normVect(&los) / 2.99792458e8f64;
+    pos[0] -= vel[0] * tau;
+    pos[1] -= vel[1] * tau;
+    pos[2] -= vel[2] * tau;
+    xrot = pos[0] + pos[1] * 7.2921151467e-5f64 * tau;
+    yrot = pos[1] - pos[0] * 7.2921151467e-5f64 * tau;
+    pos[0] = xrot;
+    pos[1] = yrot;
+    subVect(&mut los, &pos, xyz_0);
+    range = normVect(&los);
+    (rho).d = range;
+    (rho).range = range - 2.99792458e8f64 * clk[0];
+    rate = dotProd(&vel, &los) / range;
+    (rho).rate = rate;
+    rho.g = *g;
+    xyz2llh(xyz_0, &mut llh);
+    ltcmat(&llh, &mut tmat);
+    ecef2neu(&los, &tmat, &mut neu);
+    neu2azel(&mut (rho).azel, &neu);
+    (rho).iono_delay = ionosphericDelay(ionoutc, g, &llh, &(rho).azel);
+    (rho).range += (rho).iono_delay;
 }
 
 pub unsafe fn computeCodePhase(mut chan: *mut channel_t, mut rho1: range_t, mut dt: f64) {
@@ -1039,7 +1042,7 @@ pub fn checkSatVisibility(
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
-    satpos(eph, g, &mut pos, &mut vel, &mut clk);
+    satpos(&eph, &g, &mut pos, &mut vel, &mut clk);
     subVect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
@@ -1090,10 +1093,10 @@ pub unsafe fn allocateChannel(
                             codegen(&mut chan[i].ca, (chan[i]).prn);
                             eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
                             generateNavMsg(grx, &mut chan[i], 1_i32);
-                            computeRange(&mut rho, eph[sv as usize], &mut ionoutc, grx, xyz_0);
+                            computeRange(&mut rho, &eph[sv as usize], &mut ionoutc, &grx, xyz_0);
                             (chan[i]).rho0 = rho;
                             r_xyz = rho.range;
-                            computeRange(&mut rho, eph[sv as usize], &mut ionoutc, grx, &ref_0);
+                            computeRange(&mut rho, &eph[sv as usize], &mut ionoutc, &grx, &ref_0);
                             r_ref = rho.range;
                             phase_ini = 0.0f64;
                             phase_ini -= floor(phase_ini);
@@ -1678,17 +1681,17 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     if staticLocationMode == 0 {
                         computeRange(
                             &mut rho,
-                            eph[ieph as usize][sv as usize],
+                            &eph[ieph as usize][sv as usize],
                             &mut ionoutc,
-                            grx,
+                            &grx,
                             &xyz[iumd as usize],
                         );
                     } else {
                         computeRange(
                             &mut rho,
-                            eph[ieph as usize][sv as usize],
+                            &eph[ieph as usize][sv as usize],
                             &mut ionoutc,
-                            grx,
+                            &grx,
                             &xyz[0],
                         );
                     }
