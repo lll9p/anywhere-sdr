@@ -135,7 +135,6 @@ pub struct channel_t {
     pub azel: [f64; 2],
     pub rho0: range_t,
 }
-pub static mut allocatedSat: [i32; 32] = [0; 32];
 
 pub static mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
 
@@ -949,82 +948,100 @@ pub fn checkSatVisibility(
     0_i32
 }
 
-pub unsafe fn allocateChannel(
+pub fn allocateChannel(
     chan: &mut [channel_t; 16],
     eph: &mut [ephem_t; 32],
-    mut ionoutc: &mut ionoutc_t,
+    ionoutc: &mut ionoutc_t,
     grx: &gpstime_t,
     xyz_0: &[f64; 3],
     mut _elvMask: f64,
+    allocatedSat: &mut [i32; 32],
 ) -> i32 {
-    unsafe {
-        let mut nsat: i32 = 0_i32;
-        // let mut i: i32 = 0;
-        let mut sv = 0;
-        let mut azel: [f64; 2] = [0.; 2];
-        let mut rho: range_t = range_t {
-            g: gpstime_t { week: 0, sec: 0. },
-            range: 0.,
-            rate: 0.,
-            d: 0.,
-            azel: [0.; 2],
-            iono_delay: 0.,
-        };
-        let mut ref_0: [f64; 3] = [0.0f64, 0., 0.];
-        #[allow(unused_variables)]
-        let mut r_ref: f64 = 0.;
-        #[allow(unused_variables)]
-        let mut r_xyz: f64 = 0.;
-        let mut phase_ini: f64 = 0.;
-        sv = 0;
-        while sv < 32_i32 {
-            if checkSatVisibility(eph[sv as usize], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
-                nsat += 1;
-                if allocatedSat[sv as usize] == -1_i32 {
-                    let mut i = 0;
-                    while i < 16 {
-                        if chan[i].prn == 0_i32 {
-                            chan[i].prn = sv + 1_i32;
-                            chan[i].azel[0] = azel[0];
-                            chan[i].azel[1] = azel[1];
-                            codegen(&mut chan[i].ca, (chan[i]).prn);
-                            eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
-                            generateNavMsg(grx, &mut chan[i], 1_i32);
-                            computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, xyz_0);
-                            (chan[i]).rho0 = rho;
-                            r_xyz = rho.range;
-                            computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, &ref_0);
-                            r_ref = rho.range;
-                            phase_ini = 0.0f64;
-                            phase_ini -= floor(phase_ini);
-                            (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
-                            break;
-                        } else {
-                            i += 1;
-                        }
-                    }
-                    if i < 16 {
-                        allocatedSat[sv as usize] = i as i32;
+    let mut nsat: i32 = 0_i32;
+    // let mut i: i32 = 0;
+    let mut sv = 0;
+    let mut azel: [f64; 2] = [0.; 2];
+    let mut rho: range_t = range_t {
+        g: gpstime_t { week: 0, sec: 0. },
+        range: 0.,
+        rate: 0.,
+        d: 0.,
+        azel: [0.; 2],
+        iono_delay: 0.,
+    };
+    let mut ref_0: [f64; 3] = [0.0f64, 0., 0.];
+    #[allow(unused_variables)]
+    let mut r_ref: f64 = 0.;
+    #[allow(unused_variables)]
+    let mut r_xyz: f64 = 0.;
+    let mut phase_ini: f64 = 0.;
+    sv = 0;
+    while sv < 32_i32 {
+        if checkSatVisibility(eph[sv as usize], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
+            nsat += 1;
+            if allocatedSat[sv as usize] == -1_i32 {
+                let mut i = 0;
+                while i < 16 {
+                    if chan[i].prn == 0_i32 {
+                        chan[i].prn = sv + 1_i32;
+                        chan[i].azel[0] = azel[0];
+                        chan[i].azel[1] = azel[1];
+                        codegen(&mut chan[i].ca, (chan[i]).prn);
+                        eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
+                        generateNavMsg(grx, &mut chan[i], 1_i32);
+                        computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, xyz_0);
+                        (chan[i]).rho0 = rho;
+                        r_xyz = rho.range;
+                        computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, &ref_0);
+                        r_ref = rho.range;
+                        phase_ini = 0.0f64;
+                        phase_ini -= floor(phase_ini);
+                        (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
+                        break;
+                    } else {
+                        i += 1;
                     }
                 }
-            } else if allocatedSat[sv as usize] >= 0_i32 {
-                (chan[allocatedSat[sv as usize] as usize]).prn = 0_i32;
-                allocatedSat[sv as usize] = -1_i32;
+                if i < 16 {
+                    allocatedSat[sv as usize] = i as i32;
+                }
             }
-            sv += 1;
+        } else if allocatedSat[sv as usize] >= 0_i32 {
+            (chan[allocatedSat[sv as usize] as usize]).prn = 0_i32;
+            allocatedSat[sv as usize] = -1_i32;
         }
-        nsat
+        sv += 1;
     }
+    nsat
 }
 
 pub fn usage() {
     eprintln!(
-        "Usage: gps-sdr-sim [options]\nOptions:\n  -e <gps_nav>     RINEX navigation file for GPS ephemerides (required)\n  -u <user_motion> User motion file in ECEF x, y, z format (dynamic mode)\n  -x <user_motion> User motion file in lat, lon, height format (dynamic mode)\n  -g <nmea_gga>    NMEA GGA stream (dynamic mode)\n  -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484\n  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0\n  -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19\n  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss\n  -T <date,time>   Overwrite TOC and TOE to scenario start time\n  -d <duration>    Duration [sec] (dynamic mode max: {}, static mode max: {})\n  -o <output>      I/Q sampling data file (default: gpssim.bin)\n  -s <frequency>   Sampling frequency [Hz] (default: 2600000)\n  -b <iq_bits>     I/Q data format [1/8/16] (default: 16)\n  -i               Disable ionospheric delay for spacecraft scenario\n  -p [fixed_gain]  Disable path loss and hold power level constant\n  -v               Show details about simulated channels\n",
+        r#"Usage: gps-sdr-sim [options]
+Options:
+  -e <gps_nav>     RINEX navigation file for GPS ephemerides (required)
+  -u <user_motion> User motion file in ECEF x, y, z format (dynamic mode)
+  -x <user_motion> User motion file in lat, lon, height format (dynamic mode)
+  -g <nmea_gga>    NMEA GGA stream (dynamic mode)
+  -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
+  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
+  -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
+  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss
+  -T <date,time>   Overwrite TOC and TOE to scenario start time
+  -d <duration>    Duration [sec] (dynamic mode max: {}, static mode max: {})
+  -o <output>      I/Q sampling data file (default: gpssim.bin)
+  -s <frequency>   Sampling frequency [Hz] (default: 2600000)
+  -b <iq_bits>     I/Q data format [1/8/16] (default: 16)
+  -i               Disable ionospheric delay for spacecraft scenario
+  -p [fixed_gain]  Disable path loss and hold power level constant
+  -v               Show details about simulated channels
+"#,
         USER_MOTION_SIZE as f64 / 10.0f64,
         86400,
     );
 }
 unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
+    let mut allocatedSat: [i32; 32] = [0; 32];
     unsafe {
         let mut tstart: clock_t = 0;
         let mut tend: clock_t = 0;
@@ -1539,6 +1556,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             &grx,
             &xyz[0],
             elvmask,
+            &mut allocatedSat,
         );
         let mut i = 0_i32;
         while i < 16_i32 {
@@ -1741,6 +1759,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         &grx,
                         &xyz[iumd as usize],
                         elvmask,
+                        &mut allocatedSat,
                     );
                 } else {
                     allocateChannel(
@@ -1750,6 +1769,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         &grx,
                         &xyz[0],
                         elvmask,
+                        &mut allocatedSat,
                     );
                 }
                 if verb == 1_i32 {
