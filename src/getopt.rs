@@ -51,7 +51,7 @@ pub fn getopt(
                 optind += 1;
             }
             if opterr != 0 && *ostr as i32 != ':' as i32 {
-                println!("illegal option -- {}\n\0", optopt,);
+                println!("illegal option -- {}", optopt,);
             }
             return '?' as i32;
         }
@@ -72,7 +72,7 @@ pub fn getopt(
                         return ':' as i32;
                     }
                     if opterr != 0 {
-                        println!("option requires an argument -- {}\n\0", optopt,);
+                        println!("option requires an argument -- {}", optopt);
                     }
                     return '?' as i32;
                 } else {

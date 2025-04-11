@@ -34,14 +34,6 @@ unsafe extern "C" {
     fn strncmp(_: *const libc::c_char, _: *const libc::c_char, _: u32) -> i32;
     fn strchr(_: *const libc::c_char, _: i32) -> *mut libc::c_char;
     fn strtok(_: *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
-    fn atan2(_: f64, _: f64) -> f64;
-    fn cos(_: f64) -> f64;
-    fn sin(_: f64) -> f64;
-    fn pow(_: f64, _: f64) -> f64;
-    fn sqrt(_: f64) -> f64;
-    fn fabs(_: f64) -> f64;
-    fn floor(_: f64) -> f64;
-    fn round(_: f64) -> f64;
     fn clock() -> clock_t;
     fn time(__timer: *mut time_t) -> time_t;
     fn gmtime(__timer: *const time_t) -> *mut tm;
@@ -55,6 +47,7 @@ mod ionoutc;
 mod read_nmea_gga;
 mod read_rinex;
 mod table;
+mod utils;
 
 use constants::{PI, USER_MOTION_SIZE};
 use datetime::{datetime_t, gpstime_t, tm};
@@ -64,6 +57,7 @@ use ionoutc::ionoutc_t;
 use read_nmea_gga::readNmeaGGA;
 use read_rinex::readRinexNavAll;
 use table::{ant_pat_db, cosTable512, sinTable512};
+use utils::*;
 
 pub type size_t = u32;
 pub type __off_t = libc::c_long;
@@ -151,7 +145,7 @@ pub unsafe fn subVect(mut y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
 }
 
 pub unsafe fn normVect(mut x: &[f64; 3]) -> f64 {
-    unsafe { sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]) }
+    sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2])
 }
 
 pub unsafe fn dotProd(mut x1: *const f64, mut x2: *const f64) -> f64 {
@@ -307,33 +301,31 @@ pub unsafe fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
 }
 
 pub unsafe fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
-    unsafe {
-        let mut n: f64 = 0.;
-        let mut a: f64 = 0.;
-        let mut e: f64 = 0.;
-        let mut e2: f64 = 0.;
-        let mut clat: f64 = 0.;
-        let mut slat: f64 = 0.;
-        let mut clon: f64 = 0.;
-        let mut slon: f64 = 0.;
-        let mut d: f64 = 0.;
-        let mut nph: f64 = 0.;
-        let mut tmp: f64 = 0.;
-        a = 6378137.0f64;
-        e = 0.0818191908426f64;
-        e2 = e * e;
-        clat = cos(llh[0]);
-        slat = sin(llh[0]);
-        clon = cos(llh[1]);
-        slon = sin(llh[1]);
-        d = e * slat;
-        n = a / sqrt(1.0f64 - d * d);
-        nph = n + llh[2];
-        tmp = nph * clat;
-        xyz_0[0] = tmp * clon;
-        xyz_0[1] = tmp * slon;
-        xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
-    }
+    let mut n: f64 = 0.;
+    let mut a: f64 = 0.;
+    let mut e: f64 = 0.;
+    let mut e2: f64 = 0.;
+    let mut clat: f64 = 0.;
+    let mut slat: f64 = 0.;
+    let mut clon: f64 = 0.;
+    let mut slon: f64 = 0.;
+    let mut d: f64 = 0.;
+    let mut nph: f64 = 0.;
+    let mut tmp: f64 = 0.;
+    a = 6378137.0f64;
+    e = 0.0818191908426f64;
+    e2 = e * e;
+    clat = cos(llh[0]);
+    slat = sin(llh[0]);
+    clon = cos(llh[1]);
+    slon = sin(llh[1]);
+    d = e * slat;
+    n = a / sqrt(1.0f64 - d * d);
+    nph = n + llh[2];
+    tmp = nph * clat;
+    xyz_0[0] = tmp * clon;
+    xyz_0[1] = tmp * slon;
+    xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
 }
 
 pub unsafe fn ltcmat(mut llh: *const f64, mut t: *mut [f64; 3]) {
@@ -763,21 +755,19 @@ pub fn subGpsTime(mut g1: gpstime_t, mut g0: gpstime_t) -> f64 {
 }
 
 pub fn incGpsTime(mut g0: gpstime_t, mut dt: f64) -> gpstime_t {
-    unsafe {
-        let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        g1.week = g0.week;
-        g1.sec = g0.sec + dt;
-        g1.sec = round(g1.sec * 1000.0f64) / 1000.0f64;
-        while g1.sec >= 604800.0f64 {
-            g1.sec -= 604800.0f64;
-            g1.week += 1;
-        }
-        while g1.sec < 0.0f64 {
-            g1.sec += 604800.0f64;
-            g1.week -= 1;
-        }
-        g1
+    let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
+    g1.week = g0.week;
+    g1.sec = g0.sec + dt;
+    g1.sec = round(g1.sec * 1000.0f64) / 1000.0f64;
+    while g1.sec >= 604800.0f64 {
+        g1.sec -= 604800.0f64;
+        g1.week += 1;
     }
+    while g1.sec < 0.0f64 {
+        g1.sec += 604800.0f64;
+        g1.week -= 1;
+    }
+    g1
 }
 
 pub unsafe fn ionosphericDelay(
@@ -1608,7 +1598,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && staticLocationMode == 0
             || duration > 86400_f64 && staticLocationMode != 0
         {
-            eprintln!("ERROR: Invalid duration.\n\0");
+            eprintln!("ERROR: Invalid duration.");
             exit(1_i32);
         }
         iduration = (duration * 10.0f64 + 0.5f64) as i32;
@@ -1625,10 +1615,10 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 numd = readUserMotion(xyz.as_mut_ptr(), umfile.as_mut_ptr());
             }
             if numd == -1_i32 {
-                eprintln!("ERROR: Failed to open user motion / NMEA GGA file.\n\0");
+                eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
                 exit(1_i32);
             } else if numd == 0_i32 {
-                eprintln!("ERROR: Failed to read user motion / NMEA GGA data.\n\0");
+                eprintln!("ERROR: Failed to read user motion / NMEA GGA data.");
                 exit(1_i32);
             }
             if numd > iduration {
@@ -1636,49 +1626,49 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             }
             xyz2llh(&xyz[0], &mut llh);
         } else {
-            eprintln!("Using static location mode.\n\0");
+            eprintln!("Using static location mode.");
             numd = iduration;
             llh2xyz(&llh, &mut xyz[0]);
         }
 
         eprintln!(
-            "xyz = {}, {}, {}\n\0",
+            "xyz = {}, {}, {}",
             xyz[0_i32 as usize][0_i32 as usize],
             xyz[0_i32 as usize][1_i32 as usize],
             xyz[0_i32 as usize][2_i32 as usize],
         );
 
         eprintln!(
-            "llh = {}, {}, {}\n\0",
+            "llh = {}, {}, {}",
             llh[0_i32 as usize] * 57.2957795131f64,
             llh[1_i32 as usize] * 57.2957795131f64,
             llh[2_i32 as usize],
         );
         neph = readRinexNavAll(eph.as_mut_ptr(), &mut ionoutc, navfile.as_mut_ptr());
         if neph == 0_i32 {
-            eprintln!("ERROR: No ephemeris available.\n\0",);
+            eprintln!("ERROR: No ephemeris available.",);
             exit(1_i32);
         } else if neph == -1_i32 {
-            eprintln!("ERROR: ephemeris file not found.\n\0");
+            eprintln!("ERROR: ephemeris file not found.");
             exit(1_i32);
         }
         if verb == 1_i32 && ionoutc.vflg == 1_i32 {
             eprintln!(
-                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}\n\0",
+                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
                 ionoutc.alpha0, ionoutc.alpha1, ionoutc.alpha2, ionoutc.alpha3,
             );
 
             eprintln!(
-                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}\n\0",
+                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
                 ionoutc.beta0, ionoutc.beta1, ionoutc.beta2, ionoutc.beta3,
             );
 
             eprintln!(
-                "   {:19.11e} {:19.11e}  {:9} {:9}\n\0",
+                "   {:19.11e} {:19.11e}  {:9} {:9}",
                 ionoutc.A0, ionoutc.A1, ionoutc.tot, ionoutc.wnt,
             );
 
-            eprintln!("{:6}\n\0", ionoutc.dtls,);
+            eprintln!("{:6}", ionoutc.dtls,);
         }
         sv = 0_i32;
         while sv < 32_i32 {
@@ -1742,13 +1732,13 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     sv += 1;
                 }
             } else if subGpsTime(g0, gmin) < 0.0f64 || subGpsTime(gmax, g0) < 0.0f64 {
-                eprintln!("ERROR: Invalid start time.\n\0");
+                eprintln!("ERROR: Invalid start time.");
                 eprintln!(
-                    "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})\n\0",
+                    "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
                     tmin.y, tmin.m, tmin.d, tmin.hh, tmin.mm, tmin.sec, gmin.week, gmin.sec,
                 );
                 eprintln!(
-                    "tmax = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})\n\0",
+                    "tmax = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
                     tmax.y, tmax.m, tmax.d, tmax.hh, tmax.mm, tmax.sec, gmax.week, gmax.sec,
                 );
                 exit(1_i32);
@@ -1759,11 +1749,11 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
 
         eprintln!(
-            "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})\n\0",
+            "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
             t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
         );
 
-        eprintln!("Duration = {:.1} [sec]\n\0", numd as f64 / 10.0f64);
+        eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
         ieph = -1_i32;
         i = 0_i32;
         while i < neph {
@@ -1784,24 +1774,24 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             i += 1;
         }
         if ieph == -1_i32 {
-            eprintln!("ERROR: No current set of ephemerides has been found.\n\0",);
+            eprintln!("ERROR: No current set of ephemerides has been found.",);
             exit(1_i32);
         }
         iq_buff = calloc((2_i32 * iq_buff_size) as u32, 2_i32 as u32) as *mut libc::c_short;
         if iq_buff.is_null() {
-            eprintln!("ERROR: Failed to allocate 16-bit I/Q buffer.\n\0");
+            eprintln!("ERROR: Failed to allocate 16-bit I/Q buffer.");
             exit(1_i32);
         }
         if data_format == 8_i32 {
             iq8_buff = calloc((2_i32 * iq_buff_size) as u32, 1_i32 as u32) as *mut libc::c_schar;
             if iq8_buff.is_null() {
-                eprintln!("ERROR: Failed to allocate 8-bit I/Q buffer.\n\0");
+                eprintln!("ERROR: Failed to allocate 8-bit I/Q buffer.");
                 exit(1_i32);
             }
         } else if data_format == 1_i32 {
             iq8_buff = calloc((iq_buff_size / 4_i32) as u32, 1_i32 as u32) as *mut libc::c_schar;
             if iq8_buff.is_null() {
-                eprintln!("ERROR: Failed to allocate compressed 1-bit I/Q buffer.\n\0");
+                eprintln!("ERROR: Failed to allocate compressed 1-bit I/Q buffer.");
                 exit(1_i32);
             }
         }
@@ -1815,7 +1805,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 b"wb\0" as *const u8 as *const libc::c_char,
             );
             if fp.is_null() {
-                eprintln!("ERROR: Failed to open output file.\n\0");
+                eprintln!("ERROR: Failed to open output file.");
                 exit(1_i32);
             }
         } else {
@@ -1845,7 +1835,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         while i < 16_i32 {
             if chan[i as usize].prn > 0_i32 {
                 eprintln!(
-                    "{:02} {:6.1} {:5.1} {:11.1} {:5.1}\n\0",
+                    "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                     chan[i as usize].prn,
                     chan[i as usize].azel[0_i32 as usize] * 57.2957795131f64,
                     chan[i as usize].azel[1_i32 as usize] * 57.2957795131f64,
@@ -2061,7 +2051,7 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     while i < 16_i32 {
                         if chan[i as usize].prn > 0_i32 {
                             eprintln!(
-                                "{:02} {:6.1} {:5.1} {:11.1} {:5.1}\n\0",
+                                "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                                 chan[i as usize].prn,
                                 chan[i as usize].azel[0_i32 as usize] * 57.2957795131f64,
                                 chan[i as usize].azel[1_i32 as usize] * 57.2957795131f64,
@@ -2082,12 +2072,12 @@ unsafe fn main_0(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
         tend = clock();
 
-        eprintln!("\nDone!\n\0");
+        eprintln!("\nDone!");
         free(iq_buff as *mut libc::c_void);
         fclose(fp);
 
         eprintln!(
-            "Process time = {:.1} [sec]\n\0",
+            "Process time = {:.1} [sec]",
             (tend - tstart) as f64 / 1000000_i32 as __clock_t as f64,
         );
         0_i32
