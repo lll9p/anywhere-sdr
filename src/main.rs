@@ -1022,8 +1022,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         let mut tend: clock_t = 0;
         let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
         let mut sv: i32 = 0;
-        let mut neph: i32 = 0;
-        let mut ieph: i32 = 0;
+        let mut neph: usize = 0;
+        let mut ieph: usize = 0;
         let mut eph: [[ephem_t; 32]; 15] = [[ephem_t::default(); 32]; 15];
         let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
         let mut llh: [f64; 3] = [0.; 3];
@@ -1178,10 +1178,10 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             llh[2],
         );
         neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
-        if neph == 0_i32 {
+        if neph == 0 {
             eprintln!("ERROR: No ephemeris available.",);
             exit(1_i32);
-        } else if neph == -1_i32 {
+        } else if neph == usize::MAX {
             eprintln!("ERROR: ephemeris file not found.");
             exit(1_i32);
         }
@@ -1223,9 +1223,9 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         tmax.y = 0_i32;
         sv = 0_i32;
         while sv < 32_i32 {
-            if eph[(neph - 1_i32) as usize][sv as usize].vflg == 1_i32 {
-                gmax = eph[(neph - 1_i32) as usize][sv as usize].toc;
-                tmax = eph[(neph - 1_i32) as usize][sv as usize].t;
+            if eph[neph - 1][sv as usize].vflg == 1_i32 {
+                gmax = eph[neph - 1][sv as usize].toc;
+                tmax = eph[neph - 1][sv as usize].t;
                 break;
             } else {
                 sv += 1;
@@ -1245,13 +1245,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 while sv < 32_i32 {
                     let mut i = 0;
                     while i < neph {
-                        if eph[i as usize][sv as usize].vflg == 1_i32 {
-                            gtmp = incGpsTime(eph[i as usize][sv as usize].toc, dsec);
+                        if eph[i][sv as usize].vflg == 1_i32 {
+                            gtmp = incGpsTime(eph[i][sv as usize].toc, dsec);
                             gps2date(&gtmp, &mut ttmp);
-                            eph[i as usize][sv as usize].toc = gtmp;
-                            eph[i as usize][sv as usize].t = ttmp;
-                            gtmp = incGpsTime(eph[i as usize][sv as usize].toe, dsec);
-                            eph[i as usize][sv as usize].toe = gtmp;
+                            eph[i][sv as usize].toc = gtmp;
+                            eph[i][sv as usize].t = ttmp;
+                            gtmp = incGpsTime(eph[i][sv as usize].toe, dsec);
+                            eph[i][sv as usize].toe = gtmp;
                         }
                         i += 1;
                     }
@@ -1280,13 +1280,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         );
 
         eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
-        ieph = -1_i32;
+        ieph = usize::MAX;
         let mut i = 0;
         while i < neph {
             sv = 0_i32;
             while sv < 32_i32 {
-                if eph[i as usize][sv as usize].vflg == 1_i32 {
-                    dt = subGpsTime(g0, eph[i as usize][sv as usize].toc);
+                if eph[i][sv as usize].vflg == 1_i32 {
+                    dt = subGpsTime(g0, eph[i][sv as usize].toc);
                     if (-3600.0f64..3600.0f64).contains(&dt) {
                         ieph = i;
                         break;
@@ -1294,12 +1294,15 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 sv += 1;
             }
-            if ieph >= 0_i32 {
+            if ieph != usize::MAX {
                 break;
             }
+            // if ieph >= 0 {
+            //     break;
+            // }
             i += 1;
         }
-        if ieph == -1_i32 {
+        if ieph == usize::MAX {
             eprintln!("ERROR: No current set of ephemerides has been found.",);
             exit(1_i32);
         }
@@ -1351,7 +1354,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         grx = incGpsTime(g0, 0.0f64);
         allocateChannel(
             &mut chan,
-            &mut eph[ieph as usize],
+            &mut eph[ieph],
             &mut ionoutc,
             &grx,
             &xyz[0],
@@ -1396,7 +1399,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     if staticLocationMode == 0 {
                         computeRange(
                             &mut rho,
-                            &eph[ieph as usize][sv as usize],
+                            &eph[ieph][sv as usize],
                             &mut ionoutc,
                             &grx,
                             &xyz[iumd as usize],
@@ -1404,7 +1407,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     } else {
                         computeRange(
                             &mut rho,
-                            &eph[ieph as usize][sv as usize],
+                            &eph[ieph][sv as usize],
                             &mut ionoutc,
                             &grx,
                             &xyz[0],
@@ -1530,15 +1533,15 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 sv = 0_i32;
                 while sv < 32_i32 {
-                    if eph[(ieph + 1_i32) as usize][sv as usize].vflg == 1_i32 {
-                        dt = subGpsTime(eph[(ieph + 1_i32) as usize][sv as usize].toc, grx);
+                    if eph[ieph + 1][sv as usize].vflg == 1_i32 {
+                        dt = subGpsTime(eph[ieph + 1][sv as usize].toc, grx);
                         if dt < 3600.0f64 {
                             ieph += 1;
                             let mut i = 0_i32;
                             while i < 16_i32 {
                                 if chan[i as usize].prn != 0_i32 {
                                     eph2sbf(
-                                        eph[ieph as usize][(chan[i as usize].prn - 1_i32) as usize],
+                                        eph[ieph][(chan[i as usize].prn - 1_i32) as usize],
                                         &ionoutc,
                                         &mut chan[i as usize].sbf,
                                     );
@@ -1554,7 +1557,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 if staticLocationMode == 0 {
                     allocateChannel(
                         &mut chan,
-                        &mut eph[ieph as usize],
+                        &mut eph[ieph],
                         &mut ionoutc,
                         &grx,
                         &xyz[iumd as usize],
@@ -1564,7 +1567,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 } else {
                     allocateChannel(
                         &mut chan,
-                        &mut eph[ieph as usize],
+                        &mut eph[ieph],
                         &mut ionoutc,
                         &grx,
                         &xyz[0],
