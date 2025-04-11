@@ -88,7 +88,7 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
                 b",\0" as *const u8 as *const libc::c_char,
             );
             llh[2_i32 as usize] += atof(token);
-            llh2xyz(&mut llh, &mut pos);
+            llh2xyz(&llh, &mut pos);
             (*xyz_0.offset(numd as isize))[0_i32 as usize] = pos[0_i32 as usize];
             (*xyz_0.offset(numd as isize))[1_i32 as usize] = pos[1_i32 as usize];
             (*xyz_0.offset(numd as isize))[2_i32 as usize] = pos[2_i32 as usize];

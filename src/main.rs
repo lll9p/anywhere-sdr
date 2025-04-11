@@ -861,7 +861,7 @@ pub unsafe fn computeRange(
         let mut neu: [f64; 3] = [0.; 3];
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
-        subVect(&mut los, &pos, &xyz_0);
+        subVect(&mut los, &pos, xyz_0);
         tau = normVect(&los) / 2.99792458e8f64;
         pos[0_i32 as usize] -= vel[0_i32 as usize] * tau;
         pos[1_i32 as usize] -= vel[1_i32 as usize] * tau;
@@ -870,7 +870,7 @@ pub unsafe fn computeRange(
         yrot = pos[1_i32 as usize] - pos[0_i32 as usize] * 7.2921151467e-5f64 * tau;
         pos[0_i32 as usize] = xrot;
         pos[1_i32 as usize] = yrot;
-        subVect(&mut los, &pos, &xyz_0);
+        subVect(&mut los, &pos, xyz_0);
         range = normVect(&los);
         (*rho).d = range;
         (*rho).range = range - 2.99792458e8f64 * clk[0_i32 as usize];
@@ -1026,17 +1026,17 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
             prevwrd = 0_u32;
             iwrd = 0_i32;
             while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[4_i32 as usize][iwrd as usize] as u32;
+                sbfwrd = (*chan).sbf[4_i32 as usize][iwrd as usize];
                 if iwrd == 1_i32 {
-                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as u32;
+                    sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
                 }
-                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as u32;
+                sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
                 nib = if iwrd == 1_i32 || iwrd == 9_i32 {
                     1_i32
                 } else {
                     0_i32
                 };
-                (*chan).dwrd[iwrd as usize] = computeChecksum(sbfwrd as u32, nib);
+                (*chan).dwrd[iwrd as usize] = computeChecksum(sbfwrd, nib);
                 prevwrd = (*chan).dwrd[iwrd as usize];
                 iwrd += 1;
             }
@@ -1053,21 +1053,21 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
             tow = tow.wrapping_add(1);
             iwrd = 0_i32;
             while iwrd < 10_i32 {
-                sbfwrd = (*chan).sbf[isbf as usize][iwrd as usize] as u32;
+                sbfwrd = (*chan).sbf[isbf as usize][iwrd as usize];
                 if isbf == 0_i32 && iwrd == 2_i32 {
-                    sbfwrd = (sbfwrd as u32 | (wn & 0x3ff_u32) << 20_i32) as u32;
+                    sbfwrd |= (wn & 0x3ff_u32) << 20_i32;
                 }
                 if iwrd == 1_i32 {
-                    sbfwrd = (sbfwrd as u32 | (tow & 0x1ffff_u32) << 13_i32) as u32;
+                    sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
                 }
-                sbfwrd = (sbfwrd as u32 | prevwrd << 30_i32 & 0xc0000000_u32) as u32;
+                sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32;
                 nib = if iwrd == 1_i32 || iwrd == 9_i32 {
                     1_i32
                 } else {
                     0_i32
                 };
                 (*chan).dwrd[((isbf + 1_i32) * 10_i32 + iwrd) as usize] =
-                    computeChecksum(sbfwrd as u32, nib);
+                    computeChecksum(sbfwrd, nib);
                 prevwrd = (*chan).dwrd[((isbf + 1_i32) * 10_i32 + iwrd) as usize];
                 iwrd += 1;
             }
@@ -1098,7 +1098,7 @@ pub unsafe fn checkSatVisibility(
         xyz2llh(xyz_0, &mut llh);
         ltcmat(llh.as_mut_ptr(), tmat.as_mut_ptr());
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
-        subVect(&mut los, &pos, &xyz_0);
+        subVect(&mut los, &pos, xyz_0);
         ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
         neu2azel(azel, neu.as_mut_ptr());
         if *azel.offset(1) * 57.2957795131f64 > elvMask {
