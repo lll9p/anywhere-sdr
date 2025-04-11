@@ -312,26 +312,20 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
 }
 
-pub unsafe fn ltcmat(mut llh: *const f64, mut t: *mut [f64; 3]) {
-    unsafe {
-        let mut slat: f64 = 0.;
-        let mut clat: f64 = 0.;
-        let mut slon: f64 = 0.;
-        let mut clon: f64 = 0.;
-        slat = sin(*llh.offset(0));
-        clat = cos(*llh.offset(0));
-        slon = sin(*llh.offset(1));
-        clon = cos(*llh.offset(1));
-        (*t.offset(0))[0_i32 as usize] = -slat * clon;
-        (*t.offset(0))[1_i32 as usize] = -slat * slon;
-        (*t.offset(0))[2_i32 as usize] = clat;
-        (*t.offset(1))[0_i32 as usize] = -slon;
-        (*t.offset(1))[1_i32 as usize] = clon;
-        (*t.offset(1))[2_i32 as usize] = 0.0f64;
-        (*t.offset(2))[0_i32 as usize] = clat * clon;
-        (*t.offset(2))[1_i32 as usize] = clat * slon;
-        (*t.offset(2))[2_i32 as usize] = slat;
-    }
+pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
+    let slat = sin(llh[0]);
+    let clat = cos(llh[0]);
+    let slon = sin(llh[1]);
+    let clon = cos(llh[1]);
+    t[0][0] = -slat * clon;
+    t[0][1] = -slat * slon;
+    t[0][2] = clat;
+    t[1][0] = -slon;
+    t[1][1] = clon;
+    t[1][2] = 0.0f64;
+    t[2][0] = clat * clon;
+    t[2][1] = clat * slon;
+    t[2][2] = slat;
 }
 
 pub unsafe fn ecef2neu(mut xyz_0: *const f64, mut t: *mut [f64; 3], mut neu: *mut f64) {
@@ -868,7 +862,7 @@ pub unsafe fn computeRange(
         (*rho).rate = rate;
         (*rho).g = g;
         xyz2llh(xyz_0, &mut llh);
-        ltcmat(llh.as_mut_ptr(), tmat.as_mut_ptr());
+        ltcmat(&llh, &mut tmat);
         ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
         neu2azel(((*rho).azel).as_mut_ptr(), neu.as_mut_ptr());
         (*rho).iono_delay =
@@ -1086,7 +1080,7 @@ pub unsafe fn checkSatVisibility(
             return -1_i32;
         }
         xyz2llh(xyz_0, &mut llh);
-        ltcmat(llh.as_mut_ptr(), tmat.as_mut_ptr());
+        ltcmat(&llh, &mut tmat);
         satpos(eph, g, pos.as_mut_ptr(), vel.as_mut_ptr(), clk.as_mut_ptr());
         subVect(&mut los, &pos, xyz_0);
         ecef2neu(los.as_mut_ptr(), tmat.as_mut_ptr(), neu.as_mut_ptr());
