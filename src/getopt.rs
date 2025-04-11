@@ -1,6 +1,6 @@
 use crate::{
-    atof, atoi, constants::USER_MOTION_SIZE, date2gps, datetime::gpstime_t, datetime_t, exit,
-    gmtime, ionoutc_t, llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm, utils::*,
+    atof, atoi, constants::USER_MOTION_SIZE, date2gps, datetime::gpstime_t, datetime_t, gmtime,
+    ionoutc_t, llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm, utils::*,
 };
 
 pub static mut opterr: i32 = 1_i32;
@@ -198,7 +198,7 @@ pub unsafe fn loop_through_opts(
                     *samp_freq = atof(optarg);
                     if *samp_freq < 1.0e6f64 {
                         eprintln!("ERROR: Invalid sampling frequency.\n");
-                        exit(1_i32);
+                        panic!();
                     }
                     current_block_85 = 2750570471926810434;
                 }
@@ -206,7 +206,7 @@ pub unsafe fn loop_through_opts(
                     *data_format = atoi(optarg);
                     if *data_format != 1_i32 && *data_format != 8_i32 && *data_format != 16_i32 {
                         eprintln!("ERROR: Invalid I/Q data format.\n");
-                        exit(1_i32);
+                        panic!();
                     }
                     current_block_85 = 2750570471926810434;
                 }
@@ -222,16 +222,16 @@ pub unsafe fn loop_through_opts(
                     // original gps-sdr-sim logical mistake
                     if ionoutc.dn < 1_i32 || ionoutc.dn > 7_i32 {
                         eprintln!("ERROR: Invalid GPS day number");
-                        exit(1_i32);
+                        panic!();
                     }
                     if ionoutc.wnlsf < 0_i32 {
                         eprintln!("ERROR: Invalid GPS week number");
-                        exit(1_i32);
+                        panic!();
                     }
                     // original gps-sdr-sim logical mistake
                     if ionoutc.dtlsf < -128_i32 || ionoutc.dtlsf > 127_i32 {
                         eprintln!("ERROR: Invalid delta leap second");
-                        exit(1_i32);
+                        panic!();
                     }
                     current_block_85 = 2750570471926810434;
                 }
@@ -277,7 +277,7 @@ pub unsafe fn loop_through_opts(
                         *fixed_gain = atoi(*argv.offset(optind as isize));
                         if !(1_i32..=128_i32).contains(fixed_gain) {
                             eprintln!("ERROR: Fixed gain must be between 1 and 128.\n");
-                            exit(1_i32);
+                            panic!();
                         }
                         optind += 1;
                     }
@@ -290,7 +290,7 @@ pub unsafe fn loop_through_opts(
                 }
                 58 | 63 => {
                     usage();
-                    exit(1_i32);
+                    panic!();
                 }
                 _ => {
                     current_block_85 = 2750570471926810434;
@@ -320,7 +320,7 @@ pub unsafe fn loop_through_opts(
                     || t0.sec >= 60.0f64
                 {
                     eprintln!("ERROR: Invalid date and time.\n");
-                    exit(1_i32);
+                    panic!();
                 }
                 t0.sec = floor(t0.sec);
                 date2gps(t0, g0);

@@ -16,24 +16,18 @@ unsafe extern "C" {
     pub type _IO_marker;
 
     fn fclose(__stream: *mut FILE) -> i32;
-    fn fflush(__stream: *mut FILE) -> i32;
     fn fopen(_: *const libc::c_char, _: *const libc::c_char) -> *mut FILE;
 
     fn sscanf(_: *const libc::c_char, _: *const libc::c_char, _: ...) -> i32;
     fn fgets(__s: *mut libc::c_char, __n: i32, __stream: *mut FILE) -> *mut libc::c_char;
-    fn fwrite(_: *const libc::c_void, _: u32, _: u32, _: *mut FILE) -> u32;
     fn atof(__nptr: *const libc::c_char) -> f64;
     fn atoi(__nptr: *const libc::c_char) -> i32;
-    fn calloc(_: u32, _: u32) -> *mut libc::c_void;
-    fn free(_: *mut libc::c_void);
-    fn exit(_: i32) -> !;
     fn strcpy(_: *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
     fn strncpy(_: *mut libc::c_char, _: *const libc::c_char, _: u32) -> *mut libc::c_char;
     fn strcmp(_: *const libc::c_char, _: *const libc::c_char) -> i32;
     fn strncmp(_: *const libc::c_char, _: *const libc::c_char, _: u32) -> i32;
     fn strchr(_: *const libc::c_char, _: i32) -> *mut libc::c_char;
     fn strtok(_: *mut libc::c_char, _: *const libc::c_char) -> *mut libc::c_char;
-    fn clock() -> clock_t;
     fn time(__timer: *mut time_t) -> time_t;
     fn gmtime(__timer: *const time_t) -> *mut tm;
 }
@@ -1117,7 +1111,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         );
         if navfile[0] as i32 == 0_i32 {
             eprintln!("ERROR: GPS ephemeris file is not specified.\n");
-            exit(1_i32);
+            panic!();
         }
         if umfile[0] as i32 == 0_i32 && staticLocationMode == 0 {
             staticLocationMode = 1_i32;
@@ -1130,7 +1124,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             || duration > 86400_f64 && staticLocationMode != 0
         {
             eprintln!("ERROR: Invalid duration.");
-            exit(1_i32);
+            panic!();
         }
         iduration = (duration * 10.0f64 + 0.5f64) as i32;
         samp_freq = floor(samp_freq / 10.0f64);
@@ -1147,10 +1141,10 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             }
             if numd == -1_i32 {
                 eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
-                exit(1_i32);
+                panic!();
             } else if numd == 0_i32 {
                 eprintln!("ERROR: Failed to read user motion / NMEA GGA data.");
-                exit(1_i32);
+                panic!();
             }
             if numd > iduration {
                 numd = iduration;
@@ -1173,10 +1167,10 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
         if neph == 0 {
             eprintln!("ERROR: No ephemeris available.",);
-            exit(1_i32);
+            panic!();
         } else if neph == usize::MAX {
             eprintln!("ERROR: ephemeris file not found.");
-            exit(1_i32);
+            panic!();
         }
         if verb == 1_i32 && ionoutc.vflg == 1_i32 {
             eprintln!(
@@ -1260,7 +1254,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     "tmax = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
                     tmax.y, tmax.m, tmax.d, tmax.hh, tmax.mm, tmax.sec, gmax.week, gmax.sec,
                 );
-                exit(1_i32);
+                panic!();
             }
         } else {
             g0 = gmin;
@@ -1297,7 +1291,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
         if ieph == usize::MAX {
             eprintln!("ERROR: No current set of ephemerides has been found.",);
-            exit(1_i32);
+            panic!();
         }
         let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
         let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
@@ -1317,7 +1311,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         //     );
         //     if fp.is_null() {
         //         eprintln!("ERROR: Failed to open output file.");
-        //         exit(1_i32);
+        //         panic!();
         //     }
         // } else {
         //     // todo: temporarily disable
