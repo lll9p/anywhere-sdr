@@ -190,9 +190,9 @@ pub unsafe fn codegen(mut ca: *mut i32, mut prn: i32) {
             r2[0] = c2;
             i += 1;
         }
-        let mut i = 0_i32;
+        let mut i = 0;
         j = 1023 - delay[(prn - 1) as usize];
-        while i < 1023_i32 {
+        while i < 1023 {
             *ca.offset(i as isize) = (1_i32 - g1[i as usize] * g2[j % 1023]) / 2_i32;
             i += 1;
             j += 1;
@@ -1101,7 +1101,7 @@ pub unsafe fn checkSatVisibility(
 }
 
 pub unsafe fn allocateChannel(
-    mut chan: *mut channel_t,
+    chan: &mut [channel_t; 16],
     mut eph: *mut ephem_t,
     mut ionoutc: ionoutc_t,
     mut grx: gpstime_t,
@@ -1111,7 +1111,7 @@ pub unsafe fn allocateChannel(
     unsafe {
         let mut nsat: i32 = 0_i32;
         // let mut i: i32 = 0;
-        let mut sv: i32 = 0;
+        let mut sv = 0;
         let mut azel: [f64; 2] = [0.; 2];
         let mut rho: range_t = range_t {
             g: gpstime_t { week: 0, sec: 0. },
@@ -1127,7 +1127,7 @@ pub unsafe fn allocateChannel(
         #[allow(unused_variables)]
         let mut r_xyz: f64 = 0.;
         let mut phase_ini: f64 = 0.;
-        sv = 0_i32;
+        sv = 0;
         while sv < 32_i32 {
             if checkSatVisibility(
                 *eph.offset(sv as isize),
@@ -1139,22 +1139,19 @@ pub unsafe fn allocateChannel(
             {
                 nsat += 1;
                 if allocatedSat[sv as usize] == -1_i32 {
-                    let mut i = 0_i32;
-                    while i < 16_i32 {
-                        if (*chan.offset(i as isize)).prn == 0_i32 {
-                            (*chan.offset(i as isize)).prn = sv + 1_i32;
-                            (*chan.offset(i as isize)).azel[0_i32 as usize] = azel[0_i32 as usize];
-                            (*chan.offset(i as isize)).azel[1_i32 as usize] = azel[1_i32 as usize];
-                            codegen(
-                                ((*chan.offset(i as isize)).ca).as_mut_ptr(),
-                                (*chan.offset(i as isize)).prn,
-                            );
+                    let mut i = 0;
+                    while i < 16 {
+                        if chan[i].prn == 0_i32 {
+                            chan[i].prn = sv + 1_i32;
+                            chan[i].azel[0_i32 as usize] = azel[0_i32 as usize];
+                            chan[i].azel[1_i32 as usize] = azel[1_i32 as usize];
+                            codegen((chan[i]).ca.as_mut_ptr(), (chan[i]).prn);
                             eph2sbf(
                                 *eph.offset(sv as isize),
                                 ionoutc,
-                                ((*chan.offset(i as isize)).sbf).as_mut_ptr(),
+                                ((chan[i]).sbf).as_mut_ptr(),
                             );
-                            generateNavMsg(grx, &mut *chan.offset(i as isize), 1_i32);
+                            generateNavMsg(grx, &mut chan[i], 1_i32);
                             computeRange(
                                 &mut rho,
                                 *eph.offset(sv as isize),
@@ -1162,7 +1159,7 @@ pub unsafe fn allocateChannel(
                                 grx,
                                 xyz_0,
                             );
-                            (*chan.offset(i as isize)).rho0 = rho;
+                            (chan[i]).rho0 = rho;
                             r_xyz = rho.range;
                             computeRange(
                                 &mut rho,
@@ -1174,19 +1171,18 @@ pub unsafe fn allocateChannel(
                             r_ref = rho.range;
                             phase_ini = 0.0f64;
                             phase_ini -= floor(phase_ini);
-                            (*chan.offset(i as isize)).carr_phase =
-                                (512.0f64 * 65536.0f64 * phase_ini) as u32;
+                            (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
                             break;
                         } else {
                             i += 1;
                         }
                     }
-                    if i < 16_i32 {
-                        allocatedSat[sv as usize] = i;
+                    if i < 16 {
+                        allocatedSat[sv as usize] = i as i32;
                     }
                 }
             } else if allocatedSat[sv as usize] >= 0_i32 {
-                (*chan.offset(allocatedSat[sv as usize] as isize)).prn = 0_i32;
+                (chan[allocatedSat[sv as usize] as usize]).prn = 0_i32;
                 allocatedSat[sv as usize] = -1_i32;
             }
             sv += 1;
@@ -1222,7 +1218,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             carr_phase: 0,
             carr_phasestep: 0,
             code_phase: 0.,
-            g0: gpstime_t { week: 0, sec: 0. },
+            g0: gpstime_t::default(),
             sbf: [[0; 10]; 5],
             dwrd: [0; 60],
             iword: 0,
@@ -1231,14 +1227,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             dataBit: 0,
             codeCA: 0,
             azel: [0.; 2],
-            rho0: range_t {
-                g: gpstime_t { week: 0, sec: 0. },
-                range: 0.,
-                rate: 0.,
-                d: 0.,
-                azel: [0.; 2],
-                iono_delay: 0.,
-            },
+            rho0: range_t::default(),
         }; 16];
         let mut elvmask: f64 = 0.0f64;
         let mut ip: i32 = 0;
@@ -1711,9 +1700,9 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             // todo: temporarily disable
             // fp = stdout;
         }
-        let mut i = 0_i32;
-        while i < 16_i32 {
-            chan[i as usize].prn = 0_i32;
+        let mut i = 0;
+        while i < 16 {
+            chan[i].prn = 0_i32;
             i += 1;
         }
         sv = 0_i32;
@@ -1723,7 +1712,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
         grx = incGpsTime(g0, 0.0f64);
         allocateChannel(
-            chan.as_mut_ptr(),
+            &mut chan,
             (eph[ieph as usize]).as_mut_ptr(),
             ionoutc,
             grx,
@@ -1925,7 +1914,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 if staticLocationMode == 0 {
                     allocateChannel(
-                        chan.as_mut_ptr(),
+                        &mut chan,
                         (eph[ieph as usize]).as_mut_ptr(),
                         ionoutc,
                         grx,
@@ -1934,7 +1923,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     );
                 } else {
                     allocateChannel(
-                        chan.as_mut_ptr(),
+                        &mut chan,
                         (eph[ieph as usize]).as_mut_ptr(),
                         ionoutc,
                         grx,
