@@ -46,6 +46,7 @@ mod getopt;
 mod ionoutc;
 mod read_nmea_gga;
 mod read_rinex;
+mod read_user_motion;
 mod table;
 mod utils;
 
@@ -56,6 +57,7 @@ use getopt::{getopt, optarg, optind};
 use ionoutc::ionoutc_t;
 use read_nmea_gga::readNmeaGGA;
 use read_rinex::readRinexNavAll;
+use read_user_motion::{readUserMotion, readUserMotionLLH};
 use table::{ant_pat_db, cosTable512, sinTable512};
 use utils::*;
 
@@ -840,112 +842,22 @@ pub fn computeCodePhase(chan: &mut channel_t, mut rho1: range_t, mut dt: f64) {
     let mut ms: f64 = 0.;
     let mut ims: i32 = 0;
     let mut rhorate: f64 = 0.;
-    rhorate = (rho1.range - (chan).rho0.range) / dt;
-    (chan).f_carr = -rhorate / 0.190293672798365f64;
-    (chan).f_code = 1.023e6f64 + (chan).f_carr * (1.0f64 / 1540.0f64);
-    ms = (subGpsTime((chan).rho0.g, (chan).g0) + 6.0f64 - (chan).rho0.range / 2.99792458e8f64)
-        * 1000.0f64;
+    rhorate = (rho1.range - chan.rho0.range) / dt;
+    chan.f_carr = -rhorate / 0.190293672798365f64;
+    chan.f_code = 1.023e6f64 + chan.f_carr * (1.0f64 / 1540.0f64);
+    ms =
+        (subGpsTime(chan.rho0.g, chan.g0) + 6.0f64 - chan.rho0.range / 2.99792458e8f64) * 1000.0f64;
     ims = ms as i32;
-    (chan).code_phase = (ms - ims as f64) * 1023_f64;
-    (chan).iword = ims / 600_i32;
-    ims -= (chan).iword * 600_i32;
-    (chan).ibit = ims / 20_i32;
-    ims -= (chan).ibit * 20_i32;
-    (chan).icode = ims;
-    (chan).codeCA = (chan).ca[(chan).code_phase as i32 as usize] * 2_i32 - 1_i32;
-    (chan).dataBit =
-        ((chan).dwrd[(chan).iword as usize] >> (29_i32 - (chan).ibit) & 0x1_u32) as i32 * 2_i32
-            - 1_i32;
-    (chan).rho0 = rho1;
-}
-
-pub unsafe fn readUserMotion(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) -> i32 {
-    unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
-        let mut numd: i32 = 0;
-        let mut str: [libc::c_char; 100] = [0; 100];
-        let mut t: f64 = 0.;
-        let mut x: f64 = 0.;
-        let mut y: f64 = 0.;
-        let mut z: f64 = 0.;
-        fp = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
-        if fp.is_null() {
-            return -1_i32;
-        }
-        numd = 0_i32;
-        while numd < USER_MOTION_SIZE as i32 {
-            if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
-                break;
-            }
-            if -1_i32
-                == sscanf(
-                    str.as_mut_ptr(),
-                    b"%lf,%lf,%lf,%lf\0" as *const u8 as *const libc::c_char,
-                    &mut t as *mut f64,
-                    &mut x as *mut f64,
-                    &mut y as *mut f64,
-                    &mut z as *mut f64,
-                )
-            {
-                break;
-            }
-            (*xyz_0.offset(numd as isize))[0] = x;
-            (*xyz_0.offset(numd as isize))[1] = y;
-            (*xyz_0.offset(numd as isize))[2] = z;
-            numd += 1;
-        }
-        fclose(fp);
-        numd
-    }
-}
-
-pub unsafe fn readUserMotionLLH(
-    mut xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
-    mut filename: *const libc::c_char,
-) -> i32 {
-    unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
-        let mut numd: i32 = 0;
-        let mut t: f64 = 0.;
-        let mut llh: [f64; 3] = [0.; 3];
-        let mut str: [libc::c_char; 100] = [0; 100];
-        fp = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
-        if fp.is_null() {
-            return -1_i32;
-        }
-        numd = 0_i32;
-        while numd < USER_MOTION_SIZE as i32 {
-            if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
-                break;
-            }
-            if -1_i32
-                == sscanf(
-                    str.as_mut_ptr(),
-                    b"%lf,%lf,%lf,%lf\0" as *const u8 as *const libc::c_char,
-                    &mut t as *mut f64,
-                    &mut *llh.as_mut_ptr().offset(0) as *mut f64,
-                    &mut *llh.as_mut_ptr().offset(1) as *mut f64,
-                    &mut *llh.as_mut_ptr().offset(2) as *mut f64,
-                )
-            {
-                break;
-            }
-            if llh[0] > 90.0f64 || llh[0] < -90.0f64 || llh[1] > 180.0f64 || llh[1] < -180.0f64 {
-                eprintln!(
-                    "ERROR: Invalid file format (time[s], latitude[deg], longitude[deg], height [m].\n"
-                );
-                numd = 0_i32;
-                break;
-            } else {
-                llh[0] /= 57.2957795131f64;
-                llh[1] /= 57.2957795131f64;
-                llh2xyz(&llh, &mut xyz_full[numd as usize]);
-                numd += 1;
-            }
-        }
-        fclose(fp);
-        numd
-    }
+    chan.code_phase = (ms - ims as f64) * 1023_f64;
+    chan.iword = ims / 600_i32;
+    ims -= chan.iword * 600_i32;
+    chan.ibit = ims / 20_i32;
+    ims -= chan.ibit * 20_i32;
+    chan.icode = ims;
+    chan.codeCA = chan.ca[chan.code_phase as i32 as usize] * 2_i32 - 1_i32;
+    chan.dataBit =
+        (chan.dwrd[chan.iword as usize] >> (29_i32 - chan.ibit) & 0x1_u32) as i32 * 2_i32 - 1_i32;
+    chan.rho0 = rho1;
 }
 
 pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut init: i32) -> i32 {
@@ -959,10 +871,10 @@ pub unsafe fn generateNavMsg(mut g: gpstime_t, mut chan: *mut channel_t, mut ini
         let mut prevwrd: u32 = 0;
         let mut nib: i32 = 0;
         g0.week = g.week;
-        g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30_u32) as f64 * 30.0f64;
+        g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30) as f64 * 30.0f64;
         (*chan).g0 = g0;
         wn = (g0.week % 1024_i32) as u32;
-        tow = (g0.sec as u32).wrapping_div(6_u32);
+        tow = (g0.sec as u32).wrapping_div(6);
         if init == 1_i32 {
             prevwrd = 0_u32;
             iwrd = 0_i32;
@@ -1432,7 +1344,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             } else if umLLH == 1_i32 {
                 numd = readUserMotionLLH(&mut xyz, umfile.as_mut_ptr());
             } else {
-                numd = readUserMotion(xyz.as_mut_ptr(), umfile.as_mut_ptr());
+                numd = readUserMotion(&mut xyz, umfile.as_mut_ptr());
             }
             if numd == -1_i32 {
                 eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
