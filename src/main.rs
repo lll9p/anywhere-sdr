@@ -149,38 +149,28 @@ pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
     let mut r2: [i32; 10] = [0; 10];
     let mut c1: i32;
     let mut c2: i32;
-    // let mut i: i32 = 0;
-    // let mut j = 0;
     if !(1..=32).contains(&prn) {
         return;
     }
-    let mut i = 0;
-    while i < 10 {
+    for i in 0..10 {
         r2[i] = -1_i32;
         r1[i] = r2[i];
-        i += 1;
     }
-    let mut i = 0;
-    while i < 1023 {
+    for i in 0..1023 {
         g1[i] = r1[9];
         g2[i] = r2[9];
         c1 = r1[2] * r1[9];
         c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
-        let mut j = 9;
-        while j > 0 {
+        for j in (1..10).rev() {
             r1[j] = r1[j - 1];
             r2[j] = r2[j - 1];
-            j -= 1;
         }
         r1[0] = c1;
         r2[0] = c2;
-        i += 1;
     }
-    let mut i = 0;
     let mut j = 1023 - delay[(prn - 1) as usize];
-    while i < 1023 {
+    for i in 0..1023 {
         ca[i] = (1_i32 - g1[i] * g2[j % 1023]) / 2_i32;
-        i += 1;
         j += 1;
     }
 }
@@ -736,8 +726,7 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
     let mut tow = (g0.sec as u32).wrapping_div(6);
     if init == 1_i32 {
         prevwrd = 0_u32;
-        let mut iwrd = 0;
-        while iwrd < 10 {
+        for iwrd in 0..10 {
             sbfwrd = chan.sbf[4][iwrd];
             if iwrd == 1 {
                 sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
@@ -746,21 +735,17 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             nib = if iwrd == 1 || iwrd == 9 { 1_i32 } else { 0_i32 };
             chan.dwrd[iwrd] = computeChecksum(sbfwrd, nib);
             prevwrd = chan.dwrd[iwrd];
-            iwrd += 1;
         }
     } else {
-        let mut iwrd = 0;
-        while iwrd < 10 {
+        for iwrd in 0..10 {
             chan.dwrd[iwrd] = chan.dwrd[10 * 5 + iwrd];
             prevwrd = chan.dwrd[iwrd];
-            iwrd += 1;
         }
     }
-    let mut isbf = 0;
-    while isbf < 5 {
+    for isbf in 0..5 {
         tow = tow.wrapping_add(1);
-        let mut iwrd = 0;
-        while iwrd < 10 {
+
+        for iwrd in 0..10 {
             sbfwrd = chan.sbf[isbf][iwrd];
             if isbf == 0 && iwrd == 2 {
                 sbfwrd |= (wn & 0x3ff_u32) << 20_i32;
@@ -772,9 +757,7 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             nib = if iwrd == 1 || iwrd == 9 { 1_i32 } else { 0_i32 };
             chan.dwrd[(isbf + 1) * 10 + iwrd] = computeChecksum(sbfwrd, nib);
             prevwrd = chan.dwrd[(isbf + 1) * 10 + iwrd];
-            iwrd += 1;
         }
-        isbf += 1;
     }
     1_i32
 }
@@ -834,8 +817,7 @@ pub fn allocateChannel(
     // #[allow(unused_variables)]
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
-    let mut sv: usize = 0;
-    while sv < 32 {
+    for sv in 0..32 {
         if checkSatVisibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
             nsat += 1;
             if allocatedSat[sv] == -1_i32 {
@@ -869,7 +851,6 @@ pub fn allocateChannel(
             (chan[allocatedSat[sv] as usize]).prn = 0_i32;
             allocatedSat[sv] = -1_i32;
         }
-        sv += 1;
     }
     nsat
 }
@@ -1039,14 +1020,11 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
 
             eprintln!("{:6}", ionoutc.dtls,);
         }
-        let mut sv = 0;
-        while sv < 32 {
+        for sv in 0..32 {
             if eph[0][sv].vflg == 1_i32 {
                 gmin = eph[0][sv].toc;
                 tmin = eph[0][sv].t;
                 break;
-            } else {
-                sv += 1;
             }
         }
         gmax.sec = 0_i32 as f64;
@@ -1057,14 +1035,12 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
         tmax.d = 0_i32;
         tmax.m = 0_i32;
         tmax.y = 0_i32;
-        let mut sv: usize = 0;
-        while sv < 32 {
+
+        for sv in 0..32 {
             if eph[neph - 1][sv].vflg == 1_i32 {
                 gmax = eph[neph - 1][sv].toc;
                 tmax = eph[neph - 1][sv].t;
                 break;
-            } else {
-                sv += 1;
             }
         }
         if g0.week >= 0_i32 {
@@ -1076,21 +1052,17 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                 let dsec = subGpsTime(gtmp, gmin);
                 ionoutc.wnt = gtmp.week;
                 ionoutc.tot = gtmp.sec as i32;
-                let mut sv: usize = 0;
-                while sv < 32 {
-                    let mut i = 0;
-                    while i < neph {
-                        if eph[i][sv].vflg == 1_i32 {
-                            gtmp = incGpsTime(eph[i][sv].toc, dsec);
+                for sv in 0..32 {
+                    for i_eph in eph.iter_mut().take(neph) {
+                        if i_eph[sv].vflg == 1_i32 {
+                            gtmp = incGpsTime(i_eph[sv].toc, dsec);
                             gps2date(&gtmp, &mut ttmp);
-                            eph[i][sv].toc = gtmp;
-                            eph[i][sv].t = ttmp;
-                            gtmp = incGpsTime(eph[i][sv].toe, dsec);
-                            eph[i][sv].toe = gtmp;
+                            i_eph[sv].toc = gtmp;
+                            i_eph[sv].t = ttmp;
+                            gtmp = incGpsTime(i_eph[sv].toe, dsec);
+                            i_eph[sv].toe = gtmp;
                         }
-                        i += 1;
                     }
-                    sv += 1;
                 }
             } else if subGpsTime(g0, gmin) < 0.0f64 || subGpsTime(gmax, g0) < 0.0f64 {
                 eprintln!("ERROR: Invalid start time.");
@@ -1116,18 +1088,15 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
 
         eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
         let mut ieph = usize::MAX;
-        let mut i = 0;
-        while i < neph {
-            let mut sv: usize = 0;
-            while sv < 32 {
-                if eph[i][sv].vflg == 1_i32 {
-                    let dt = subGpsTime(g0, eph[i][sv].toc);
+        for (i, eph_item) in eph.iter().enumerate().take(neph) {
+            for e in eph_item.iter().take(32) {
+                if e.vflg == 1_i32 {
+                    let dt = subGpsTime(g0, e.toc);
                     if (-3600.0f64..3600.0f64).contains(&dt) {
                         ieph = i;
                         break;
                     }
                 }
-                sv += 1;
             }
             if ieph != usize::MAX {
                 break;
@@ -1135,8 +1104,8 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
             // if ieph >= 0 {
             //     break;
             // }
-            i += 1;
         }
+
         if ieph == usize::MAX {
             eprintln!("ERROR: No current set of ephemerides has been found.",);
             panic!();
@@ -1175,16 +1144,8 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                 unimplemented!()
             }
         }
-        let mut i = 0;
-        while i < 16 {
-            chan[i].prn = 0_i32;
-            i += 1;
-        }
-        let mut sv: usize = 0;
-        while sv < 32 {
-            allocatedSat[sv] = -1_i32;
-            sv += 1;
-        }
+        chan.iter_mut().take(16).for_each(|ch| ch.prn = 0);
+        allocatedSat.iter_mut().take(32).for_each(|s| *s = -1);
         let mut grx = incGpsTime(g0, 0.0f64);
         allocateChannel(
             &mut chan,
@@ -1195,32 +1156,26 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
             elvmask,
             &mut allocatedSat,
         );
-        let mut i = 0_i32;
-        while i < 16_i32 {
-            if chan[i as usize].prn > 0_i32 {
+        for i in 0..16 {
+            if chan[i].prn > 0_i32 {
                 eprintln!(
                     "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
-                    chan[i as usize].prn,
-                    chan[i as usize].azel[0] * 57.2957795131f64,
-                    chan[i as usize].azel[1] * 57.2957795131f64,
-                    chan[i as usize].rho0.d,
-                    chan[i as usize].rho0.iono_delay,
+                    chan[i].prn,
+                    chan[i].azel[0] * 57.2957795131f64,
+                    chan[i].azel[1] * 57.2957795131f64,
+                    chan[i].rho0.d,
+                    chan[i].rho0.iono_delay,
                 );
             }
-            i += 1;
         }
-        let mut i = 0_i32;
-        while i < 37_i32 {
-            ant_pat[i as usize] = pow(10.0f64, -ant_pat_db[i as usize] / 20.0f64);
-            i += 1;
+        for i in 0..37 {
+            ant_pat[i] = pow(10.0f64, -ant_pat_db[i] / 20.0f64);
         }
         let time_start = Instant::now();
         grx = incGpsTime(grx, 0.1f64);
-        let mut iumd = 1;
-        while iumd < numd {
-            let mut i = 0_i32;
-            while i < 16_i32 {
-                if chan[i as usize].prn > 0_i32 {
+        for iumd in 1..numd {
+            for i in 0..16 {
+                if chan[i].prn > 0_i32 {
                     let mut rho: range_t = range_t {
                         g: gpstime_t { week: 0, sec: 0. },
                         range: 0.,
@@ -1229,7 +1184,7 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                         azel: [0.; 2],
                         iono_delay: 0.,
                     };
-                    let sv = chan[i as usize].prn - 1;
+                    let sv = chan[i].prn - 1;
                     if staticLocationMode == 0 {
                         computeRange(
                             &mut rho,
@@ -1247,28 +1202,25 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                             &xyz[0],
                         );
                     }
-                    chan[i as usize].azel[0] = rho.azel[0];
-                    chan[i as usize].azel[1] = rho.azel[1];
-                    computeCodePhase(&mut *chan.as_mut_ptr().offset(i as isize), rho, 0.1f64);
-                    chan[i as usize].carr_phasestep =
-                        round(512.0f64 * 65536.0f64 * chan[i as usize].f_carr * delt) as i32;
+                    chan[i].azel[0] = rho.azel[0];
+                    chan[i].azel[1] = rho.azel[1];
+                    computeCodePhase(&mut *chan.as_mut_ptr().add(i), rho, 0.1f64);
+                    chan[i].carr_phasestep =
+                        round(512.0f64 * 65536.0f64 * chan[i].f_carr * delt) as i32;
                     let path_loss = 20200000.0f64 / rho.d;
                     let ibs = ((90.0f64 - rho.azel[1] * 57.2957795131f64) / 5.0f64) as usize;
                     let ant_gain = ant_pat[ibs];
                     if path_loss_enable == 1_i32 {
-                        gain[i as usize] = (path_loss * ant_gain * 128.0f64) as i32;
+                        gain[i] = (path_loss * ant_gain * 128.0f64) as i32;
                     } else {
-                        gain[i as usize] = fixed_gain;
+                        gain[i] = fixed_gain;
                     }
                 }
-                i += 1;
             }
-            let mut isamp = 0;
-            while isamp < iq_buff_size {
+            for isamp in 0..iq_buff_size {
                 let mut i_acc: i32 = 0_i32;
                 let mut q_acc: i32 = 0_i32;
-                let mut i = 0usize;
-                while i < 16 {
+                for i in 0..16 {
                     if chan[i].prn > 0_i32 {
                         let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize;
                         let ip = chan[i].dataBit * chan[i].codeCA * cosTable512[iTable] * gain[i];
@@ -1299,17 +1251,14 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                         chan[i].carr_phase =
                             (chan[i].carr_phase).wrapping_add(chan[i].carr_phasestep as u32);
                     }
-                    i += 1;
                 }
                 i_acc = (i_acc + 64_i32) >> 7_i32;
                 q_acc = (q_acc + 64_i32) >> 7_i32;
                 iq_buff[isamp * 2] = i_acc as i16;
                 iq_buff[isamp * 2 + 1] = q_acc as i16;
-                isamp += 1;
             }
             if data_format == 1_i32 {
-                let mut isamp = 0;
-                while isamp < 2 * iq_buff_size {
+                for isamp in 0..2 * iq_buff_size {
                     if isamp % 8 == 0 {
                         iq8_buff[isamp / 8] = 0i8;
                     }
@@ -1322,8 +1271,6 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                             0_i32
                         }) << (7_i32 - isamp as i32 % 8_i32))
                         as libc::c_schar;
-
-                    isamp += 1;
                 }
 
                 if let Some(file) = &mut fp_out {
@@ -1334,10 +1281,8 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                     .ok();
                 }
             } else if data_format == 8_i32 {
-                let mut isamp = 0;
-                while isamp < 2 * iq_buff_size {
+                for isamp in 0..2 * iq_buff_size {
                     iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
-                    isamp += 1;
                 }
 
                 if let Some(file) = &mut fp_out {
@@ -1355,22 +1300,18 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                 file.write_all(byte_slice).ok();
             }
             let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
-            if igrx % 300_i32 == 0_i32 {
-                let mut i = 0_i32;
-                while i < 16_i32 {
-                    if chan[i as usize].prn > 0_i32 {
-                        generateNavMsg(&grx, &mut *chan.as_mut_ptr().offset(i as isize), 0_i32);
+            if igrx % 300 == 0 {
+                for i in 0..16 {
+                    if chan[i].prn > 0_i32 {
+                        generateNavMsg(&grx, &mut *chan.as_mut_ptr().add(i), 0_i32);
                     }
-                    i += 1;
                 }
-                let mut sv = 0;
-                while sv < 32 {
+                for sv in 0..32 {
                     if eph[ieph + 1][sv].vflg == 1_i32 {
                         let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
                         if dt < 3600.0f64 {
                             ieph += 1;
-                            let mut i = 0;
-                            while i < 16 {
+                            for i in 0..16 {
                                 if chan[i].prn != 0_i32 {
                                     eph2sbf(
                                         eph[ieph][(chan[i].prn - 1_i32) as usize],
@@ -1378,12 +1319,9 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                                         &mut chan[i].sbf,
                                     );
                                 }
-                                i += 1;
                             }
                         }
                         break;
-                    } else {
-                        sv += 1;
                     }
                 }
                 if staticLocationMode == 0 {
@@ -1409,8 +1347,7 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                 }
                 if verb == 1_i32 {
                     eprintln!();
-                    let mut i = 0_i32;
-                    while i < 16_i32 {
+                    for i in 0..16 {
                         if chan[i as usize].prn > 0_i32 {
                             eprintln!(
                                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
@@ -1421,7 +1358,6 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                                 chan[i as usize].rho0.iono_delay,
                             );
                         }
-                        i += 1;
                     }
                 }
             }
@@ -1430,7 +1366,7 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
             eprint!("\rTime into run = {:4.1}\0", subGpsTime(grx, g0));
             // todo: temporarily disable
             // fflush(stdout);
-            iumd += 1;
+            // iumd += 1;
         }
 
         eprintln!("\nDone!");
