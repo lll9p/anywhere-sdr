@@ -834,24 +834,24 @@ pub fn allocateChannel(
     // #[allow(unused_variables)]
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
-    let mut sv = 0;
-    while sv < 32_i32 {
-        if checkSatVisibility(eph[sv as usize], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
+    let mut sv: usize = 0;
+    while sv < 32 {
+        if checkSatVisibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
             nsat += 1;
-            if allocatedSat[sv as usize] == -1_i32 {
+            if allocatedSat[sv] == -1_i32 {
                 let mut i = 0;
                 while i < 16 {
                     if chan[i].prn == 0_i32 {
-                        chan[i].prn = sv + 1_i32;
+                        chan[i].prn = sv as i32 + 1;
                         chan[i].azel[0] = azel[0];
                         chan[i].azel[1] = azel[1];
                         codegen(&mut chan[i].ca, (chan[i]).prn);
-                        eph2sbf(eph[sv as usize], ionoutc, &mut chan[i].sbf);
+                        eph2sbf(eph[sv], ionoutc, &mut chan[i].sbf);
                         generateNavMsg(grx, &mut chan[i], 1_i32);
-                        computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, xyz_0);
+                        computeRange(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
                         (chan[i]).rho0 = rho;
                         // r_xyz = rho.range;
-                        computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, &ref_0);
+                        computeRange(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
                         // r_ref = rho.range;
                         phase_ini = 0.0f64;
                         phase_ini -= floor(phase_ini);
@@ -862,12 +862,12 @@ pub fn allocateChannel(
                     }
                 }
                 if i < 16 {
-                    allocatedSat[sv as usize] = i as i32;
+                    allocatedSat[sv] = i as i32;
                 }
             }
-        } else if allocatedSat[sv as usize] >= 0_i32 {
-            (chan[allocatedSat[sv as usize] as usize]).prn = 0_i32;
-            allocatedSat[sv as usize] = -1_i32;
+        } else if allocatedSat[sv] >= 0_i32 {
+            (chan[allocatedSat[sv] as usize]).prn = 0_i32;
+            allocatedSat[sv] = -1_i32;
         }
         sv += 1;
     }
@@ -1041,9 +1041,9 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
         }
         let mut sv = 0;
         while sv < 32 {
-            if eph[0][sv as usize].vflg == 1_i32 {
-                gmin = eph[0][sv as usize].toc;
-                tmin = eph[0][sv as usize].t;
+            if eph[0][sv].vflg == 1_i32 {
+                gmin = eph[0][sv].toc;
+                tmin = eph[0][sv].t;
                 break;
             } else {
                 sv += 1;
@@ -1057,11 +1057,11 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
         tmax.d = 0_i32;
         tmax.m = 0_i32;
         tmax.y = 0_i32;
-        let mut sv = 0;
+        let mut sv: usize = 0;
         while sv < 32 {
-            if eph[neph - 1][sv as usize].vflg == 1_i32 {
-                gmax = eph[neph - 1][sv as usize].toc;
-                tmax = eph[neph - 1][sv as usize].t;
+            if eph[neph - 1][sv].vflg == 1_i32 {
+                gmax = eph[neph - 1][sv].toc;
+                tmax = eph[neph - 1][sv].t;
                 break;
             } else {
                 sv += 1;
@@ -1076,17 +1076,17 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
                 let dsec = subGpsTime(gtmp, gmin);
                 ionoutc.wnt = gtmp.week;
                 ionoutc.tot = gtmp.sec as i32;
-                let mut sv = 0;
+                let mut sv: usize = 0;
                 while sv < 32 {
                     let mut i = 0;
                     while i < neph {
-                        if eph[i][sv as usize].vflg == 1_i32 {
-                            gtmp = incGpsTime(eph[i][sv as usize].toc, dsec);
+                        if eph[i][sv].vflg == 1_i32 {
+                            gtmp = incGpsTime(eph[i][sv].toc, dsec);
                             gps2date(&gtmp, &mut ttmp);
-                            eph[i][sv as usize].toc = gtmp;
-                            eph[i][sv as usize].t = ttmp;
-                            gtmp = incGpsTime(eph[i][sv as usize].toe, dsec);
-                            eph[i][sv as usize].toe = gtmp;
+                            eph[i][sv].toc = gtmp;
+                            eph[i][sv].t = ttmp;
+                            gtmp = incGpsTime(eph[i][sv].toe, dsec);
+                            eph[i][sv].toe = gtmp;
                         }
                         i += 1;
                     }
@@ -1118,10 +1118,10 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
         let mut ieph = usize::MAX;
         let mut i = 0;
         while i < neph {
-            let mut sv = 0;
+            let mut sv: usize = 0;
             while sv < 32 {
-                if eph[i][sv as usize].vflg == 1_i32 {
-                    let dt = subGpsTime(g0, eph[i][sv as usize].toc);
+                if eph[i][sv].vflg == 1_i32 {
+                    let dt = subGpsTime(g0, eph[i][sv].toc);
                     if (-3600.0f64..3600.0f64).contains(&dt) {
                         ieph = i;
                         break;
@@ -1180,9 +1180,9 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
             chan[i].prn = 0_i32;
             i += 1;
         }
-        let mut sv = 0;
+        let mut sv: usize = 0;
         while sv < 32 {
-            allocatedSat[sv as usize] = -1_i32;
+            allocatedSat[sv] = -1_i32;
             sv += 1;
         }
         let mut grx = incGpsTime(g0, 0.0f64);
@@ -1336,8 +1336,7 @@ unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
             } else if data_format == 8_i32 {
                 let mut isamp = 0;
                 while isamp < 2 * iq_buff_size {
-                    iq8_buff[isamp] =
-                        (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
+                    iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
                     isamp += 1;
                 }
 
