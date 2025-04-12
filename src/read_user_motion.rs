@@ -1,21 +1,20 @@
 use crate::{FILE, constants::USER_MOTION_SIZE, fclose, fgets, fopen, llh2xyz, sscanf};
 pub unsafe fn readUserMotion(
     xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
-    mut filename: *const libc::c_char,
+    filename: *const libc::c_char,
 ) -> i32 {
     unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
-        let mut numd: i32 = 0;
+        
         let mut str: [libc::c_char; 100] = [0; 100];
         let mut t: f64 = 0.;
         let mut x: f64 = 0.;
         let mut y: f64 = 0.;
         let mut z: f64 = 0.;
-        fp = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
+        let fp: *mut FILE = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
         if fp.is_null() {
             return -1_i32;
         }
-        numd = 0_i32;
+        let mut numd = 0i32;
         while numd < USER_MOTION_SIZE as i32 {
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;
@@ -43,19 +42,18 @@ pub unsafe fn readUserMotion(
 }
 pub unsafe fn readUserMotionLLH(
     xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
-    mut filename: *const libc::c_char,
+    filename: *const libc::c_char,
 ) -> i32 {
     unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
-        let mut numd: i32 = 0;
+        
         let mut t: f64 = 0.;
         let mut llh: [f64; 3] = [0.; 3];
         let mut str: [libc::c_char; 100] = [0; 100];
-        fp = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
+        let fp: *mut FILE = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
         if fp.is_null() {
             return -1_i32;
         }
-        numd = 0_i32;
+        let mut numd = 0_i32;
         while numd < USER_MOTION_SIZE as i32 {
             if (fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
                 break;

@@ -3,21 +3,20 @@ use crate::{
     strtok,
 };
 
-pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) -> i32 {
+pub fn readNmeaGGA(xyz_0: *mut [f64; 3], filename: *const libc::c_char) -> i32 {
     unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
+        
         let mut numd: i32 = 0_i32;
         let mut str: [libc::c_char; 100] = [0; 100];
-        let mut token: *mut libc::c_char = std::ptr::null_mut::<libc::c_char>();
         let mut llh: [f64; 3] = [0.; 3];
         let mut pos: [f64; 3] = [0.; 3];
         let mut tmp: [libc::c_char; 8] = [0; 8];
-        fp = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
+        let fp: *mut FILE = fopen(filename, b"rt\0" as *const u8 as *const libc::c_char);
         if fp.is_null() {
             return -1_i32;
         }
         while !(fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
-            token = strtok(str.as_mut_ptr(), b",\0" as *const u8 as *const libc::c_char);
+            let token = strtok(str.as_mut_ptr(), b",\0" as *const u8 as *const libc::c_char);
             if strncmp(
                 token.offset(3_i32 as isize),
                 b"GGA\0" as *const u8 as *const libc::c_char,
@@ -26,11 +25,11 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
             {
                 continue;
             }
-            token = strtok(
+            let _token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
@@ -38,7 +37,7 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
             tmp[2_i32 as usize] = 0_i32 as libc::c_char;
             llh[0_i32 as usize] =
                 atof(tmp.as_mut_ptr()) + atof(token.offset(2_i32 as isize)) / 60.0f64;
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
@@ -46,7 +45,7 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
                 llh[0_i32 as usize] *= -1.0f64;
             }
             llh[0_i32 as usize] /= 57.2957795131f64;
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
@@ -54,7 +53,7 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
             tmp[3_i32 as usize] = 0_i32 as libc::c_char;
             llh[1_i32 as usize] =
                 atof(tmp.as_mut_ptr()) + atof(token.offset(3_i32 as isize)) / 60.0f64;
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
@@ -62,28 +61,28 @@ pub fn readNmeaGGA(mut xyz_0: *mut [f64; 3], mut filename: *const libc::c_char) 
                 llh[1_i32 as usize] *= -1.0f64;
             }
             llh[1_i32 as usize] /= 57.2957795131f64;
-            token = strtok(
+            let _token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
-            token = strtok(
+            let _token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
-            token = strtok(
+            let _token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
             llh[2_i32 as usize] = atof(token);
-            token = strtok(
+            let _token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );
-            token = strtok(
+            let token = strtok(
                 std::ptr::null_mut::<libc::c_char>(),
                 b",\0" as *const u8 as *const libc::c_char,
             );

@@ -34,11 +34,7 @@ Options:
         86400,
     );
 }
-pub fn getopt(
-    mut nargc: i32,
-    mut nargv: *const *mut libc::c_char,
-    mut ostr: *const libc::c_char,
-) -> i32 {
+pub fn getopt(nargc: i32, nargv: *const *mut libc::c_char, ostr: *const libc::c_char) -> i32 {
     unsafe {
         static mut place: *mut libc::c_char =
             b"\0" as *const u8 as *const libc::c_char as *mut libc::c_char;
@@ -75,7 +71,7 @@ pub fn getopt(
                 optind += 1;
             }
             if opterr != 0 && *ostr as i32 != ':' as i32 {
-                println!("illegal option -- {}", optopt,);
+                println!("illegal option -- {:?}", &raw const optopt);
             }
             return '?' as i32;
         }
@@ -96,7 +92,7 @@ pub fn getopt(
                         return ':' as i32;
                     }
                     if opterr != 0 {
-                        println!("option requires an argument -- {}", optopt);
+                        println!("option requires an argument -- {:?}", &raw const optopt);
                     }
                     return '?' as i32;
                 } else {
@@ -111,8 +107,8 @@ pub fn getopt(
 }
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn loop_through_opts(
-    mut argc: i32,
-    mut argv: *mut *mut libc::c_char,
+    argc: i32,
+    argv: *mut *mut libc::c_char,
     navfile: &mut [libc::c_char; 100],
     umfile: &mut [libc::c_char; 100],
     nmeaGGA: &mut i32,
@@ -133,7 +129,7 @@ pub unsafe fn loop_through_opts(
     verb: &mut i32,
 ) {
     unsafe {
-        let mut result: i32 = 0;
+        let mut result;
         loop {
             result = getopt(
                 argc,
@@ -143,7 +139,7 @@ pub unsafe fn loop_through_opts(
             if result == -1_i32 {
                 break;
             }
-            let mut current_block_85: u64;
+            let current_block_85: u64;
             match result {
                 101 => {
                     strcpy(navfile.as_mut_ptr(), optarg);
@@ -244,9 +240,9 @@ pub unsafe fn loop_through_opts(
                     ) == 0_i32
                     {
                         let mut timer: time_t = 0;
-                        let mut gmt: *mut tm = std::ptr::null_mut::<tm>();
+                        
                         time(&mut timer);
-                        gmt = gmtime(&timer);
+                        let gmt: *mut tm = gmtime(&timer);
                         t0.y = (*gmt).tm_year + 1900_i32;
                         t0.m = (*gmt).tm_mon + 1_i32;
                         t0.d = (*gmt).tm_mday;

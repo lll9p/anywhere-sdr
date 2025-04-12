@@ -3,7 +3,7 @@ use crate::{
     sqrt, strncmp, strncpy, subGpsTime,
 };
 
-pub fn replaceExpDesignator(mut str: *mut libc::c_char, mut len: isize) -> i32 {
+pub fn replaceExpDesignator(str: *mut libc::c_char, len: isize) -> i32 {
     unsafe {
         let mut i: isize = 0;
         let mut n: i32 = 0_i32;
@@ -21,12 +21,10 @@ pub fn replaceExpDesignator(mut str: *mut libc::c_char, mut len: isize) -> i32 {
 pub fn readRinexNavAll(
     eph: &mut [[ephem_t; 32]; 15],
     ionoutc: &mut ionoutc_t,
-    mut fname: *const libc::c_char,
+    fname: *const libc::c_char,
 ) -> usize {
     unsafe {
-        let mut fp: *mut FILE = std::ptr::null_mut::<FILE>();
-        let mut ieph: usize = 0;
-        let mut sv: i32 = 0;
+        
         let mut str: [libc::c_char; 100] = [0; 100];
         let mut tmp: [libc::c_char; 20] = [0; 20];
         let mut t: datetime_t = datetime_t {
@@ -39,15 +37,14 @@ pub fn readRinexNavAll(
         };
         let mut g: gpstime_t = gpstime_t { week: 0, sec: 0. };
         let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut dt: f64 = 0.;
         let mut flags: i32 = 0_i32;
-        fp = fopen(fname, b"rt\0" as *const u8 as *const libc::c_char);
+        let fp: *mut FILE = fopen(fname, b"rt\0" as *const u8 as *const libc::c_char);
         if fp.is_null() {
             return usize::MAX;
         }
-        ieph = 0_usize;
+        let mut ieph = 0_usize;
         while ieph < 15 {
-            sv = 0_i32;
+            let mut sv = 0_i32;
             while sv < 32_i32 {
                 eph[ieph][sv as usize].vflg = 0_i32;
                 sv += 1;
@@ -153,7 +150,7 @@ pub fn readRinexNavAll(
         while !(fgets(str.as_mut_ptr(), 100_i32, fp)).is_null() {
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr(), 2);
             tmp[2] = 0_i32 as libc::c_char;
-            sv = atoi(tmp.as_mut_ptr()) - 1_i32;
+            let sv = atoi(tmp.as_mut_ptr()) - 1_i32;
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(3), 2);
             tmp[2] = 0_i32 as libc::c_char;
             t.y = atoi(tmp.as_mut_ptr()) + 2000_i32;
@@ -176,7 +173,7 @@ pub fn readRinexNavAll(
             if g0.week == -1_i32 {
                 g0 = g;
             }
-            dt = subGpsTime(g, g0);
+            let dt = subGpsTime(g, g0);
             if dt > 3600.0f64 {
                 g0 = g;
                 ieph += 1;
@@ -296,9 +293,7 @@ pub fn readRinexNavAll(
             tmp[19] = 0_i32 as libc::c_char;
             replaceExpDesignator(tmp.as_mut_ptr(), 19);
             eph[ieph][sv as usize].svhlth = atof(tmp.as_mut_ptr()) as i32;
-            if eph[ieph][sv as usize].svhlth > 0_i32
-                && eph[ieph][sv as usize].svhlth < 32_i32
-            {
+            if eph[ieph][sv as usize].svhlth > 0_i32 && eph[ieph][sv as usize].svhlth < 32_i32 {
                 eph[ieph][sv as usize].svhlth += 32_i32;
             }
             strncpy(tmp.as_mut_ptr(), str.as_mut_ptr().offset(41), 19);
@@ -313,19 +308,16 @@ pub fn readRinexNavAll(
                 break;
             }
             eph[ieph][sv as usize].vflg = 1_i32;
-            eph[ieph][sv as usize].A =
-                eph[ieph][sv as usize].sqrta * eph[ieph][sv as usize].sqrta;
+            eph[ieph][sv as usize].A = eph[ieph][sv as usize].sqrta * eph[ieph][sv as usize].sqrta;
             eph[ieph][sv as usize].n = sqrt(
                 3.986005e14f64
                     / (eph[ieph][sv as usize].A
                         * eph[ieph][sv as usize].A
                         * eph[ieph][sv as usize].A),
             ) + eph[ieph][sv as usize].deltan;
-            eph[ieph][sv as usize].sq1e2 = sqrt(
-                1.0f64 - eph[ieph][sv as usize].ecc * eph[ieph][sv as usize].ecc,
-            );
-            eph[ieph][sv as usize].omgkdot =
-                eph[ieph][sv as usize].omgdot - 7.2921151467e-5f64;
+            eph[ieph][sv as usize].sq1e2 =
+                sqrt(1.0f64 - eph[ieph][sv as usize].ecc * eph[ieph][sv as usize].ecc);
+            eph[ieph][sv as usize].omgkdot = eph[ieph][sv as usize].omgdot - 7.2921151467e-5f64;
         }
         fclose(fp);
         if g0.week >= 0_i32 {

@@ -4,9 +4,6 @@
     non_camel_case_types,
     non_snake_case,
     non_upper_case_globals,
-    unused_assignments,
-    unused_mut,
-    static_mut_refs,
     clippy::missing_safety_doc
 )]
 #![feature(extern_types)]
@@ -142,7 +139,7 @@ pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
 }
 
 pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
-    let mut delay: [usize; 32] = [
+    let delay: [usize; 32] = [
         5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258, 469, 470, 471, 472,
         473, 474, 509, 512, 513, 514, 515, 516, 859, 860, 861, 862,
     ];
@@ -150,10 +147,10 @@ pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
     let mut g2: [i32; 1023] = [0; 1023];
     let mut r1: [i32; 10] = [0; 10];
     let mut r2: [i32; 10] = [0; 10];
-    let mut c1: i32 = 0;
-    let mut c2: i32 = 0;
+    let mut c1: i32;
+    let mut c2: i32;
     // let mut i: i32 = 0;
-    let mut j = 0;
+    // let mut j = 0;
     if !(1..=32).contains(&prn) {
         return;
     }
@@ -169,7 +166,7 @@ pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
         g2[i] = r2[9];
         c1 = r1[2] * r1[9];
         c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
-        j = 9;
+        let mut j = 9;
         while j > 0 {
             r1[j] = r1[j - 1];
             r2[j] = r2[j - 1];
@@ -180,7 +177,7 @@ pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
         i += 1;
     }
     let mut i = 0;
-    j = 1023 - delay[(prn - 1) as usize];
+    let mut j = 1023 - delay[(prn - 1) as usize];
     while i < 1023 {
         ca[i] = (1_i32 - g1[i] * g2[j % 1023]) / 2_i32;
         i += 1;
@@ -189,16 +186,13 @@ pub fn codegen(ca: &mut [i32; 1023], prn: i32) {
 }
 
 pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
-    let mut doy: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    let mut ye: i32 = 0;
-    let mut de: i32 = 0;
-    let mut lpdays: i32 = 0;
-    ye = (t).y - 1980_i32;
-    lpdays = ye / 4_i32 + 1_i32;
+    let doy: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let ye = (t).y - 1980_i32;
+    let mut lpdays = ye / 4_i32 + 1_i32;
     if ye % 4_i32 == 0_i32 && (t).m <= 2_i32 {
         lpdays -= 1;
     }
-    de = ye * 365_i32 + doy[((t).m - 1_i32) as usize] + (t).d + lpdays - 6_i32;
+    let de = ye * 365_i32 + doy[((t).m - 1_i32) as usize] + (t).d + lpdays - 6_i32;
     (g).week = de / 7_i32;
     (g).sec = (de % 7_i32) as f64 * 86400.0f64
         + (t).hh as f64 * 3600.0f64
@@ -207,11 +201,11 @@ pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
 }
 
 pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
-    let mut c: i32 =
+    let c: i32 =
         ((7_i32 * (g).week) as f64 + floor((g).sec / 86400.0f64) + 2444245.0f64) as i32 + 1537_i32;
-    let mut d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
-    let mut e: i32 = 365_i32 * d + d / 4_i32;
-    let mut f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
+    let d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
+    let e: i32 = 365_i32 * d + d / 4_i32;
+    let f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
     (t).d = c - e - (30.6001f64 * f as f64) as i32;
     (t).m = f - 1_i32 - 12_i32 * (f / 14_i32);
     (t).y = d - 4715_i32 - (7_i32 + (t).m) / 10_i32;
@@ -221,35 +215,26 @@ pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
 }
 
 pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
-    let mut a: f64 = 0.;
-    let mut eps: f64 = 0.;
-    let mut e: f64 = 0.;
-    let mut e2: f64 = 0.;
-    let mut x: f64 = 0.;
-    let mut y: f64 = 0.;
-    let mut z: f64 = 0.;
-    let mut rho2: f64 = 0.;
-    let mut dz: f64 = 0.;
-    let mut zdz: f64 = 0.;
-    let mut nh: f64 = 0.;
-    let mut slat: f64 = 0.;
-    let mut n: f64 = 0.;
-    let mut dz_new: f64 = 0.;
-    a = 6378137.0f64;
-    e = 0.0818191908426f64;
-    eps = 1.0e-3f64;
-    e2 = e * e;
+    let mut zdz: f64;
+    let mut nh: f64;
+    let mut slat: f64;
+    let mut n: f64;
+    let mut dz_new: f64;
+    let a = 6378137.0f64;
+    let e = 0.0818191908426f64;
+    let eps = 1.0e-3f64;
+    let e2 = e * e;
     if normVect(xyz_0) < eps {
         llh[0] = 0.0f64;
         llh[1] = 0.0f64;
         llh[2] = -a;
         return;
     }
-    x = xyz_0[0];
-    y = xyz_0[1];
-    z = xyz_0[2];
-    rho2 = x * x + y * y;
-    dz = e2 * z;
+    let x = xyz_0[0];
+    let y = xyz_0[1];
+    let z = xyz_0[2];
+    let rho2 = x * x + y * y;
+    let mut dz = e2 * z;
     loop {
         zdz = z + dz;
         nh = sqrt(rho2 + zdz * zdz);
@@ -267,28 +252,17 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
 }
 
 pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
-    let mut n: f64 = 0.;
-    let mut a: f64 = 0.;
-    let mut e: f64 = 0.;
-    let mut e2: f64 = 0.;
-    let mut clat: f64 = 0.;
-    let mut slat: f64 = 0.;
-    let mut clon: f64 = 0.;
-    let mut slon: f64 = 0.;
-    let mut d: f64 = 0.;
-    let mut nph: f64 = 0.;
-    let mut tmp: f64 = 0.;
-    a = 6378137.0f64;
-    e = 0.0818191908426f64;
-    e2 = e * e;
-    clat = cos(llh[0]);
-    slat = sin(llh[0]);
-    clon = cos(llh[1]);
-    slon = sin(llh[1]);
-    d = e * slat;
-    n = a / sqrt(1.0f64 - d * d);
-    nph = n + llh[2];
-    tmp = nph * clat;
+    let a = 6378137.0f64;
+    let e = 0.0818191908426f64;
+    let e2 = e * e;
+    let clat = cos(llh[0]);
+    let slat = sin(llh[0]);
+    let clon = cos(llh[1]);
+    let slon = sin(llh[1]);
+    let d = e * slat;
+    let n = a / sqrt(1.0f64 - d * d);
+    let nph = n + llh[2];
+    let tmp = nph * clat;
     xyz_0[0] = tmp * clon;
     xyz_0[1] = tmp * slon;
     xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
@@ -317,12 +291,11 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
 }
 
 pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
-    let mut ne: f64 = 0.;
     azel[0] = atan2(neu[1], neu[0]);
     if azel[0] < 0.0f64 {
         azel[0] += 2.0f64 * PI;
     }
-    ne = sqrt(neu[0] * neu[0] + neu[1] * neu[1]);
+    let ne = sqrt(neu[0] * neu[0] + neu[1] * neu[1]);
     azel[1] = atan2(neu[2], ne);
 }
 
@@ -333,85 +306,54 @@ pub fn satpos(
     vel: &mut [f64; 3],
     clk: &mut [f64; 2],
 ) {
-    let mut tk: f64 = 0.;
-    let mut mk: f64 = 0.;
-    let mut ek: f64 = 0.;
-    let mut ekold: f64 = 0.;
-    let mut ekdot: f64 = 0.;
-    let mut cek: f64 = 0.;
-    let mut sek: f64 = 0.;
-    let mut pk: f64 = 0.;
-    let mut pkdot: f64 = 0.;
-    let mut c2pk: f64 = 0.;
-    let mut s2pk: f64 = 0.;
-    let mut uk: f64 = 0.;
-    let mut ukdot: f64 = 0.;
-    let mut cuk: f64 = 0.;
-    let mut suk: f64 = 0.;
-    let mut ok: f64 = 0.;
-    let mut sok: f64 = 0.;
-    let mut cok: f64 = 0.;
-    let mut ik: f64 = 0.;
-    let mut ikdot: f64 = 0.;
-    let mut sik: f64 = 0.;
-    let mut cik: f64 = 0.;
-    let mut rk: f64 = 0.;
-    let mut rkdot: f64 = 0.;
-    let mut xpk: f64 = 0.;
-    let mut ypk: f64 = 0.;
-    let mut xpkdot: f64 = 0.;
-    let mut ypkdot: f64 = 0.;
-    let mut relativistic: f64 = 0.;
-    let mut OneMinusecosE: f64 = 0.;
-    let mut tmp: f64 = 0.;
-    tk = g.sec - eph.toe.sec;
+    let mut tk = g.sec - eph.toe.sec;
     if tk > 302400.0f64 {
         tk -= 604800.0f64;
     } else if tk < -302400.0f64 {
         tk += 604800.0f64;
     }
-    mk = eph.m0 + eph.n * tk;
-    ek = mk;
-    ekold = ek + 1.0f64;
-    OneMinusecosE = 0_i32 as f64;
+    let mk = eph.m0 + eph.n * tk;
+    let mut ek = mk;
+    let mut ekold = ek + 1.0f64;
+    let mut OneMinusecosE = 0_i32 as f64;
     while fabs(ek - ekold) > 1.0E-14f64 {
         ekold = ek;
         OneMinusecosE = 1.0f64 - eph.ecc * cos(ekold);
         ek += (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
     }
-    sek = sin(ek);
-    cek = cos(ek);
-    ekdot = eph.n / OneMinusecosE;
-    relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
-    pk = atan2(eph.sq1e2 * sek, cek - eph.ecc) + eph.aop;
-    pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
-    s2pk = sin(2.0f64 * pk);
-    c2pk = cos(2.0f64 * pk);
-    uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
-    suk = sin(uk);
-    cuk = cos(uk);
-    ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
-    rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
-    rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
-    ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
-    sik = sin(ik);
-    cik = cos(ik);
-    ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
-    xpk = rk * cuk;
-    ypk = rk * suk;
-    xpkdot = rkdot * cuk - ypk * ukdot;
-    ypkdot = rkdot * suk + xpk * ukdot;
-    ok = eph.omg0 + tk * eph.omgkdot - 7.2921151467e-5f64 * eph.toe.sec;
-    sok = sin(ok);
-    cok = cos(ok);
+    let sek = sin(ek);
+    let cek = cos(ek);
+    let ekdot = eph.n / OneMinusecosE;
+    let relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
+    let pk = atan2(eph.sq1e2 * sek, cek - eph.ecc) + eph.aop;
+    let pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
+    let s2pk = sin(2.0f64 * pk);
+    let c2pk = cos(2.0f64 * pk);
+    let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
+    let suk = sin(uk);
+    let cuk = cos(uk);
+    let ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
+    let rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
+    let rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
+    let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
+    let sik = sin(ik);
+    let cik = cos(ik);
+    let ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
+    let xpk = rk * cuk;
+    let ypk = rk * suk;
+    let xpkdot = rkdot * cuk - ypk * ukdot;
+    let ypkdot = rkdot * suk + xpk * ukdot;
+    let ok = eph.omg0 + tk * eph.omgkdot - 7.2921151467e-5f64 * eph.toe.sec;
+    let sok = sin(ok);
+    let cok = cos(ok);
     pos[0] = xpk * cok - ypk * cik * sok;
     pos[1] = xpk * sok + ypk * cik * cok;
     pos[2] = ypk * sik;
-    tmp = ypkdot * cik - ypk * sik * ikdot;
+    let tmp = ypkdot * cik - ypk * sik * ikdot;
     vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
     vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
     vel[2] = ypk * cik * ikdot + ypkdot * sik;
-    tk = g.sec - eph.toc.sec;
+    let mut tk = g.sec - eph.toc.sec;
     if tk > 302400.0f64 {
         tk -= 604800.0f64;
     } else if tk < -302400.0f64 {
@@ -422,96 +364,55 @@ pub fn satpos(
 }
 
 pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; 10]; 5]) {
-    let mut wn: u32 = 0;
-    let mut toe: u32 = 0;
-    let mut toc: u32 = 0;
-    let mut iode: u32 = 0;
-    let mut iodc: u32 = 0;
-    let mut deltan: i32 = 0;
-    let mut cuc: i32 = 0;
-    let mut cus: i32 = 0;
-    let mut cic: i32 = 0;
-    let mut cis: i32 = 0;
-    let mut crc: i32 = 0;
-    let mut crs: i32 = 0;
-    let mut ecc: u32 = 0;
-    let mut sqrta: u32 = 0;
-    let mut m0: i32 = 0;
-    let mut omg0: i32 = 0;
-    let mut inc0: i32 = 0;
-    let mut aop: i32 = 0;
-    let mut omgdot: i32 = 0;
-    let mut idot: i32 = 0;
-    let mut af0: i32 = 0;
-    let mut af1: i32 = 0;
-    let mut af2: i32 = 0;
-    let mut tgd: i32 = 0;
-    let mut svhlth: i32 = 0;
-    let mut codeL2: i32 = 0;
-    let mut ura: u32 = 0_u32;
-    let mut dataId: u32 = 1_u32;
-    let mut sbf4_page25_svId: u32 = 63_u32;
-    let mut sbf5_page25_svId: u32 = 51_u32;
-    let mut wna: u32 = 0;
-    let mut toa: u32 = 0;
-    let mut alpha0: i32 = 0;
-    let mut alpha1: i32 = 0;
-    let mut alpha2: i32 = 0;
-    let mut alpha3: i32 = 0;
-    let mut beta0: i32 = 0;
-    let mut beta1: i32 = 0;
-    let mut beta2: i32 = 0;
-    let mut beta3: i32 = 0;
-    let mut A0: i32 = 0;
-    let mut A1: i32 = 0;
-    let mut dtls: i32 = 0;
-    let mut tot: u32 = 0;
-    let mut wnt: u32 = 0;
-    let mut wnlsf: u32 = 0;
-    let mut dtlsf: u32 = 0;
-    let mut dn: u32 = 0;
-    let mut sbf4_page18_svId: u32 = 56_u32;
-    wn = 0_u32;
-    toe = (eph.toe.sec / 16.0f64) as u32;
-    toc = (eph.toc.sec / 16.0f64) as u32;
-    iode = eph.iode as u32;
-    iodc = eph.iodc as u32;
-    deltan = (eph.deltan / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-    cuc = (eph.cuc / 1.862645149230957e-9f64) as i32;
-    cus = (eph.cus / 1.862645149230957e-9f64) as i32;
-    cic = (eph.cic / 1.862645149230957e-9f64) as i32;
-    cis = (eph.cis / 1.862645149230957e-9f64) as i32;
-    crc = (eph.crc / 0.03125f64) as i32;
-    crs = (eph.crs / 0.03125f64) as i32;
-    ecc = (eph.ecc / 1.164153218269348e-10f64) as u32;
-    sqrta = (eph.sqrta / 1.907_348_632_812_5e-6_f64) as u32;
-    m0 = (eph.m0 / 4.656612873077393e-10f64 / PI) as i32;
-    omg0 = (eph.omg0 / 4.656612873077393e-10f64 / PI) as i32;
-    inc0 = (eph.inc0 / 4.656612873077393e-10f64 / PI) as i32;
-    aop = (eph.aop / 4.656612873077393e-10f64 / PI) as i32;
-    omgdot = (eph.omgdot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-    idot = (eph.idot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
-    af0 = (eph.af0 / 4.656612873077393e-10f64) as i32;
-    af1 = (eph.af1 / 1.136_868_377_216_16e-13_f64) as i32;
-    af2 = (eph.af2 / 2.775557561562891e-17f64) as i32;
-    tgd = (eph.tgd / 4.656612873077393e-10f64) as i32;
-    svhlth = eph.svhlth as u32 as i32;
-    codeL2 = eph.codeL2 as u32 as i32;
-    wna = (eph.toe.week % 256_i32) as u32;
-    toa = (eph.toe.sec / 4096.0f64) as u32;
-    alpha0 = round(ionoutc.alpha0 / 9.313_225_746_154_785e-10_f64) as i32;
-    alpha1 = round(ionoutc.alpha1 / 7.450_580_596_923_828e-9_f64) as i32;
-    alpha2 = round(ionoutc.alpha2 / 5.960_464_477_539_063e-8_f64) as i32;
-    alpha3 = round(ionoutc.alpha3 / 5.960_464_477_539_063e-8_f64) as i32;
-    beta0 = round(ionoutc.beta0 / 2048.0f64) as i32;
-    beta1 = round(ionoutc.beta1 / 16384.0f64) as i32;
-    beta2 = round(ionoutc.beta2 / 65536.0f64) as i32;
-    beta3 = round(ionoutc.beta3 / 65536.0f64) as i32;
-    A0 = round(ionoutc.A0 / 9.313_225_746_154_785e-10_f64) as i32;
-    A1 = round(ionoutc.A1 / 8.881_784_197_001_252e-16_f64) as i32;
-    dtls = ionoutc.dtls;
-    tot = (ionoutc.tot / 4096_i32) as u32;
-    wnt = (ionoutc.wnt % 256_i32) as u32;
+    let ura: u32 = 0_u32;
+    let dataId: u32 = 1_u32;
+    let sbf4_page25_svId: u32 = 63_u32;
+    let sbf5_page25_svId: u32 = 51_u32;
+    let wnlsf: u32;
+    let dtlsf: u32;
+    let dn: u32;
+    let sbf4_page18_svId: u32 = 56_u32;
+    let wn = 0_u32;
+    let toe = (eph.toe.sec / 16.0f64) as u32;
+    let toc = (eph.toc.sec / 16.0f64) as u32;
+    let iode = eph.iode as u32;
+    let iodc = eph.iodc as u32;
+    let deltan = (eph.deltan / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    let cuc = (eph.cuc / 1.862645149230957e-9f64) as i32;
+    let cus = (eph.cus / 1.862645149230957e-9f64) as i32;
+    let cic = (eph.cic / 1.862645149230957e-9f64) as i32;
+    let cis = (eph.cis / 1.862645149230957e-9f64) as i32;
+    let crc = (eph.crc / 0.03125f64) as i32;
+    let crs = (eph.crs / 0.03125f64) as i32;
+    let ecc = (eph.ecc / 1.164153218269348e-10f64) as u32;
+    let sqrta = (eph.sqrta / 1.907_348_632_812_5e-6_f64) as u32;
+    let m0 = (eph.m0 / 4.656612873077393e-10f64 / PI) as i32;
+    let omg0 = (eph.omg0 / 4.656612873077393e-10f64 / PI) as i32;
+    let inc0 = (eph.inc0 / 4.656612873077393e-10f64 / PI) as i32;
+    let aop = (eph.aop / 4.656612873077393e-10f64 / PI) as i32;
+    let omgdot = (eph.omgdot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    let idot = (eph.idot / 1.136_868_377_216_16e-13_f64 / PI) as i32;
+    let af0 = (eph.af0 / 4.656612873077393e-10f64) as i32;
+    let af1 = (eph.af1 / 1.136_868_377_216_16e-13_f64) as i32;
+    let af2 = (eph.af2 / 2.775557561562891e-17f64) as i32;
+    let tgd = (eph.tgd / 4.656612873077393e-10f64) as i32;
+    let svhlth = eph.svhlth as u32 as i32;
+    let codeL2 = eph.codeL2 as u32 as i32;
+    let wna = (eph.toe.week % 256_i32) as u32;
+    let toa = (eph.toe.sec / 4096.0f64) as u32;
+    let alpha0 = round(ionoutc.alpha0 / 9.313_225_746_154_785e-10_f64) as i32;
+    let alpha1 = round(ionoutc.alpha1 / 7.450_580_596_923_828e-9_f64) as i32;
+    let alpha2 = round(ionoutc.alpha2 / 5.960_464_477_539_063e-8_f64) as i32;
+    let alpha3 = round(ionoutc.alpha3 / 5.960_464_477_539_063e-8_f64) as i32;
+    let beta0 = round(ionoutc.beta0 / 2048.0f64) as i32;
+    let beta1 = round(ionoutc.beta1 / 16384.0f64) as i32;
+    let beta2 = round(ionoutc.beta2 / 65536.0f64) as i32;
+    let beta3 = round(ionoutc.beta3 / 65536.0f64) as i32;
+    let A0 = round(ionoutc.A0 / 9.313_225_746_154_785e-10_f64) as i32;
+    let A1 = round(ionoutc.A1 / 8.881_784_197_001_252e-16_f64) as i32;
+    let dtls = ionoutc.dtls;
+    let tot = (ionoutc.tot / 4096_i32) as u32;
+    let wnt = (ionoutc.wnt % 256_i32) as u32;
     if ionoutc.leapen == 1_i32 {
         wnlsf = (ionoutc.wnlsf % 256_i32) as u32;
         dn = ionoutc.dn as u32;
@@ -609,7 +510,6 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; 10]; 5]) {
 }
 
 pub fn countBits(v: u32) -> u32 {
-    let mut c: u32 = 0;
     let S: [i32; 5] = [1_i32, 2_i32, 4_i32, 8_i32, 16_i32];
     let B: [u32; 5] = [
         0x55555555_i32 as u32,
@@ -618,7 +518,7 @@ pub fn countBits(v: u32) -> u32 {
         0xff00ff_i32 as u32,
         0xffff_i32 as u32,
     ];
-    c = v;
+    let mut c = v;
     c = (c >> S[0] & B[0]).wrapping_add(c & B[0]);
     c = (c >> S[1] & B[1]).wrapping_add(c & B[1]);
     c = (c >> S[2] & B[2]).wrapping_add(c & B[2]);
@@ -628,7 +528,7 @@ pub fn countBits(v: u32) -> u32 {
 }
 
 pub fn computeChecksum(source: u32, nib: i32) -> u32 {
-    let mut bmask: [u32; 6] = [
+    let bmask: [u32; 6] = [
         0x3b1f3480_u32,
         0x1d8f9a40_u32,
         0x2ec7cd00_u32,
@@ -636,10 +536,10 @@ pub fn computeChecksum(source: u32, nib: i32) -> u32 {
         0x2bb1f340_u32,
         0xb7a89c0_u32,
     ];
-    let mut D: u32 = 0;
+    let mut D: u32;
     let mut d: u32 = source & 0x3fffffc0_u32;
-    let mut D29: u32 = source >> 31_i32 & 0x1_u32;
-    let mut D30: u32 = source >> 30_i32 & 0x1_u32;
+    let D29: u32 = source >> 31_i32 & 0x1_u32;
+    let D30: u32 = source >> 30_i32 & 0x1_u32;
     if nib != 0 {
         if D30
             .wrapping_add(countBits(bmask[4] & d))
@@ -688,8 +588,7 @@ pub fn computeChecksum(source: u32, nib: i32) -> u32 {
 }
 
 pub fn subGpsTime(g1: gpstime_t, g0: gpstime_t) -> f64 {
-    let mut dt: f64 = 0.;
-    dt = g1.sec - g0.sec;
+    let mut dt = g1.sec - g0.sec;
     dt += (g1.week - g0.week) as f64 * 604800.0f64;
     dt
 }
@@ -716,41 +615,26 @@ pub fn ionosphericDelay(
     llh: &[f64; 3],
     azel: &[f64; 2],
 ) -> f64 {
-    let mut iono_delay: f64 = 0.0f64;
-    let mut E: f64 = 0.;
-    let mut phi_u: f64 = 0.;
-    let mut lam_u: f64 = 0.;
-    let mut F: f64 = 0.;
+    let iono_delay: f64;
     if ionoutc.enable == 0_i32 {
         return 0.0f64;
     }
-    E = azel[1] / PI;
-    phi_u = llh[0] / PI;
-    lam_u = llh[1] / PI;
-    F = 1.0f64 + 16.0f64 * pow(0.53f64 - E, 3.0f64);
+    let E = azel[1] / PI;
+    let phi_u = llh[0] / PI;
+    let lam_u = llh[1] / PI;
+    let F = 1.0f64 + 16.0f64 * pow(0.53f64 - E, 3.0f64);
     if ionoutc.vflg == 0_i32 {
         iono_delay = F * 5.0e-9f64 * 2.99792458e8f64;
     } else {
-        let mut t: f64 = 0.;
-        let mut psi: f64 = 0.;
-        let mut phi_i: f64 = 0.;
-        let mut lam_i: f64 = 0.;
-        let mut phi_m: f64 = 0.;
-        let mut phi_m2: f64 = 0.;
-        let mut phi_m3: f64 = 0.;
-        let mut AMP: f64 = 0.;
-        let mut PER: f64 = 0.;
-        let mut X: f64 = 0.;
-        let mut X2: f64 = 0.;
-        let mut X4: f64 = 0.;
-        psi = 0.0137f64 / (E + 0.11f64) - 0.022f64;
-        phi_i = phi_u + psi * cos(azel[0]);
-        phi_i = phi_i.clamp(-0.416f64, 0.416f64);
-        lam_i = lam_u + psi * sin(azel[0]) / cos(phi_i * PI);
-        phi_m = phi_i + 0.064f64 * cos((lam_i - 1.617f64) * PI);
-        phi_m2 = phi_m * phi_m;
-        phi_m3 = phi_m2 * phi_m;
-        AMP = ionoutc.alpha0
+        let mut PER: f64;
+        let psi = 0.0137f64 / (E + 0.11f64) - 0.022f64;
+        let phi_i = phi_u + psi * cos(azel[0]);
+        let phi_i = phi_i.clamp(-0.416f64, 0.416f64);
+        let lam_i = lam_u + psi * sin(azel[0]) / cos(phi_i * PI);
+        let phi_m = phi_i + 0.064f64 * cos((lam_i - 1.617f64) * PI);
+        let phi_m2 = phi_m * phi_m;
+        let phi_m3 = phi_m2 * phi_m;
+        let mut AMP = ionoutc.alpha0
             + ionoutc.alpha1 * phi_m
             + ionoutc.alpha2 * phi_m2
             + ionoutc.alpha3 * phi_m3;
@@ -762,17 +646,17 @@ pub fn ionosphericDelay(
         if PER < 72000.0f64 {
             PER = 72000.0f64;
         }
-        t = 86400.0f64 / 2.0f64 * lam_i + g.sec;
+        let mut t = 86400.0f64 / 2.0f64 * lam_i + g.sec;
         while t >= 86400.0f64 {
             t -= 86400.0f64;
         }
         while t < 0_i32 as f64 {
             t += 86400.0f64;
         }
-        X = 2.0f64 * PI * (t - 50400.0f64) / PER;
+        let X = 2.0f64 * PI * (t - 50400.0f64) / PER;
         if fabs(X) < 1.57f64 {
-            X2 = X * X;
-            X4 = X2 * X2;
+            let X2 = X * X;
+            let X4 = X2 * X2;
             iono_delay =
                 F * (5.0e-9f64 + AMP * (1.0f64 - X2 / 2.0f64 + X4 / 24.0f64)) * 2.99792458e8f64;
         } else {
@@ -793,29 +677,24 @@ pub fn computeRange(
     let mut vel: [f64; 3] = [0.; 3];
     let mut clk: [f64; 2] = [0.; 2];
     let mut los: [f64; 3] = [0.; 3];
-    let mut tau: f64 = 0.;
-    let mut range: f64 = 0.;
-    let mut rate: f64 = 0.;
-    let mut xrot: f64 = 0.;
-    let mut yrot: f64 = 0.;
     let mut llh: [f64; 3] = [0.; 3];
     let mut neu: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     satpos(eph, g, &mut pos, &mut vel, &mut clk);
     subVect(&mut los, &pos, xyz_0);
-    tau = normVect(&los) / 2.99792458e8f64;
+    let tau = normVect(&los) / 2.99792458e8f64;
     pos[0] -= vel[0] * tau;
     pos[1] -= vel[1] * tau;
     pos[2] -= vel[2] * tau;
-    xrot = pos[0] + pos[1] * 7.2921151467e-5f64 * tau;
-    yrot = pos[1] - pos[0] * 7.2921151467e-5f64 * tau;
+    let xrot = pos[0] + pos[1] * 7.2921151467e-5f64 * tau;
+    let yrot = pos[1] - pos[0] * 7.2921151467e-5f64 * tau;
     pos[0] = xrot;
     pos[1] = yrot;
     subVect(&mut los, &pos, xyz_0);
-    range = normVect(&los);
+    let range = normVect(&los);
     (rho).d = range;
     (rho).range = range - 2.99792458e8f64 * clk[0];
-    rate = dotProd(&vel, &los) / range;
+    let rate = dotProd(&vel, &los) / range;
     (rho).rate = rate;
     rho.g = *g;
     xyz2llh(xyz_0, &mut llh);
@@ -826,16 +705,13 @@ pub fn computeRange(
     (rho).range += (rho).iono_delay;
 }
 
-pub fn computeCodePhase(chan: &mut channel_t, mut rho1: range_t, mut dt: f64) {
-    let mut ms: f64 = 0.;
-    let mut ims: i32 = 0;
-    let mut rhorate: f64 = 0.;
-    rhorate = (rho1.range - chan.rho0.range) / dt;
+pub fn computeCodePhase(chan: &mut channel_t, rho1: range_t, dt: f64) {
+    let rhorate = (rho1.range - chan.rho0.range) / dt;
     chan.f_carr = -rhorate / 0.190293672798365f64;
     chan.f_code = 1.023e6f64 + chan.f_carr * (1.0f64 / 1540.0f64);
-    ms =
+    let ms =
         (subGpsTime(chan.rho0.g, chan.g0) + 6.0f64 - chan.rho0.range / 2.99792458e8f64) * 1000.0f64;
-    ims = ms as i32;
+    let mut ims = ms as i32;
     chan.code_phase = (ms - ims as f64) * 1023_f64;
     chan.iword = ims / 600_i32;
     ims -= chan.iword * 600_i32;
@@ -849,22 +725,18 @@ pub fn computeCodePhase(chan: &mut channel_t, mut rho1: range_t, mut dt: f64) {
 }
 
 pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
-    let mut iwrd: usize = 0;
-    let mut isbf: usize = 0;
     let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
-    let mut wn: u32 = 0;
-    let mut tow: u32 = 0;
-    let mut sbfwrd: u32 = 0;
+    let mut sbfwrd: u32;
     let mut prevwrd: u32 = 0;
-    let mut nib: i32 = 0;
+    let mut nib: i32;
     g0.week = g.week;
     g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30) as f64 * 30.0f64;
     chan.g0 = g0;
-    wn = (g0.week % 1024_i32) as u32;
-    tow = (g0.sec as u32).wrapping_div(6);
+    let wn = (g0.week % 1024_i32) as u32;
+    let mut tow = (g0.sec as u32).wrapping_div(6);
     if init == 1_i32 {
         prevwrd = 0_u32;
-        iwrd = 0;
+        let mut iwrd = 0;
         while iwrd < 10 {
             sbfwrd = chan.sbf[4][iwrd];
             if iwrd == 1 {
@@ -877,17 +749,17 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             iwrd += 1;
         }
     } else {
-        iwrd = 0;
+        let mut iwrd = 0;
         while iwrd < 10 {
             chan.dwrd[iwrd] = chan.dwrd[10 * 5 + iwrd];
             prevwrd = chan.dwrd[iwrd];
             iwrd += 1;
         }
     }
-    isbf = 0;
+    let mut isbf = 0;
     while isbf < 5 {
         tow = tow.wrapping_add(1);
-        iwrd = 0;
+        let mut iwrd = 0;
         while iwrd < 10 {
             sbfwrd = chan.sbf[isbf][iwrd];
             if isbf == 0 && iwrd == 2 {
@@ -908,7 +780,7 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
 }
 
 pub fn checkSatVisibility(
-    mut eph: ephem_t,
+    eph: ephem_t,
     g: &gpstime_t,
     xyz_0: &[f64; 3],
     elvMask: f64,
@@ -947,8 +819,6 @@ pub fn allocateChannel(
     allocatedSat: &mut [i32; 32],
 ) -> i32 {
     let mut nsat: i32 = 0_i32;
-    // let mut i: i32 = 0;
-    let mut sv = 0;
     let mut azel: [f64; 2] = [0.; 2];
     let mut rho: range_t = range_t {
         g: gpstime_t { week: 0, sec: 0. },
@@ -958,13 +828,13 @@ pub fn allocateChannel(
         azel: [0.; 2],
         iono_delay: 0.,
     };
-    let mut ref_0: [f64; 3] = [0.0f64, 0., 0.];
-    #[allow(unused_variables)]
-    let mut r_ref: f64 = 0.;
-    #[allow(unused_variables)]
-    let mut r_xyz: f64 = 0.;
-    let mut phase_ini: f64 = 0.;
-    sv = 0;
+    let ref_0: [f64; 3] = [0.0f64, 0., 0.];
+    // #[allow(unused_variables)]
+    // let mut r_ref: f64 = 0.;
+    // #[allow(unused_variables)]
+    // let mut r_xyz: f64;
+    let mut phase_ini: f64;
+    let mut sv = 0;
     while sv < 32_i32 {
         if checkSatVisibility(eph[sv as usize], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
             nsat += 1;
@@ -980,9 +850,9 @@ pub fn allocateChannel(
                         generateNavMsg(grx, &mut chan[i], 1_i32);
                         computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, xyz_0);
                         (chan[i]).rho0 = rho;
-                        r_xyz = rho.range;
+                        // r_xyz = rho.range;
                         computeRange(&mut rho, &eph[sv as usize], ionoutc, grx, &ref_0);
-                        r_ref = rho.range;
+                        // r_ref = rho.range;
                         phase_ini = 0.0f64;
                         phase_ini -= floor(phase_ini);
                         (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
@@ -1004,19 +874,15 @@ pub fn allocateChannel(
     nsat
 }
 
-unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
+unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
     let mut allocatedSat: [i32; 32] = [0; 32];
 
     let mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
     unsafe {
         let mut fp_out: Option<std::fs::File> = None;
-        let mut sv: i32 = 0;
-        let mut neph: usize = 0;
-        let mut ieph: usize = 0;
         let mut eph: [[ephem_t; 32]; 15] = [[ephem_t::default(); 32]; 15];
         let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
         let mut llh: [f64; 3] = [0.; 3];
-        // let mut i: i32 = 0;
         let mut chan: [channel_t; 16] = [channel_t {
             prn: 0,
             ca: [0; 1023],
@@ -1036,40 +902,21 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             azel: [0.; 2],
             rho0: range_t::default(),
         }; 16];
-        let mut elvmask: f64 = 0.0f64;
-        let mut ip: i32 = 0;
-        let mut qp: i32 = 0;
-        let mut iTable: i32 = 0;
-        let mut grx: gpstime_t = gpstime_t::default();
-        let mut delt: f64 = 0.;
-        let mut isamp: i32 = 0;
-        let mut iumd: i32 = 0;
-        let mut numd: i32 = 0;
+        let elvmask: f64 = 0.0f64;
         let mut umfile: [libc::c_char; 100] = [0; 100];
         let mut staticLocationMode: i32 = 0_i32;
         let mut nmeaGGA: i32 = 0_i32;
         let mut umLLH: i32 = 0_i32;
         let mut navfile: [libc::c_char; 100] = [0; 100];
         let mut outfile: [libc::c_char; 100] = [0; 100];
-        let mut samp_freq: f64 = 0.;
-        let mut iq_buff_size: i32 = 0;
-        let mut data_format: i32 = 0;
         let mut gain: [i32; 16] = [0; 16];
-        let mut path_loss: f64 = 0.;
-        let mut ant_gain: f64 = 0.;
         let mut fixed_gain: i32 = 128_i32;
         let mut ant_pat: [f64; 37] = [0.; 37];
-        let mut ibs: i32 = 0;
         let mut t0: datetime_t = datetime_t::default();
         let mut tmin: datetime_t = datetime_t::default();
         let mut tmax: datetime_t = datetime_t::default();
         let mut gmin: gpstime_t = gpstime_t { week: 0, sec: 0. };
         let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut dt: f64 = 0.;
-        let mut igrx: i32 = 0;
-        let mut duration: f64 = 0.;
-        let mut iduration: i32 = 0;
-        let mut verb: i32 = 0;
         let mut timeoverwrite: i32 = 0_i32;
         let mut ionoutc: ionoutc_t = ionoutc_t::default();
         let mut path_loss_enable: i32 = 1_i32;
@@ -1079,12 +926,12 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             outfile.as_mut_ptr(),
             b"gpssim.bin\0" as *const u8 as *const libc::c_char,
         );
-        samp_freq = 2.6e6f64;
-        data_format = 16_i32;
+        let mut samp_freq = 2.6e6f64;
+        let mut data_format = 16_i32;
         g0.week = -1_i32;
-        iduration = USER_MOTION_SIZE as i32;
-        duration = iduration as f64 / 10.0f64;
-        verb = 0_i32;
+        let iduration = USER_MOTION_SIZE as i32;
+        let mut duration = iduration as f64 / 10.0f64;
+        let mut verb = 0_i32;
         ionoutc.enable = 1_i32;
         ionoutc.leapen = 0_i32;
         loop_through_opts(
@@ -1126,11 +973,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             eprintln!("ERROR: Invalid duration.");
             panic!();
         }
-        iduration = (duration * 10.0f64 + 0.5f64) as i32;
-        samp_freq = floor(samp_freq / 10.0f64);
-        iq_buff_size = samp_freq as i32;
+        let iduration = (duration * 10.0f64 + 0.5f64) as i32;
+        let mut samp_freq = floor(samp_freq / 10.0f64);
+        let iq_buff_size = samp_freq as usize;
         samp_freq *= 10.0f64;
-        delt = 1.0f64 / samp_freq;
+        let delt = 1.0f64 / samp_freq;
+
+        let mut numd: i32;
         if staticLocationMode == 0 {
             if nmeaGGA == 1_i32 {
                 numd = readNmeaGGA(xyz.as_mut_ptr(), umfile.as_mut_ptr());
@@ -1164,7 +1013,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             llh[1] * 57.2957795131f64,
             llh[2],
         );
-        neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
+        let neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
         if neph == 0 {
             eprintln!("ERROR: No ephemeris available.",);
             panic!();
@@ -1190,8 +1039,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
 
             eprintln!("{:6}", ionoutc.dtls,);
         }
-        sv = 0_i32;
-        while sv < 32_i32 {
+        let mut sv = 0;
+        while sv < 32 {
             if eph[0][sv as usize].vflg == 1_i32 {
                 gmin = eph[0][sv as usize].toc;
                 tmin = eph[0][sv as usize].t;
@@ -1208,8 +1057,8 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         tmax.d = 0_i32;
         tmax.m = 0_i32;
         tmax.y = 0_i32;
-        sv = 0_i32;
-        while sv < 32_i32 {
+        let mut sv = 0;
+        while sv < 32 {
             if eph[neph - 1][sv as usize].vflg == 1_i32 {
                 gmax = eph[neph - 1][sv as usize].toc;
                 tmax = eph[neph - 1][sv as usize].t;
@@ -1222,14 +1071,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             if timeoverwrite == 1_i32 {
                 let mut gtmp: gpstime_t = gpstime_t::default();
                 let mut ttmp: datetime_t = datetime_t::default();
-                let mut dsec: f64 = 0.;
                 gtmp.week = g0.week;
                 gtmp.sec = (g0.sec as i32 / 7200_i32) as f64 * 7200.0f64;
-                dsec = subGpsTime(gtmp, gmin);
+                let dsec = subGpsTime(gtmp, gmin);
                 ionoutc.wnt = gtmp.week;
                 ionoutc.tot = gtmp.sec as i32;
-                sv = 0_i32;
-                while sv < 32_i32 {
+                let mut sv = 0;
+                while sv < 32 {
                     let mut i = 0;
                     while i < neph {
                         if eph[i][sv as usize].vflg == 1_i32 {
@@ -1267,13 +1115,13 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         );
 
         eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
-        ieph = usize::MAX;
+        let mut ieph = usize::MAX;
         let mut i = 0;
         while i < neph {
-            sv = 0_i32;
-            while sv < 32_i32 {
+            let mut sv = 0;
+            while sv < 32 {
                 if eph[i][sv as usize].vflg == 1_i32 {
-                    dt = subGpsTime(g0, eph[i][sv as usize].toc);
+                    let dt = subGpsTime(g0, eph[i][sv as usize].toc);
                     if (-3600.0f64..3600.0f64).contains(&dt) {
                         ieph = i;
                         break;
@@ -1332,12 +1180,12 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
             chan[i].prn = 0_i32;
             i += 1;
         }
-        sv = 0_i32;
-        while sv < 32_i32 {
+        let mut sv = 0;
+        while sv < 32 {
             allocatedSat[sv as usize] = -1_i32;
             sv += 1;
         }
-        grx = incGpsTime(g0, 0.0f64);
+        let mut grx = incGpsTime(g0, 0.0f64);
         allocateChannel(
             &mut chan,
             &mut eph[ieph],
@@ -1368,7 +1216,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
         }
         let time_start = Instant::now();
         grx = incGpsTime(grx, 0.1f64);
-        iumd = 1_i32;
+        let mut iumd = 1;
         while iumd < numd {
             let mut i = 0_i32;
             while i < 16_i32 {
@@ -1381,7 +1229,7 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                         azel: [0.; 2],
                         iono_delay: 0.,
                     };
-                    sv = chan[i as usize].prn - 1_i32;
+                    let sv = chan[i as usize].prn - 1;
                     if staticLocationMode == 0 {
                         computeRange(
                             &mut rho,
@@ -1404,9 +1252,9 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     computeCodePhase(&mut *chan.as_mut_ptr().offset(i as isize), rho, 0.1f64);
                     chan[i as usize].carr_phasestep =
                         round(512.0f64 * 65536.0f64 * chan[i as usize].f_carr * delt) as i32;
-                    path_loss = 20200000.0f64 / rho.d;
-                    ibs = ((90.0f64 - rho.azel[1] * 57.2957795131f64) / 5.0f64) as i32;
-                    ant_gain = ant_pat[ibs as usize];
+                    let path_loss = 20200000.0f64 / rho.d;
+                    let ibs = ((90.0f64 - rho.azel[1] * 57.2957795131f64) / 5.0f64) as usize;
+                    let ant_gain = ant_pat[ibs];
                     if path_loss_enable == 1_i32 {
                         gain[i as usize] = (path_loss * ant_gain * 128.0f64) as i32;
                     } else {
@@ -1415,22 +1263,16 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 i += 1;
             }
-            isamp = 0_i32;
+            let mut isamp = 0;
             while isamp < iq_buff_size {
                 let mut i_acc: i32 = 0_i32;
                 let mut q_acc: i32 = 0_i32;
                 let mut i = 0usize;
                 while i < 16 {
                     if chan[i].prn > 0_i32 {
-                        iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as i32;
-                        ip = chan[i].dataBit
-                            * chan[i].codeCA
-                            * cosTable512[iTable as usize]
-                            * gain[i];
-                        qp = chan[i].dataBit
-                            * chan[i].codeCA
-                            * sinTable512[iTable as usize]
-                            * gain[i];
+                        let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize;
+                        let ip = chan[i].dataBit * chan[i].codeCA * cosTable512[iTable] * gain[i];
+                        let qp = chan[i].dataBit * chan[i].codeCA * sinTable512[iTable] * gain[i];
                         i_acc += ip;
                         q_acc += qp;
                         chan[i].code_phase += chan[i].f_code * delt;
@@ -1461,24 +1303,24 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 }
                 i_acc = (i_acc + 64_i32) >> 7_i32;
                 q_acc = (q_acc + 64_i32) >> 7_i32;
-                iq_buff[isamp as usize * 2] = i_acc as i16;
-                iq_buff[isamp as usize * 2 + 1] = q_acc as i16;
+                iq_buff[isamp * 2] = i_acc as i16;
+                iq_buff[isamp * 2 + 1] = q_acc as i16;
                 isamp += 1;
             }
             if data_format == 1_i32 {
-                isamp = 0_i32;
-                while isamp < 2_i32 * iq_buff_size {
-                    if isamp % 8_i32 == 0_i32 {
-                        iq8_buff[(isamp / 8) as usize] = 0i8;
+                let mut isamp = 0;
+                while isamp < 2 * iq_buff_size {
+                    if isamp % 8 == 0 {
+                        iq8_buff[isamp / 8] = 0i8;
                     }
-                    let fresh1_new = &mut iq8_buff[(isamp / 8) as usize];
+                    let fresh1_new = &mut iq8_buff[isamp / 8];
 
                     *fresh1_new = (*fresh1_new as i32
-                        | (if iq_buff[isamp as usize] as i32 > 0_i32 {
+                        | (if iq_buff[isamp] as i32 > 0_i32 {
                             0x1_i32
                         } else {
                             0_i32
-                        }) << (7_i32 - isamp % 8_i32))
+                        }) << (7_i32 - isamp as i32 % 8_i32))
                         as libc::c_schar;
 
                     isamp += 1;
@@ -1487,33 +1329,33 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                 if let Some(file) = &mut fp_out {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
-                        (iq_buff_size / 4_i32) as usize,
+                        (iq_buff_size as i32 / 4_i32) as usize,
                     ))
                     .ok();
                 }
             } else if data_format == 8_i32 {
-                isamp = 0_i32;
-                while isamp < 2_i32 * iq_buff_size {
-                    iq8_buff[isamp as usize] =
-                        (iq_buff[isamp as usize] as i32 >> 4_i32) as libc::c_schar;
+                let mut isamp = 0;
+                while isamp < 2 * iq_buff_size {
+                    iq8_buff[isamp] =
+                        (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
                     isamp += 1;
                 }
 
                 if let Some(file) = &mut fp_out {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
-                        (2_i32 * iq_buff_size) as usize,
+                        (2_i32 * iq_buff_size as i32) as usize,
                     ))
                     .ok();
                 }
             } else if let Some(file) = &mut fp_out {
                 let byte_slice = std::slice::from_raw_parts(
                     iq_buff.as_ptr() as *const u8,
-                    (2_i32 * iq_buff_size * 2) as usize, // 2 bytes per sample
+                    (2_i32 * iq_buff_size as i32 * 2) as usize, // 2 bytes per sample
                 );
                 file.write_all(byte_slice).ok();
             }
-            igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
+            let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
             if igrx % 300_i32 == 0_i32 {
                 let mut i = 0_i32;
                 while i < 16_i32 {
@@ -1522,19 +1364,19 @@ unsafe fn process(mut argc: i32, mut argv: *mut *mut libc::c_char) -> i32 {
                     }
                     i += 1;
                 }
-                sv = 0_i32;
-                while sv < 32_i32 {
-                    if eph[ieph + 1][sv as usize].vflg == 1_i32 {
-                        dt = subGpsTime(eph[ieph + 1][sv as usize].toc, grx);
+                let mut sv = 0;
+                while sv < 32 {
+                    if eph[ieph + 1][sv].vflg == 1_i32 {
+                        let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
                         if dt < 3600.0f64 {
                             ieph += 1;
-                            let mut i = 0_i32;
-                            while i < 16_i32 {
-                                if chan[i as usize].prn != 0_i32 {
+                            let mut i = 0;
+                            while i < 16 {
+                                if chan[i].prn != 0_i32 {
                                     eph2sbf(
-                                        eph[ieph][(chan[i as usize].prn - 1_i32) as usize],
+                                        eph[ieph][(chan[i].prn - 1_i32) as usize],
                                         &ionoutc,
-                                        &mut chan[i as usize].sbf,
+                                        &mut chan[i].sbf,
                                     );
                                 }
                                 i += 1;
