@@ -19,5 +19,6 @@ pub struct ionoutc_t {
     pub dtlsf: i32,
     pub dn: i32,
     pub wnlsf: i32,
+    // enable custom leap event
     pub leapen: i32,
 }

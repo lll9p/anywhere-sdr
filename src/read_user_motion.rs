@@ -1,10 +1,14 @@
-use crate::{FILE, constants::USER_MOTION_SIZE, fclose, fgets, fopen, llh2xyz, sscanf};
+use crate::{FILE, constants::*, fclose, fgets, fopen, llh2xyz, sscanf};
+
+///  \brief Read the list of user motions from the input file
+///  \param[out] xyz Output array of ECEF vectors for user motion
+///  \param[[in] filename File name of the text input file
+///  \returns Number of user data motion records read, -1 on error
 pub unsafe fn readUserMotion(
     xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: *const libc::c_char,
 ) -> i32 {
     unsafe {
-        
         let mut str: [libc::c_char; 100] = [0; 100];
         let mut t: f64 = 0.;
         let mut x: f64 = 0.;
@@ -40,12 +44,18 @@ pub unsafe fn readUserMotion(
         numd
     }
 }
+
+///  \brief Read the list of user motions from the input file
+///  \param[out] xyz Output array of LatLonHei coordinates for user motion
+///  \param[[in] filename File name of the text input file with format Lat,Lon,Hei
+///  \returns Number of user data motion records read, -1 on error
+///
+/// Added by romalvarezllorens@gmail.com
 pub unsafe fn readUserMotionLLH(
     xyz_full: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: *const libc::c_char,
 ) -> i32 {
     unsafe {
-        
         let mut t: f64 = 0.;
         let mut llh: [f64; 3] = [0.; 3];
         let mut str: [libc::c_char; 100] = [0; 100];

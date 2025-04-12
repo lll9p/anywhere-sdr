@@ -1,8 +1,12 @@
 use crate::{
-    FILE, atof, atoi, date2gps, datetime_t, ephem_t, fclose, fgets, fopen, gpstime_t, ionoutc_t,
-    sqrt, strncmp, strncpy, subGpsTime,
+    FILE, atof, atoi, constants::*, date2gps, datetime_t, ephem_t, fclose, fgets, fopen, gpstime_t,
+    ionoutc_t, sqrt, strncmp, strncpy, subGpsTime,
 };
 
+///  \brief Replace all 'E' exponential designators to 'D'
+///  \param str String in which all occurrences of 'E' are replaced with *  'D'
+///  \param len Length of input string in bytes
+///  \returns Number of characters replaced
 pub fn replaceExpDesignator(str: *mut libc::c_char, len: isize) -> i32 {
     unsafe {
         let mut i: isize = 0;
@@ -17,14 +21,16 @@ pub fn replaceExpDesignator(str: *mut libc::c_char, len: isize) -> i32 {
         n
     }
 }
-
+///  \brief Read Ephemeris data from the RINEX Navigation file */
+///  \param[out] eph Array of Output SV ephemeris data
+///  \param[in] fname File name of the RINEX file
+///  \returns Number of sets of ephemerides in the file
 pub fn readRinexNavAll(
-    eph: &mut [[ephem_t; 32]; 15],
+    eph: &mut [[ephem_t; MAX_SAT]; 15],
     ionoutc: &mut ionoutc_t,
     fname: *const libc::c_char,
 ) -> usize {
     unsafe {
-        
         let mut str: [libc::c_char; 100] = [0; 100];
         let mut tmp: [libc::c_char; 20] = [0; 20];
         let mut t: datetime_t = datetime_t {
