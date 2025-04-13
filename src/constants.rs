@@ -61,8 +61,8 @@ pub const CODE_FREQ: f64 = 1.023e6;
 pub const CARR_TO_CODE: f64 = 1.0 / 1540.0;
 
 // Sampling data format
-pub const SC01: usize = 1;
-pub const SC08: usize = 8;
-pub const SC16: usize = 16;
+pub const SC01: i32 = 1;
+pub const SC08: i32 = 8;
+pub const SC16: i32 = 16;
 
 pub const EPHEM_ARRAY_SIZE: usize = 15; // for daily GPS broadcast ephemers file (brdc)
