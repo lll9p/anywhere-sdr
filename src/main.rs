@@ -103,32 +103,21 @@ type time_t = libc::c_long;
 
 pub fn main() -> anyhow::Result<()> {
     let _guard = tracing_init();
-    // let cli = Cli::parse();
-    // match cli.commands {
-    //     Commands::Report => {}
-    //     Commands::XRD(cmds) => {
-    //         cmds.run()?;
-    //     }
-    //     Commands::Sizer(cmds) => {
-    //         cmds.run()?;
-    //     }
+
+    let args = cli::Args::parse().get_params();
+    // let mut args: Vec<*mut libc::c_char> = Vec::new();
+    // for arg in ::std::env::args() {
+    //     args.push(
+    //         (::std::ffi::CString::new(arg))
+    //             .expect("Failed to convert argument into CString.")
+    //             .into_raw(),
+    //     );
     // }
-    // let mut args: Vec<String> = std::env::args().collect();
-    let mut args: Vec<*mut libc::c_char> = Vec::new();
-    for arg in ::std::env::args() {
-        args.push(
-            (::std::ffi::CString::new(arg))
-                .expect("Failed to convert argument into CString.")
-                .into_raw(),
-        );
-    }
-    args.push(::core::ptr::null_mut());
-
-    if args.len() - 1 < 3 {
-        usage();
-        panic!();
-    }
-    unsafe { ::std::process::exit(process((args.len() - 1) as i32, args.as_mut_ptr())) };
-
-    // Ok(())
+    // args.push(::core::ptr::null_mut());
+    //
+    // if args.len() - 1 < 3 {
+    //     usage();
+    //     panic!();
+    // }
+    unsafe { ::std::process::exit(process(params)) };
 }
