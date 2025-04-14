@@ -1,4 +1,4 @@
-use crate::{FILE, constants::*, fclose, fgets, fopen, llh2xyz, sscanf};
+use crate::{FILE, constants::*, fclose, fgets, fopen, process::llh2xyz, sscanf};
 
 ///  \brief Read the list of user motions from the input file
 ///  \param[out] xyz Output array of ECEF vectors for user motion

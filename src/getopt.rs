@@ -1,6 +1,7 @@
 use crate::{
-    atof, atoi, constants::USER_MOTION_SIZE, date2gps, datetime::gpstime_t, datetime_t, gmtime,
-    ionoutc_t, llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm, utils::*,
+    atof, atoi, constants::USER_MOTION_SIZE, datetime::gpstime_t, datetime_t, gmtime, ionoutc_t,
+    process::date2gps, process::llh2xyz, sscanf, strchr, strcpy, strncmp, time, time_t, tm,
+    utils::*,
 };
 
 pub static mut opterr: i32 = 1_i32;
@@ -240,7 +241,7 @@ pub unsafe fn loop_through_opts(
                     ) == 0_i32
                     {
                         let mut timer: time_t = 0;
-                        
+
                         time(&mut timer);
                         let gmt: *mut tm = gmtime(&timer);
                         t0.y = (*gmt).tm_year + 1900_i32;

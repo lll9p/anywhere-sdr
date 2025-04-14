@@ -1,6 +1,6 @@
 use crate::{
-    FILE, atof, atoi, constants::*, date2gps, datetime_t, ephem_t, fclose, fgets, fopen, gpstime_t,
-    ionoutc_t, sqrt, strncmp, strncpy, subGpsTime,
+    FILE, atof, atoi, constants::*, datetime_t, ephem_t, fclose, fgets, fopen, gpstime_t,
+    ionoutc_t, process::date2gps, process::subGpsTime, sqrt, strncmp, strncpy,
 };
 
 ///  \brief Replace all 'E' exponential designators to 'D'

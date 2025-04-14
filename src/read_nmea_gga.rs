@@ -1,11 +1,10 @@
 use crate::{
-    FILE, atof, constants::USER_MOTION_SIZE, fclose, fgets, fopen, llh2xyz, strncmp, strncpy,
-    strtok,
+    FILE, atof, constants::USER_MOTION_SIZE, fclose, fgets, fopen, process::llh2xyz, strncmp,
+    strncpy, strtok,
 };
 
 pub fn readNmeaGGA(xyz_0: *mut [f64; 3], filename: *const libc::c_char) -> i32 {
     unsafe {
-        
         let mut numd: i32 = 0_i32;
         let mut str: [libc::c_char; 100] = [0; 100];
         let mut llh: [f64; 3] = [0.; 3];
