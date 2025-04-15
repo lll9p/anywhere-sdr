@@ -66,17 +66,17 @@ pub struct channel_t {
     pub rho0: range_t,
 }
 
-pub fn subVect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
+pub fn sub_vect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
     y[0] = x1[0] - x2[0];
     y[1] = x1[1] - x2[1];
     y[2] = x1[2] - x2[2];
 }
 
-pub fn normVect(x: &[f64; 3]) -> f64 {
+pub fn norm_vect(x: &[f64; 3]) -> f64 {
     (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]).sqrt()
 }
 
-pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
+pub fn dot_prod(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
     x1[0] * x2[0] + x1[1] * x2[1] + x1[2] * x2[2]
 }
 /// !generate the C/A code sequence for a given Satellite Vehicle PRN
@@ -168,7 +168,7 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     let e = WGS84_ECCENTRICITY;
     let eps = 1.0e-3f64;
     let e2 = e * e;
-    if normVect(xyz_0) < eps {
+    if norm_vect(xyz_0) < eps {
         // Invalid ECEF vector
         llh[0] = 0.0f64;
         llh[1] = 0.0f64;
@@ -504,7 +504,7 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
 ///  \param[in] nib Does this word contain non-information-bearing bits?
 ///  \returns Computed Checksum
 #[allow(non_snake_case)]
-pub fn computeChecksum(source: u32, nib: i32) -> u32 {
+pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     /*
     Bits 31 to 30 = 2 LSBs of the previous transmitted word, D29* and D30*
     Bits 29 to  6 = Source data bits, d1, d2, ..., d24
@@ -594,13 +594,13 @@ pub fn computeChecksum(source: u32, nib: i32) -> u32 {
     D
 }
 
-pub fn subGpsTime(g1: gpstime_t, g0: gpstime_t) -> f64 {
+pub fn sub_gps_time(g1: gpstime_t, g0: gpstime_t) -> f64 {
     let mut dt = g1.sec - g0.sec;
     dt += (g1.week - g0.week) as f64 * SECONDS_IN_WEEK;
     dt
 }
 
-pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
+pub fn inc_gps_time(g0: gpstime_t, dt: f64) -> gpstime_t {
     let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
@@ -617,7 +617,7 @@ pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
 }
 
 #[allow(non_snake_case)]
-pub fn ionosphericDelay(
+pub fn ionospheric_delay(
     ionoutc: &ionoutc_t,
     g: &gpstime_t,
     llh: &[f64; 3],
@@ -693,7 +693,7 @@ pub fn ionosphericDelay(
 ///  \param[in] eph Ephemeris data of the satellite
 ///  \param[in] g GPS time at time of receiving the signal
 ///  \param[in] xyz position of the receiver
-pub fn computeRange(
+pub fn compute_range(
     rho: &mut range_t,
     eph: &ephem_t,
     ionoutc: &mut ionoutc_t,
@@ -710,8 +710,8 @@ pub fn computeRange(
     // SV position at time of the pseudorange observation.
     satpos(eph, g, &mut pos, &mut vel, &mut clk);
     // Receiver to satellite vector and light-time.
-    subVect(&mut los, &pos, xyz_0);
-    let tau = normVect(&los) / SPEED_OF_LIGHT;
+    sub_vect(&mut los, &pos, xyz_0);
+    let tau = norm_vect(&los) / SPEED_OF_LIGHT;
     // Extrapolate the satellite position backwards to the transmission time.
     pos[0] -= vel[0] * tau;
     pos[1] -= vel[1] * tau;
@@ -721,13 +721,13 @@ pub fn computeRange(
     pos[0] = xrot;
     pos[1] = yrot;
     // New observer to satellite vector and satellite range.
-    subVect(&mut los, &pos, xyz_0);
-    let range = normVect(&los);
+    sub_vect(&mut los, &pos, xyz_0);
+    let range = norm_vect(&los);
     (rho).d = range;
     // Pseudorange.
     (rho).range = range - SPEED_OF_LIGHT * clk[0];
     // Relative velocity of SV and receiver.
-    let rate = dotProd(&vel, &los) / range;
+    let rate = dot_prod(&vel, &los) / range;
     // Pseudorange rate.
     (rho).rate = rate; // - SPEED_OF_LIGHT*clk[1];
     // Time of application.
@@ -738,7 +738,7 @@ pub fn computeRange(
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(&mut (rho).azel, &neu);
     // Add ionospheric delay
-    (rho).iono_delay = ionosphericDelay(ionoutc, g, &llh, &(rho).azel);
+    (rho).iono_delay = ionospheric_delay(ionoutc, g, &llh, &(rho).azel);
     (rho).range += (rho).iono_delay;
 }
 
@@ -746,15 +746,15 @@ pub fn computeRange(
 ///  \param chan Channel on which we operate (is updated)
 ///  \param[in] rho1 Current range, after \a dt has expired
 ///  \param[in dt delta-t (time difference) in seconds
-pub fn computeCodePhase(chan: &mut channel_t, rho1: range_t, dt: f64) {
+pub fn compute_code_phase(chan: &mut channel_t, rho1: range_t, dt: f64) {
     // Pseudorange rate.
     let rhorate = (rho1.range - chan.rho0.range) / dt;
     // Carrier and code frequency.
     chan.f_carr = -rhorate / LAMBDA_L1;
     chan.f_code = CODE_FREQ + chan.f_carr * CARR_TO_CODE;
     // Initial code phase and data bit counters.
-    let ms =
-        (subGpsTime(chan.rho0.g, chan.g0) + 6.0f64 - chan.rho0.range / SPEED_OF_LIGHT) * 1000.0f64;
+    let ms = (sub_gps_time(chan.rho0.g, chan.g0) + 6.0f64 - chan.rho0.range / SPEED_OF_LIGHT)
+        * 1000.0f64;
     let mut ims = ms as i32;
     chan.code_phase = (ms - ims as f64) * CA_SEQ_LEN as f64; // in chip
     chan.iword = ims / 600_i32; // 1 word = 30 bits = 600 ms
@@ -769,7 +769,7 @@ pub fn computeCodePhase(chan: &mut channel_t, rho1: range_t, dt: f64) {
     chan.rho0 = rho1;
 }
 
-pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
+pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
     let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
     let mut sbfwrd: u32;
     let mut prevwrd: u32 = 0;
@@ -792,7 +792,7 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             // Compute checksum
             sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32; // 2 LSBs of the previous transmitted word
             nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
-            chan.dwrd[iwrd] = computeChecksum(sbfwrd, nib);
+            chan.dwrd[iwrd] = compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[iwrd];
         }
     } else {
@@ -826,14 +826,14 @@ pub fn generateNavMsg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             // Compute checksum
             sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32; // 2 LSBs of the previous transmitted word
             nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
-            chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] = computeChecksum(sbfwrd, nib);
+            chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] = compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd];
         }
     }
     1_i32
 }
 
-pub fn checkSatVisibility(
+pub fn check_sat_visibility(
     eph: ephem_t,
     g: &gpstime_t,
     xyz_0: &[f64; 3],
@@ -854,7 +854,7 @@ pub fn checkSatVisibility(
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
     satpos(&eph, g, &mut pos, &mut vel, &mut clk);
-    subVect(&mut los, &pos, xyz_0);
+    sub_vect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
     if azel[1] * R2D > elv_mask {
@@ -863,7 +863,7 @@ pub fn checkSatVisibility(
     0_i32 // Invisible
 }
 
-pub fn allocateChannel(
+pub fn allocate_channel(
     chan: &mut [channel_t; 16],
     eph: &mut [ephem_t; 32],
     ionoutc: &mut ionoutc_t,
@@ -889,7 +889,7 @@ pub fn allocateChannel(
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if checkSatVisibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
+        if check_sat_visibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
             nsat += 1; // Number of visible satellites
             if allocated_sat[sv] == -1_i32 {
                 // Visible but not allocated
@@ -907,13 +907,13 @@ pub fn allocateChannel(
                         // Generate subframe
                         eph2sbf(eph[sv], ionoutc, &mut chan[i].sbf);
                         // Generate navigation message
-                        generateNavMsg(grx, &mut chan[i], 1_i32);
+                        generate_nav_msg(grx, &mut chan[i], 1_i32);
                         // Initialize pseudorange
-                        computeRange(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
+                        compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
                         (chan[i]).rho0 = rho;
                         // Initialize carrier phase
                         // r_xyz = rho.range;
-                        computeRange(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
+                        compute_range(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
                         // r_ref = rho.range;
                         phase_ini = 0.0f64; // TODO: Must initialize properly
                         //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
@@ -1127,7 +1127,7 @@ pub fn process(params: Params) -> i32 {
             gtmp.week = g0.week;
             gtmp.sec = (g0.sec as i32 / 7200_i32) as f64 * 7200.0f64;
             // Overwrite the UTC reference week number
-            let dsec = subGpsTime(gtmp, gmin);
+            let dsec = sub_gps_time(gtmp, gmin);
             ionoutc.wnt = gtmp.week;
             ionoutc.tot = gtmp.sec as i32;
             // Iono/UTC parameters may no longer valid
@@ -1135,16 +1135,16 @@ pub fn process(params: Params) -> i32 {
             for sv in 0..MAX_SAT {
                 for i_eph in eph.iter_mut().take(neph) {
                     if i_eph[sv].vflg == 1_i32 {
-                        gtmp = incGpsTime(i_eph[sv].toc, dsec);
+                        gtmp = inc_gps_time(i_eph[sv].toc, dsec);
                         gps2date(&gtmp, &mut ttmp);
                         i_eph[sv].toc = gtmp;
                         i_eph[sv].t = ttmp;
-                        gtmp = incGpsTime(i_eph[sv].toe, dsec);
+                        gtmp = inc_gps_time(i_eph[sv].toe, dsec);
                         i_eph[sv].toe = gtmp;
                     }
                 }
             }
-        } else if subGpsTime(g0, gmin) < 0.0f64 || subGpsTime(gmax, g0) < 0.0f64 {
+        } else if sub_gps_time(g0, gmin) < 0.0f64 || sub_gps_time(gmax, g0) < 0.0f64 {
             eprintln!("ERROR: Invalid start time.");
             eprintln!(
                 "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
@@ -1173,7 +1173,7 @@ pub fn process(params: Params) -> i32 {
     for (i, eph_item) in eph.iter().enumerate().take(neph) {
         for e in eph_item.iter().take(MAX_SAT) {
             if e.vflg == 1_i32 {
-                let dt = subGpsTime(g0, e.toc);
+                let dt = sub_gps_time(g0, e.toc);
                 if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
                     ieph = i;
                     break;
@@ -1246,9 +1246,9 @@ pub fn process(params: Params) -> i32 {
     // Clear satellite allocation flag
     allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
     // Initial reception time
-    let mut grx = incGpsTime(g0, 0.0f64);
+    let mut grx = inc_gps_time(g0, 0.0f64);
     // Allocate visible satellites
-    allocateChannel(
+    allocate_channel(
         &mut chan,
         &mut eph[ieph],
         &mut ionoutc,
@@ -1282,7 +1282,7 @@ pub fn process(params: Params) -> i32 {
     // Generate baseband signals
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
-    grx = incGpsTime(grx, 0.1f64);
+    grx = inc_gps_time(grx, 0.1f64);
     for iumd in 1..numd {
         for i in 0..MAX_CHAN {
             if chan[i].prn > 0 {
@@ -1298,7 +1298,7 @@ pub fn process(params: Params) -> i32 {
                 let sv = chan[i].prn - 1;
                 // Current pseudorange
                 if !static_location_mode {
-                    computeRange(
+                    compute_range(
                         &mut rho,
                         &eph[ieph][sv as usize],
                         &mut ionoutc,
@@ -1306,7 +1306,7 @@ pub fn process(params: Params) -> i32 {
                         &xyz[iumd as usize],
                     );
                 } else {
-                    computeRange(
+                    compute_range(
                         &mut rho,
                         &eph[ieph][sv as usize],
                         &mut ionoutc,
@@ -1317,7 +1317,7 @@ pub fn process(params: Params) -> i32 {
                 // Update code phase and data bit counters
                 chan[i].azel[0] = rho.azel[0];
                 chan[i].azel[1] = rho.azel[1];
-                computeCodePhase(&mut chan[i], rho, 0.1f64);
+                compute_code_phase(&mut chan[i], rho, 0.1f64);
                 chan[i].carr_phasestep =
                     (512.0f64 * 65536.0f64 * chan[i].f_carr * delt).round() as i32;
 
@@ -1457,14 +1457,14 @@ pub fn process(params: Params) -> i32 {
             // for i in 0..MAX_CHAN {
             for ichan in chan.iter_mut().take(MAX_CHAN) {
                 if ichan.prn > 0_i32 {
-                    generateNavMsg(&grx, ichan, 0_i32);
+                    generate_nav_msg(&grx, ichan, 0_i32);
                 }
             }
             // Refresh ephemeris and subframes
             // Quick and dirty fix. Need more elegant way.
             for sv in 0..MAX_SAT {
                 if eph[ieph + 1][sv].vflg == 1_i32 {
-                    let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
+                    let dt = sub_gps_time(eph[ieph + 1][sv].toc, grx);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;
                         // for i in 0..MAX_CHAN {
@@ -1484,7 +1484,7 @@ pub fn process(params: Params) -> i32 {
             }
             // Update channel allocation
             if !static_location_mode {
-                allocateChannel(
+                allocate_channel(
                     &mut chan,
                     &mut eph[ieph],
                     &mut ionoutc,
@@ -1494,7 +1494,7 @@ pub fn process(params: Params) -> i32 {
                     &mut allocated_sat,
                 );
             } else {
-                allocateChannel(
+                allocate_channel(
                     &mut chan,
                     &mut eph[ieph],
                     &mut ionoutc,
@@ -1523,10 +1523,10 @@ pub fn process(params: Params) -> i32 {
             }
         }
         // Update receiver time
-        grx = incGpsTime(grx, 0.1f64);
+        grx = inc_gps_time(grx, 0.1f64);
 
         // Update time counter
-        eprint!("\rTime into run = {:4.1}\0", subGpsTime(grx, g0));
+        eprint!("\rTime into run = {:4.1}\0", sub_gps_time(grx, g0));
         // todo: temporarily disable
         // fflush(stdout);
         // iumd += 1;

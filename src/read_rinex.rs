@@ -1,5 +1,6 @@
 use crate::{
-    constants::*, datetime_t, ephem_t, gpstime_t, ionoutc_t, process::date2gps, process::subGpsTime,
+    constants::*, datetime_t, ephem_t, gpstime_t, ionoutc_t, process::date2gps,
+    process::sub_gps_time,
 };
 use std::{fs, path::Path};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
@@ -92,7 +93,7 @@ pub fn read_rinex_nav_all(
                 g0 = g;
             }
             // Check current time of clock
-            let dt = subGpsTime(g, g0);
+            let dt = sub_gps_time(g, g0);
             if dt > SECONDS_IN_HOUR {
                 g0 = g;
                 ieph += 1; // a new set of ephemerides
