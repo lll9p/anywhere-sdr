@@ -7,7 +7,7 @@ use crate::{
     read_nmea_gga::read_Nmea_GGA,
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_LLH},
-    table::{ant_pat_db, cosTable512, sinTable512},
+    table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
 };
 use std::{io::Write, time::Instant};
 
@@ -1287,7 +1287,7 @@ pub fn process(params: Params) -> i32 {
     // Receiver antenna gain pattern
     ////////////////////////////////////////////////////////////
     for i in 0..37 {
-        ant_pat[i] = 10.0f64.powf(-ant_pat_db[i] / 20.0f64);
+        ant_pat[i] = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0f64);
     }
 
     ////////////////////////////////////////////////////////////
@@ -1355,8 +1355,8 @@ pub fn process(params: Params) -> i32 {
                     //                     iTable = (int)floor(chan[i].carr_phase*512.0);
                     // #else
                     let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
-                    let ip = chan[i].dataBit * chan[i].codeCA * cosTable512[iTable] * gain[i];
-                    let qp = chan[i].dataBit * chan[i].codeCA * sinTable512[iTable] * gain[i];
+                    let ip = chan[i].dataBit * chan[i].codeCA * COS_TABLE512[iTable] * gain[i];
+                    let qp = chan[i].dataBit * chan[i].codeCA * SIN_TABLE512[iTable] * gain[i];
                     // Accumulate for all visible satellites
                     i_acc += ip;
                     q_acc += qp;
