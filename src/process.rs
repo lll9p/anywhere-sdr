@@ -4,14 +4,13 @@ use crate::{
     datetime::{datetime_t, gpstime_t},
     eph::ephem_t,
     ionoutc::ionoutc_t,
-    read_nmea_gga::{read_Nmea_GGA, readNmeaGGA},
+    read_nmea_gga::read_Nmea_GGA,
     read_rinex::read_rinex_nav_all,
-    read_user_motion::{read_user_motion, read_user_motion_LLH, readUserMotion, readUserMotionLLH},
+    read_user_motion::{read_user_motion, read_user_motion_LLH},
     table::{ant_pat_db, cosTable512, sinTable512},
     utils::*,
 };
-use std::time::Instant;
-use std::{ffi::CString, io::Write};
+use std::{io::Write, time::Instant};
 
 #[derive(Copy, Clone, Default)]
 #[repr(C)]
@@ -994,15 +993,6 @@ pub fn process(params: Params) -> i32 {
     let mut tmax: datetime_t = datetime_t::default();
     let mut gmin: gpstime_t = gpstime_t { week: 0, sec: 0. };
     let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
-    let mut ionoutc: ionoutc_t = ionoutc_t::default();
-    // navfile[0] = 0_i32 as libc::c_char;
-    // umfile[0] = 0_i32 as libc::c_char;
-    // strcpy(
-    //     outfile.as_mut_ptr(),
-    //     b"gpssim.bin\0" as *const u8 as *const libc::c_char,
-    // );
-    ionoutc.enable = 1_i32;
-    ionoutc.leapen = 0_i32;
     let navfile = params.navfile;
     let umfile = params.umfile;
     let nmeaGGA = params.nmeaGGA;
@@ -1047,10 +1037,8 @@ pub fn process(params: Params) -> i32 {
     // Receiver position
     ////////////////////////////////////////////////////////////
     let mut numd: i32;
-    let umfilex = umfile.clone().unwrap();
-    let umfile = umfile.map(|f| f.to_str().unwrap().to_string());
     if !staticLocationMode {
-        let umfile = CString::new(umfile.unwrap()).unwrap().into_raw();
+        let umfilex = umfile.clone().unwrap();
         if nmeaGGA {
             numd = read_Nmea_GGA(&mut xyz, &umfilex).unwrap();
             // numd = readNmeaGGA(&mut xyz, umfile);
@@ -1282,15 +1270,16 @@ pub fn process(params: Params) -> i32 {
         elvmask,
         &mut allocatedSat,
     );
-    for i in 0..MAX_CHAN {
-        if chan[i].prn > 0_i32 {
+    // for i in 0..MAX_CHAN {
+    for ichan in chan.iter().take(MAX_CHAN) {
+        if ichan.prn > 0_i32 {
             eprintln!(
                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
-                chan[i].prn,
-                chan[i].azel[0] * R2D,
-                chan[i].azel[1] * R2D,
-                chan[i].rho0.d,
-                chan[i].rho0.iono_delay,
+                ichan.prn,
+                ichan.azel[0] * R2D,
+                ichan.azel[1] * R2D,
+                ichan.rho0.d,
+                ichan.rho0.iono_delay,
             );
         }
     }
@@ -1478,9 +1467,10 @@ pub fn process(params: Params) -> i32 {
         let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
         if igrx % 300 == 0 {
             // Every 30 seconds
-            for i in 0..MAX_CHAN {
-                if chan[i].prn > 0_i32 {
-                    generateNavMsg(&grx, &mut chan[i], 0_i32);
+            // for i in 0..MAX_CHAN {
+            for ichan in chan.iter_mut().take(MAX_CHAN) {
+                if ichan.prn > 0_i32 {
+                    generateNavMsg(&grx, ichan, 0_i32);
                 }
             }
             // Refresh ephemeris and subframes
@@ -1490,13 +1480,14 @@ pub fn process(params: Params) -> i32 {
                     let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;
-                        for i in 0..MAX_CHAN {
+                        // for i in 0..MAX_CHAN {
+                        for ichan in chan.iter_mut().take(MAX_CHAN) {
                             // Generate new subframes if allocated
-                            if chan[i].prn != 0_i32 {
+                            if ichan.prn != 0_i32 {
                                 eph2sbf(
-                                    eph[ieph][(chan[i].prn - 1_i32) as usize],
+                                    eph[ieph][(ichan.prn - 1_i32) as usize],
                                     &ionoutc,
-                                    &mut chan[i].sbf,
+                                    &mut ichan.sbf,
                                 );
                             }
                         }
@@ -1529,15 +1520,16 @@ pub fn process(params: Params) -> i32 {
             // Show details about simulated channels
             if verb {
                 eprintln!();
-                for i in 0..MAX_CHAN {
-                    if chan[i].prn > 0_i32 {
+                // for i in 0..MAX_CHAN {
+                for ichan in chan.iter().take(MAX_CHAN) {
+                    if ichan.prn > 0_i32 {
                         eprintln!(
                             "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
-                            chan[i].prn,
-                            chan[i].azel[0] * R2D,
-                            chan[i].azel[1] * R2D,
-                            chan[i].rho0.d,
-                            chan[i].rho0.iono_delay,
+                            ichan.prn,
+                            ichan.azel[0] * R2D,
+                            ichan.azel[1] * R2D,
+                            ichan.rho0.d,
+                            ichan.rho0.iono_delay,
                         );
                     }
                 }

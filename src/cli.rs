@@ -5,8 +5,7 @@ use crate::ionoutc::ionoutc_t;
 use crate::process::date2gps;
 use clap::ArgAction;
 use clap::Parser;
-use clap::builder::TypedValueParser;
-use jiff::{Timestamp, ToSpan, civil::DateTime};
+use jiff::{Timestamp, civil::DateTime};
 use std::path::PathBuf;
 
 pub fn parse_datetime(value: String) -> Result<DateTime, jiff::Error> {
@@ -153,6 +152,7 @@ impl Default for Params {
 }
 
 impl Args {
+    #[allow(clippy::impossible_comparisons)]
     pub fn get_params(self) -> Params {
         let mut params = Params::default();
         params.g0.week = -1; // Invalid start time
