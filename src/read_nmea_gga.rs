@@ -119,7 +119,7 @@ pub fn read_Nmea_GGA(
 ) -> anyhow::Result<i32> {
     let mut numd: i32 = 0;
 
-    let content = fs::read_to_string(filename).unwrap();
+    let content = fs::read_to_string(filename)?;
 
     let lines = content.lines();
 

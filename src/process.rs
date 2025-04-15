@@ -6,7 +6,7 @@ use crate::{
     ionoutc::ionoutc_t,
     read_nmea_gga::{read_Nmea_GGA, readNmeaGGA},
     read_rinex::read_rinex_nav_all,
-    read_user_motion::{readUserMotion, readUserMotionLLH},
+    read_user_motion::{read_user_motion, read_user_motion_LLH, readUserMotion, readUserMotionLLH},
     table::{ant_pat_db, cosTable512, sinTable512},
     utils::*,
 };
@@ -1055,9 +1055,11 @@ pub fn process(params: Params) -> i32 {
             numd = read_Nmea_GGA(&mut xyz, &umfilex).unwrap();
             // numd = readNmeaGGA(&mut xyz, umfile);
         } else if umLLH {
-            numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
+            numd = read_user_motion_LLH(&mut xyz, &umfilex).unwrap();
+            // numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
         } else {
-            numd = unsafe { readUserMotion(&mut xyz, umfile) };
+            numd = read_user_motion(&mut xyz, &umfilex).unwrap();
+            // numd = unsafe { readUserMotion(&mut xyz, umfile) };
         }
         if numd == -1_i32 {
             eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
