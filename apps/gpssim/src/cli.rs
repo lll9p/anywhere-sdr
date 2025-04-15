@@ -1,15 +1,8 @@
-use clap::ArgAction;
-use clap::Parser;
-use gps::{date2gps, llh2xyz, Params, R2D};
-use jiff::Timestamp;
 use std::path::PathBuf;
 
-pub fn parse_datetime(
-    value: String,
-) -> Result<jiff::civil::DateTime, jiff::Error> {
-    let time: jiff::civil::DateTime = value.parse()?;
-    Ok(time)
-}
+use clap::{ArgAction, Parser};
+use gps::Params;
+
 /*
 
 Options:
@@ -52,7 +45,8 @@ pub struct Args {
     #[arg(short = 'g', long, value_hint = clap::ValueHint::FilePath)]
     nmea_gga: Option<PathBuf>,
 
-    /// ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
+    /// ECEF X,Y,Z in meters (static mode) e.g.
+    /// 3967283.154,1022538.181,4872414.484
     #[arg(short = 'c', long, value_parser, value_delimiter = ',')]
     location_ecef: Option<Vec<f64>>,
 
@@ -60,7 +54,8 @@ pub struct Args {
     #[arg(short = 'l', long, value_parser, value_delimiter = ',')]
     location: Option<Vec<f64>>,
 
-    /// User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
+    /// User leap future event in GPS week number, day number, next leap second
+    /// e.g. 2347,3,19
     #[arg(short = 'L', long, value_parser, value_delimiter = ',')]
     leap: Option<Vec<i32>>,
 

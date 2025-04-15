@@ -1,3 +1,10 @@
+#![allow(clippy::large_stack_arrays)]
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    time::Instant,
+};
+
 use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
@@ -7,11 +14,6 @@ use crate::{
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_llh},
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
-};
-use std::{
-    io::Write,
-    path::{Path, PathBuf},
-    time::Instant,
 };
 
 #[derive(Copy, Clone, Default)]
@@ -124,6 +126,7 @@ impl Params {
         let time: jiff::civil::DateTime = value.parse()?;
         Ok(time)
     }
+
     #[allow(
         clippy::too_many_lines,
         clippy::impossible_comparisons,
@@ -437,7 +440,6 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
 ///  \brief Convert North-East-Up to Azimuth + Elevation
 /// \param[in] neu Input position in North-East-Up format
 /// \param[out] azel Output array of azimuth + elevation as double
-///
 pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
     azel[0] = neu[1].atan2(neu[0]);
     if azel[0] < 0.0 {
@@ -456,7 +458,6 @@ pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
 /// \param[out] pos Computed position (vector)
 /// \param[out] vel Computed velocity (vector)
 /// \param[clk] clk Computed clock
-///
 pub fn satpos(
     eph: &Ephemeris, g: &GpsTime, pos: &mut [f64; 3], vel: &mut [f64; 3],
     clk: &mut [f64; 2],
@@ -522,10 +523,9 @@ pub fn satpos(
 /// \brief Compute Subframe from Ephemeris
 /// \param[in] eph Ephemeris of given SV
 /// \param[out] sbf Array of five sub-frames, 10 long words each
-///
 #[allow(clippy::too_many_lines)]
 pub fn eph2sbf(
-    eph: Ephemeris, ionoutc: &IonoUtc, sbf: &mut [[u32; N_DWRD_SBF]; 5],
+    eph: &Ephemeris, ionoutc: &IonoUtc, sbf: &mut [[u32; N_DWRD_SBF]; 5],
 ) {
     let ura = 0;
     let data_id = 1;
@@ -536,8 +536,8 @@ pub fn eph2sbf(
     let dn;
     let sbf4_page18_sv_id = 56;
 
-    // FIXED: This has to be the "transmission" week number, not for the ephemeris reference time
-    //wn = (unsigned long)(eph.toe.week%1024);
+    // FIXED: This has to be the "transmission" week number, not for the
+    // ephemeris reference time wn = (unsigned long)(eph.toe.week%1024);
     let wn = 0;
     let toe = (eph.toe.sec / 16.0) as u32;
     let toc = (eph.toc.sec / 16.0) as u32;
@@ -597,7 +597,7 @@ pub fn eph2sbf(
         dtlsf = 18;
     }
     // Subframe 1
-    (sbf[0])[0] = 0x8b0000 << 6;
+    (sbf[0])[0] = 0x008b_0000 << 6;
     (sbf[0])[1] = 0x1 << 8;
     (sbf[0])[2] = (wn & 0x3ff) << 20
         | (codeL2 as u32 & 0x3) << 18
@@ -610,36 +610,36 @@ pub fn eph2sbf(
     (sbf[0])[6] = (tgd as u32 & 0xff) << 6;
     (sbf[0])[7] = (iodc & 0xff) << 22 | (toc & 0xffff) << 6;
     (sbf[0])[8] = (af2 as u32 & 0xff) << 22 | (af1 as u32 & 0xffff) << 6;
-    (sbf[0])[9] = (af0 as u32 & 0x3fffff) << 8;
+    (sbf[0])[9] = (af0 as u32 & 0x003f_ffff) << 8;
     // Subframe 2
-    (sbf[1])[0] = 0x8b0000 << 6;
+    (sbf[1])[0] = 0x008b_0000 << 6;
     (sbf[1])[1] = 0x2 << 8;
     (sbf[1])[2] = (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6;
     (sbf[1])[3] =
         (deltan as u32 & 0xffff) << 14 | ((m0 >> 24) as u32 & 0xff) << 6;
-    (sbf[1])[4] = (m0 as u32 & 0xffffff) << 6;
+    (sbf[1])[4] = (m0 as u32 & 0x00ff_ffff) << 6;
     (sbf[1])[5] = (cuc as u32 & 0xffff) << 14 | (ecc >> 24 & 0xff) << 6;
-    (sbf[1])[6] = (ecc & 0xffffff) << 6;
+    (sbf[1])[6] = (ecc & 0x00ff_ffff) << 6;
     (sbf[1])[7] = (cus as u32 & 0xffff) << 14 | (sqrta >> 24 & 0xff) << 6;
-    (sbf[1])[8] = (sqrta & 0xffffff) << 6;
+    (sbf[1])[8] = (sqrta & 0x00ff_ffff) << 6;
     (sbf[1])[9] = (toe & 0xffff) << 14;
     // Subframe 3
-    (sbf[2])[0] = 0x8b0000 << 6;
+    (sbf[2])[0] = 0x008b_0000 << 6;
     (sbf[2])[1] = 0x3 << 8;
     (sbf[2])[2] =
         (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[3] = (omg0 as u32 & 0xffffff) << 6;
+    (sbf[2])[3] = (omg0 as u32 & 0x00ff_ffff) << 6;
     (sbf[2])[4] =
         (cis as u32 & 0xffff) << 14 | ((inc0 >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[5] = (inc0 as u32 & 0xffffff) << 6;
+    (sbf[2])[5] = (inc0 as u32 & 0x00ff_ffff) << 6;
     (sbf[2])[6] =
         (crc as u32 & 0xffff) << 14 | ((aop >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[7] = (aop as u32 & 0xffffff) << 6;
-    (sbf[2])[8] = (omgdot as u32 & 0xffffff_u32) << 6;
+    (sbf[2])[7] = (aop as u32 & 0x00ff_ffff) << 6;
+    (sbf[2])[8] = (omgdot as u32 & 0x00ff_ffff) << 6;
     (sbf[2])[9] = (iode & 0xff) << 22 | (idot as u32 & 0x3fff) << 8;
     if ionoutc.vflg {
         // Subframe 4, page 18
-        (sbf[3])[0] = 0x8b0000 << 6;
+        (sbf[3])[0] = 0x008b_0000 << 6;
         (sbf[3])[1] = 0x4 << 8;
         (sbf[3])[2] = data_id << 28
             | sbf4_page18_sv_id << 22
@@ -651,8 +651,8 @@ pub fn eph2sbf(
         (sbf[3])[4] = (beta1 as u32 & 0xff) << 22
             | (beta2 as u32 & 0xff) << 14
             | (beta3 as u32 & 0xff) << 6;
-        (sbf[3])[5] = (A1 as u32 & 0xffffff) << 6;
-        (sbf[3])[6] = ((A0 >> 8) as u32 & 0xffffff) << 6;
+        (sbf[3])[5] = (A1 as u32 & 0x00ff_ffff) << 6;
+        (sbf[3])[6] = ((A0 >> 8) as u32 & 0x00ff_ffff) << 6;
         (sbf[3])[7] =
             (A0 as u32 & 0xff) << 22 | (tot & 0xff) << 14 | (wnt & 0xff) << 6;
         (sbf[3])[8] = (dtls as u32 & 0xff) << 22
@@ -661,7 +661,7 @@ pub fn eph2sbf(
         (sbf[3])[9] = (dtlsf & 0xff) << 22;
     } else {
         // Subframe 4, page 25
-        (sbf[3])[0] = 0x8b0000 << 6;
+        (sbf[3])[0] = 0x008b_0000 << 6;
         (sbf[3])[1] = 0x4 << 8;
         (sbf[3])[2] = data_id << 28 | sbf4_page25_sv_id << 22;
         (sbf[3])[3] = 0;
@@ -673,7 +673,7 @@ pub fn eph2sbf(
         (sbf[3])[9] = 0;
     }
     // Subframe 5, page 25
-    (sbf[4])[0] = 0x8b0000 << 6;
+    (sbf[4])[0] = 0x008b_0000 << 6;
     (sbf[4])[1] = 0x5 << 8;
     (sbf[4])[2] = data_id << 28
         | sbf5_page25_sv_id << 22
@@ -718,10 +718,15 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     D30    00 1011 0111 1010 1000 1001 1100 0000
     */
     let bmask: [u32; 6] = [
-        0x3b1f3480, 0x1d8f9a40, 0x2ec7cd00, 0x1763e680, 0x2bb1f340, 0xb7a89c0,
+        0x3b1f_3480,
+        0x1d8f_9a40,
+        0x2ec7_cd00,
+        0x1763_e680,
+        0x2bb1_f340,
+        0x0b7a_89c0,
     ];
     let mut D: u32;
-    let mut d: u32 = source & 0x3fffffc0;
+    let mut d: u32 = source & 0x3fff_ffc0;
     let D29: u32 = source >> 31 & 0x1;
     let D30: u32 = source >> 30 & 0x1;
     if nib != 0 {
@@ -747,7 +752,7 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     }
     D = d;
     if D30 != 0 {
-        D ^= 0x3fffffc0;
+        D ^= 0x3fff_ffc0;
     }
     D |= D29
         .wrapping_add((bmask[0] & d).count_ones())
@@ -772,7 +777,7 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     D |= D29
         .wrapping_add((bmask[5] & d).count_ones())
         .wrapping_rem(2);
-    D &= 0x3fffffff;
+    D &= 0x3fff_ffff;
 
     //D |= (source & 0xC0000000UL); // Add D29* and D30* from source data bits
     D
@@ -816,20 +821,21 @@ pub fn ionospheric_delay(
     if ionoutc.vflg {
         let mut PER: f64;
 
-        // Earth's central angle between the user position and the earth projection of
-        // ionospheric intersection point (semi-circles)
+        // Earth's central angle between the user position and the earth
+        // projection of ionospheric intersection point (semi-circles)
         let psi = 0.0137 / (E + 0.11) - 0.022;
 
-        // Geodetic latitude of the earth projection of the ionospheric intersection point
-        // (semi-circles)
+        // Geodetic latitude of the earth projection of the ionospheric
+        // intersection point (semi-circles)
         let phi_i = phi_u + psi * (azel[0]).cos();
         let phi_i = phi_i.clamp(-0.416, 0.416);
 
-        // Geodetic longitude of the earth projection of the ionospheric intersection point
-        // (semi-circles)
+        // Geodetic longitude of the earth projection of the ionospheric
+        // intersection point (semi-circles)
         let lam_i = lam_u + psi * (azel[0]).sin() / (phi_i * PI).cos();
-        // Geomagnetic latitude of the earth projection of the ionospheric intersection
-        // point (mean ionospheric height assumed 350 km) (semi-circles)
+        // Geomagnetic latitude of the earth projection of the ionospheric
+        // intersection point (mean ionospheric height assumed 350 km)
+        // (semi-circles)
         let phi_m = phi_i + 0.064 * ((lam_i - 1.617) * PI).cos();
         let phi_m2 = phi_m * phi_m;
         let phi_m3 = phi_m2 * phi_m;
@@ -911,7 +917,7 @@ pub fn compute_range(
     let rate = dot_prod(&vel, &los) / range;
     // Pseudorange rate.
     (rho).rate = rate; // - SPEED_OF_LIGHT*clk[1];
-                       // Time of application.
+    // Time of application.
     rho.g = *g;
     // Azimuth and elevation angles.
     xyz2llh(xyz_0, &mut llh);
@@ -973,8 +979,8 @@ pub fn generate_nav_msg(g: &GpsTime, chan: &mut Channel, init: bool) {
                 sbfwrd |= (tow & 0x1ffff) << 13;
             }
             // Compute checksum
-            sbfwrd |= prevwrd << 30 & 0xc0000000; // 2 LSBs of the previous transmitted word
-            nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
+            sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
+            nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
             chan.dwrd[iwrd] = compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[iwrd];
         }
@@ -1007,8 +1013,8 @@ pub fn generate_nav_msg(g: &GpsTime, chan: &mut Channel, init: bool) {
                 sbfwrd |= (tow & 0x1ffff) << 13;
             }
             // Compute checksum
-            sbfwrd |= prevwrd << 30 & 0xc0000000; // 2 LSBs of the previous transmitted word
-            nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
+            sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
+            nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
             chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] =
                 compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd];
@@ -1017,7 +1023,7 @@ pub fn generate_nav_msg(g: &GpsTime, chan: &mut Channel, init: bool) {
 }
 
 pub fn check_sat_visibility(
-    eph: Ephemeris, g: &GpsTime, xyz_0: &[f64; 3], elv_mask: f64,
+    eph: &Ephemeris, g: &GpsTime, xyz_0: &[f64; 3], elv_mask: f64,
     azel: &mut [f64; 2],
 ) -> i32 {
     let mut llh: [f64; 3] = [0.; 3];
@@ -1033,7 +1039,7 @@ pub fn check_sat_visibility(
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
-    satpos(&eph, g, &mut pos, &mut vel, &mut clk);
+    satpos(eph, g, &mut pos, &mut vel, &mut clk);
     sub_vect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
@@ -1065,7 +1071,7 @@ pub fn allocate_channel(
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if check_sat_visibility(eph[sv], grx, xyz_0, 0.0, &mut azel) == 1 {
+        if check_sat_visibility(&eph[sv], grx, xyz_0, 0.0, &mut azel) == 1 {
             nsat += 1; // Number of visible satellites
             if allocated_sat[sv] == -1 {
                 // Visible but not allocated
@@ -1081,7 +1087,7 @@ pub fn allocate_channel(
                         // C/A code generation
                         codegen(&mut chan[i].ca, (chan[i]).prn);
                         // Generate subframe
-                        eph2sbf(eph[sv], ionoutc, &mut chan[i].sbf);
+                        eph2sbf(&eph[sv], ionoutc, &mut chan[i].sbf);
                         // Generate navigation message
                         generate_nav_msg(grx, &mut chan[i], true);
                         // Initialize pseudorange
@@ -1092,10 +1098,11 @@ pub fn allocate_channel(
                         compute_range(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
                         // r_ref = rho.range;
                         phase_ini = 0.0; // TODO: Must initialize properly
-                                         //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
-                                         // #ifdef FLOAT_CARR_PHASE
-                                         //                         chan[i].carr_phase = phase_ini - floor(phase_ini);
-                                         // #else
+                        //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
+                        // #ifdef FLOAT_CARR_PHASE
+                        //                         chan[i].carr_phase =
+                        // phase_ini - floor(phase_ini);
+                        // #else
                         phase_ini -= (phase_ini).floor();
                         (chan[i]).carr_phase =
                             (512.0 * 65536.0 * phase_ini) as u32;
@@ -1179,8 +1186,8 @@ pub fn process(params: Params) -> i32 {
     if umfile.is_none() && !static_location_mode {
         // Default static location; Tokyo
         static_location_mode = true;
-        llh[0] = 35.681298 / R2D;
-        llh[1] = 139.766247 / R2D;
+        llh[0] = 35.681_298 / R2D;
+        llh[1] = 139.766_247 / R2D;
         llh[2] = 10.0f64;
     }
     if duration < 0.0f64
@@ -1415,8 +1422,8 @@ pub fn process(params: Params) -> i32 {
     //     // todo: temporarily disable
     //     // fp = stdout;
     // }
-    // let out_file = String::from_utf8(outfile.iter().map(|&c| c as u8).collect());
-    // if let Ok(out_file) = out_file {
+    // let out_file = String::from_utf8(outfile.iter().map(|&c| c as
+    // u8).collect()); if let Ok(out_file) = out_file {
     //     if out_file != "-" {
     //         let file_name = out_file.trim_end_matches("\0");
     fp_out = std::fs::File::create(outfile).ok();
@@ -1511,7 +1518,7 @@ pub fn process(params: Params) -> i32 {
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
                 // Path loss
-                let path_loss = 20200000.0 / rho.d;
+                let path_loss = 20_200_000.0 / rho.d;
                 // Receiver antenna gain
                 let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
                 let ant_gain = ant_pat[ibs];
@@ -1529,7 +1536,8 @@ pub fn process(params: Params) -> i32 {
             for i in 0..16 {
                 if chan[i].prn > 0 {
                     // #ifdef FLOAT_CARR_PHASE
-                    //                     iTable = (int)floor(chan[i].carr_phase*512.0);
+                    //                     iTable =
+                    // (int)floor(chan[i].carr_phase*512.0);
                     // #else
                     let i_table = (chan[i].carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
                     let ip = chan[i].dataBit
@@ -1578,7 +1586,8 @@ pub fn process(params: Params) -> i32 {
                             - 1_i32;
                     // Update carrier phase
                     // #ifdef FLOAT_CARR_PHASE
-                    //                     chan[i].carr_phase += chan[i].f_carr * delt;
+                    //                     chan[i].carr_phase += chan[i].f_carr
+                    // * delt;
                     //
                     //                     if (chan[i].carr_phase >= 1.0)
                     //                         chan[i].carr_phase -= 1.0;
@@ -1604,11 +1613,8 @@ pub fn process(params: Params) -> i32 {
                 let fresh1_new = &mut iq8_buff[isamp / 8];
 
                 *fresh1_new = (i32::from(*fresh1_new)
-                    | (if i32::from(iq_buff[isamp]) > 0 {
-                        0x1
-                    } else {
-                        0
-                    }) << (7 - isamp as i32 % 8))
+                    | i32::from(i32::from(iq_buff[isamp]) > 0)
+                        << (7 - isamp as i32 % 8))
                     as libc::c_schar;
             }
 
@@ -1672,7 +1678,7 @@ pub fn process(params: Params) -> i32 {
                             // Generate new subframes if allocated
                             if ichan.prn != 0_i32 {
                                 eph2sbf(
-                                    eph[ieph][(ichan.prn - 1) as usize],
+                                    &eph[ieph][(ichan.prn - 1) as usize],
                                     &ionoutc,
                                     &mut ichan.sbf,
                                 );

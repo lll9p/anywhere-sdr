@@ -1,15 +1,15 @@
+use std::{fs, path::PathBuf};
+
 use crate::{
     constants::{USER_MOTION_SIZE, *},
     process::llh2xyz,
 };
-use std::{fs, path::PathBuf};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.parse()
 }
 
 pub fn read_nmea_gga(
-    xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
-    filename: &PathBuf,
+    xyz: &mut [[f64; 3]; USER_MOTION_SIZE], filename: &PathBuf,
 ) -> anyhow::Result<usize> {
     let mut numd: usize = 0;
 

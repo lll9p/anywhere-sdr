@@ -1,14 +1,13 @@
+use std::{path::PathBuf, process::Command, sync::LazyLock};
+
 use anyhow::Result;
-use gps::{process, Params, R2D};
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::LazyLock;
-use test_case::test_case;
+use gps::{Params, process};
 const PATH: &str = env!("CARGO_MANIFEST_DIR");
 
 static PARAMS: LazyLock<Vec<(Params, String, String)>> =
-    LazyLock::new(|| prepare_params());
+    LazyLock::new(prepare_params);
 
+#[allow(clippy::too_many_lines)]
 fn prepare_params() -> Vec<(Params, String, String)> {
     let ephemerides: PathBuf =
         PathBuf::from(PATH).join("resources").join("brdc0010.22n");
@@ -18,17 +17,17 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         Some(PathBuf::from(PATH).join("resources").join("circle_llh.csv"));
     let nmea_gga: Option<PathBuf> =
         Some(PathBuf::from(PATH).join("resources").join("triumphv3.txt"));
-    let location_ecef: Option<Vec<f64>> =
-        Some(vec![3967283.154, 1022538.181, 4872414.484]);
-    let location: Option<Vec<f64>> = Some(vec![30.286502, 120.032669, 100.0]);
-    let leap: Option<Vec<i32>> = Some(vec![2347, 3, 19]);
-    let time: Option<String> = Some("now".to_string());
-    let time_override: Option<String> =
+    let _location_ecef: Option<Vec<f64>> =
+        Some(vec![3_967_283.154, 1_022_538.181, 4_872_414.484]);
+    let location: Option<Vec<f64>> = Some(vec![30.286_502, 120.032_669, 100.0]);
+    let _leap: Option<Vec<i32>> = Some(vec![2347, 3, 19]);
+    let _time: Option<String> = Some("now".to_string());
+    let _time_override: Option<String> =
         Some("2022-10-10T10::22:22Z".to_string());
     let duration: Option<usize> = Some(31);
-    let output: Option<PathBuf>;
-    let frequency: usize = 2600000;
-    let bits: usize = 8;
+    let _output: Option<PathBuf>;
+    let frequency: usize = 2_600_000;
+    let _bits: usize = 8;
     let ionospheric_disable: bool = false;
     let path_loss: Option<i32> = None;
     let verbose: bool = false;
@@ -43,7 +42,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,        // time: &Option<String>,
         &None,        // time_override: &Option<String>,
         &duration,    // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_1b.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_1b.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         1,                   // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -61,7 +60,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,        // time: &Option<String>,
         &None,        // time_override: &Option<String>,
         &duration,    // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_8b.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_8b.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         8,                   // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -79,7 +78,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,        // time: &Option<String>,
         &None,        // time_override: &Option<String>,
         &duration,    // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_16b.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_16b.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         16,                  // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -97,7 +96,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,        // time: &Option<String>,
         &None,        // time_override: &Option<String>,
         &duration,    // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_gga.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_gga.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         1,                   // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -115,7 +114,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,             // time: &Option<String>,
         &None,             // time_override: &Option<String>,
         &duration,         // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_circle.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_circle.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         1,                   // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -155,7 +154,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         &None,        // time: &Option<String>,
         &None,        // time_override: &Option<String>,
         &duration,    // duration: &Option<usize>,
-        &Some(PathBuf::from(PATH).join("output").join("rust_location.bin")), // output: &Option<PathBuf>,
+        &Some(PathBuf::from(PATH).join("output").join("rust_location.bin")), /* output: &Option<PathBuf>, */
         frequency,           // frequency: usize,
         1,                   // bits: usize,
         ionospheric_disable, // ionospheric_disable: bool,
@@ -193,6 +192,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
         ),
     ]
 }
+#[allow(clippy::too_many_lines)]
 fn prepare() -> Result<()> {
     // Check if executable of gps-sdr-sim exists
     #[cfg(target_os = "windows")]
@@ -201,17 +201,20 @@ fn prepare() -> Result<()> {
     let suffix = "";
     let gps_sim_executable = PathBuf::from(PATH)
         .join("output")
-        .join(&format!("gpssim{}", suffix));
+        .join(format!("gpssim{suffix}"));
     if !gps_sim_executable.exists() {
-        println!("gps-sdr-sim executable not exist, run `gcc gpssim.c -lm -O3 -o gpssim` to build");
-        let output = Command::new("gcc")
+        println!(
+            "gps-sdr-sim executable not exist, run `gcc gpssim.c -lm -O3 -o \
+             gpssim` to build"
+        );
+        let _ = Command::new("gcc")
             .current_dir(PATH)
             .args([
-                &format!("{}/resources/gpssim.c", PATH),
+                &format!("{PATH}/resources/gpssim.c"),
                 "-lm",
                 "-O3",
                 "-o",
-                &format!("{}/output/gpssim", PATH),
+                &format!("{PATH}/output/gpssim"),
             ])
             .spawn()?
             .wait_with_output()?;
@@ -226,7 +229,7 @@ fn prepare() -> Result<()> {
         if !file_path.exists() {
             match file_name.as_str() {
                 "c_1b.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -242,7 +245,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_8b.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -258,7 +261,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_16b.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -274,7 +277,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_gga.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -292,7 +295,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_circle.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -310,7 +313,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_circle_llh.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -328,7 +331,7 @@ fn prepare() -> Result<()> {
                         .wait_with_output()?;
                 }
                 "c_location.bin" => {
-                    let output = Command::new(&gps_sim_executable)
+                    let _ = Command::new(&gps_sim_executable)
                         .current_dir(PATH)
                         .args([
                             "-e",
@@ -345,8 +348,8 @@ fn prepare() -> Result<()> {
                         .spawn()?
                         .wait_with_output()?;
                 }
-                filename => {
-                    panic!("Not expected file name: {}", file_name)
+                _filename => {
+                    panic!("Not expected file name: {file_name}")
                 }
             }
         }
@@ -360,7 +363,7 @@ fn test() -> Result<()> {
     for (params, rust_filename, c_filename) in PARAMS.iter() {
         process(params.clone());
         let rust_file = PathBuf::from(PATH).join("output").join(rust_filename);
-        assert!(rust_file.exists(), "Rust file not exists{}", rust_filename);
+        assert!(rust_file.exists(), "Rust file not exists{rust_filename}");
         let output = Command::new("diff")
             .current_dir(PathBuf::from(PATH).join("output"))
             .args([rust_filename, c_filename])
@@ -368,10 +371,10 @@ fn test() -> Result<()> {
             .wait_with_output()?;
         let success = output.status.success();
         if success {
-            println!("{} and {} are the same!", rust_filename, c_filename);
+            println!("{rust_filename} and {c_filename} are the same!");
             std::fs::remove_file(rust_file)?;
         }
-        assert!(success, "Files are different! {}", rust_filename);
+        assert!(success, "Files are different! {rust_filename}");
     }
     Ok(())
 }

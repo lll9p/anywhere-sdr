@@ -1,12 +1,12 @@
+use std::{fs, path::Path};
+
 use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     ionoutc::IonoUtc,
-    process::date2gps,
-    process::sub_gps_time,
+    process::{date2gps, sub_gps_time},
 };
-use std::{fs, path::Path};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.replace('D', "E").parse()
 }
