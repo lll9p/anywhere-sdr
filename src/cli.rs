@@ -107,11 +107,11 @@ pub struct Params {
     pub llh: [f64; 3],
     pub ionoutc: ionoutc_t,
     pub navfile: PathBuf,
-    pub nmeaGGA: bool,
-    pub umLLH: bool,
+    pub nmea_gga: bool,
+    pub um_llh: bool,
     pub umfile: Option<PathBuf>,
     pub timeoverwrite: bool,
-    pub staticLocationMode: bool,
+    pub static_location_mode: bool,
     pub outfile: PathBuf,
     pub samp_freq: f64,
     pub data_format: i32,
@@ -133,11 +133,11 @@ impl Default for Params {
             llh: [0.0; 3],
             ionoutc: ionoutc_t::default(),
             navfile: PathBuf::new(),
-            nmeaGGA: false,
-            umLLH: false,
+            nmea_gga: false,
+            um_llh: false,
             umfile: None,
             timeoverwrite: false,
-            staticLocationMode: false,
+            static_location_mode: false,
             outfile: PathBuf::from("gpssim.bin"),
             samp_freq: 2600000f64,
             data_format: 16i32,
@@ -159,26 +159,26 @@ impl Args {
 
         params.navfile = self.ephemerides;
         if self.user_motion_ecef.is_some() {
-            params.nmeaGGA = false;
-            params.umLLH = false;
+            params.nmea_gga = false;
+            params.um_llh = false;
             params.umfile = self.user_motion_ecef.clone();
         } else if self.user_motion_llh.is_some() {
-            params.umLLH = true;
+            params.um_llh = true;
             params.umfile = self.user_motion_llh.clone();
         } else if self.nmea_gga.is_some() {
-            params.nmeaGGA = true;
+            params.nmea_gga = true;
             params.umfile = self.nmea_gga.clone();
         }
 
         // Static ECEF coordinates input mode
         if let Some(location) = self.location_ecef {
-            params.staticLocationMode = true;
+            params.static_location_mode = true;
             params.xyz[0][0] = location[0];
             params.xyz[0][1] = location[1];
             params.xyz[0][2] = location[2];
         }
         if let Some(location) = self.location {
-            params.staticLocationMode = true;
+            params.static_location_mode = true;
             params.llh[0] = location[0];
             params.llh[1] = location[1];
             params.llh[2] = location[2];

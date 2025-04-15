@@ -27,7 +27,7 @@ pub fn read_user_motion(
 ///  \returns Number of user data motion records read, -1 on error
 ///
 /// Added by romalvarezllorens@gmail.com
-pub fn read_user_motion_LLH(
+pub fn read_user_motion_llh(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
 ) -> anyhow::Result<i32> {

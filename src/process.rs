@@ -4,9 +4,9 @@ use crate::{
     datetime::{datetime_t, gpstime_t},
     eph::ephem_t,
     ionoutc::ionoutc_t,
-    read_nmea_gga::read_Nmea_GGA,
+    read_nmea_gga::read_nmea_gga,
     read_rinex::read_rinex_nav_all,
-    read_user_motion::{read_user_motion, read_user_motion_LLH},
+    read_user_motion::{read_user_motion, read_user_motion_llh},
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
 };
 use std::{io::Write, time::Instant};
@@ -284,25 +284,25 @@ pub fn satpos(
     let mk = eph.m0 + eph.n * tk;
     let mut ek = mk;
     let mut ekold = ek + 1.0f64;
-    let mut OneMinusecosE = 0_i32 as f64; // Suppress the uninitialized warning.
+    let mut one_minusecos_e = 0_i32 as f64; // Suppress the uninitialized warning.
     while (ek - ekold).abs() > 1.0E-14f64 {
         ekold = ek;
-        OneMinusecosE = 1.0f64 - eph.ecc * (ekold).cos();
-        ek += (mk - ekold + eph.ecc * (ekold.sin())) / OneMinusecosE;
+        one_minusecos_e = 1.0f64 - eph.ecc * (ekold).cos();
+        ek += (mk - ekold + eph.ecc * (ekold.sin())) / one_minusecos_e;
     }
     let sek = (ek).sin();
     let cek = (ek).cos();
-    let ekdot = eph.n / OneMinusecosE;
+    let ekdot = eph.n / one_minusecos_e;
     let relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
     let pk = (eph.sq1e2 * sek).atan2(cek - eph.ecc) + eph.aop;
-    let pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
+    let pkdot = eph.sq1e2 * ekdot / one_minusecos_e;
     let s2pk = (2.0f64 * pk).sin();
     let c2pk = (2.0f64 * pk).cos();
     let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
     let suk = (uk).sin();
     let cuk = (uk).cos();
     let ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
-    let rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
+    let rk = eph.A * one_minusecos_e + eph.crc * c2pk + eph.crs * s2pk;
     let rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
     let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
     let sik = (ik).sin();
@@ -338,13 +338,13 @@ pub fn satpos(
 ///
 pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 5]) {
     let ura: u32 = 0_u32;
-    let dataId: u32 = 1_u32;
-    let sbf4_page25_svId: u32 = 63_u32;
-    let sbf5_page25_svId: u32 = 51_u32;
+    let data_id: u32 = 1_u32;
+    let sbf4_page25_sv_id: u32 = 63_u32;
+    let sbf5_page25_sv_id: u32 = 51_u32;
     let wnlsf: u32;
     let dtlsf: u32;
     let dn: u32;
-    let sbf4_page18_svId: u32 = 56_u32;
+    let sbf4_page18_sv_id: u32 = 56_u32;
 
     // FIXED: This has to be the "transmission" week number, not for the ephemeris reference time
     //wn = (unsigned long)(eph.toe.week%1024);
@@ -373,6 +373,8 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     let af2 = (eph.af2 / POW2_M55) as i32;
     let tgd = (eph.tgd / POW2_M31) as i32;
     let svhlth = eph.svhlth as u32 as i32;
+
+    #[allow(non_snake_case)]
     let codeL2 = eph.codeL2 as u32 as i32;
     let wna = (eph.toe.week % 256_i32) as u32;
     let toa = (eph.toe.sec / 4096.0f64) as u32;
@@ -384,7 +386,11 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     let beta1 = (ionoutc.beta1 / 16384.0f64).round() as i32;
     let beta2 = (ionoutc.beta2 / 65536.0f64).round() as i32;
     let beta3 = (ionoutc.beta3 / 65536.0f64).round() as i32;
+
+    #[allow(non_snake_case)]
     let A0 = (ionoutc.A0 / POW2_M30).round() as i32;
+
+    #[allow(non_snake_case)]
     let A1 = (ionoutc.A1 / POW2_M50).round() as i32;
     let dtls = ionoutc.dtls;
     let tot = (ionoutc.tot / 4096_i32) as u32;
@@ -445,8 +451,8 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
         // Subframe 4, page 18
         (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
         (sbf[3])[1] = 0x4_u32 << 8_i32;
-        (sbf[3])[2] = dataId << 28_i32
-            | sbf4_page18_svId << 22_i32
+        (sbf[3])[2] = data_id << 28_i32
+            | sbf4_page18_sv_id << 22_i32
             | (alpha0 as u32 & 0xff_u32) << 14_i32
             | (alpha1 as u32 & 0xff_u32) << 6_i32;
         (sbf[3])[3] = (alpha2 as u32 & 0xff_u32) << 22_i32
@@ -468,7 +474,7 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
         // Subframe 4, page 25
         (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
         (sbf[3])[1] = 0x4_u32 << 8_i32;
-        (sbf[3])[2] = dataId << 28_i32 | sbf4_page25_svId << 22_i32;
+        (sbf[3])[2] = data_id << 28_i32 | sbf4_page25_sv_id << 22_i32;
         (sbf[3])[3] = 0_u32;
         (sbf[3])[4] = 0_u32;
         (sbf[3])[5] = 0_u32;
@@ -480,8 +486,8 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     // Subframe 5, page 25
     (sbf[4])[0] = 0x8b0000_u32 << 6_i32;
     (sbf[4])[1] = 0x5_u32 << 8_i32;
-    (sbf[4])[2] = dataId << 28_i32
-        | sbf5_page25_svId << 22_i32
+    (sbf[4])[2] = data_id << 28_i32
+        | sbf5_page25_sv_id << 22_i32
         | (toa & 0xff_u32) << 14_i32
         | (wna & 0xff_u32) << 6_i32;
     (sbf[4])[3] = 0_u32;
@@ -493,31 +499,11 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     (sbf[4])[9] = 0_u32;
 }
 
-/// \brief Count number of bits set to 1
-/// \param[in] v long word in which bits are counted
-/// \returns Count of bits set to 1
-pub fn countBits(v: u32) -> u32 {
-    let S: [i32; 5] = [1_i32, 2_i32, 4_i32, 8_i32, 16_i32];
-    let B: [u32; 5] = [
-        0x55555555_i32 as u32,
-        0x33333333_i32 as u32,
-        0xf0f0f0f_i32 as u32,
-        0xff00ff_i32 as u32,
-        0xffff_i32 as u32,
-    ];
-    let mut c = v;
-    c = (c >> S[0] & B[0]).wrapping_add(c & B[0]);
-    c = (c >> S[1] & B[1]).wrapping_add(c & B[1]);
-    c = (c >> S[2] & B[2]).wrapping_add(c & B[2]);
-    c = (c >> S[3] & B[3]).wrapping_add(c & B[3]);
-    c = (c >> S[4] & B[4]).wrapping_add(c & B[4]);
-    c
-}
-
 ///  \brief Compute the Checksum for one given word of a subframe
 ///  \param[in] source The input data
 ///  \param[in] nib Does this word contain non-information-bearing bits?
 ///  \returns Computed Checksum
+#[allow(non_snake_case)]
 pub fn computeChecksum(source: u32, nib: i32) -> u32 {
     /*
     Bits 31 to 30 = 2 LSBs of the previous transmitted word, D29* and D30*
@@ -561,14 +547,14 @@ pub fn computeChecksum(source: u32, nib: i32) -> u32 {
         with zeros in bits 29 and 30.
         */
         if D30
-            .wrapping_add(countBits(bmask[4] & d))
+            .wrapping_add((bmask[4] & d).count_ones())
             .wrapping_rem(2_i32 as u32)
             != 0
         {
             d ^= 0x1_u32 << 6_i32;
         }
         if D29
-            .wrapping_add(countBits(bmask[5] & d))
+            .wrapping_add((bmask[5] & d).count_ones())
             .wrapping_rem(2_i32 as u32)
             != 0
         {
@@ -580,27 +566,27 @@ pub fn computeChecksum(source: u32, nib: i32) -> u32 {
         D ^= 0x3fffffc0_u32;
     }
     D |= D29
-        .wrapping_add(countBits(bmask[0] & d))
+        .wrapping_add((bmask[0] & d).count_ones())
         .wrapping_rem(2_i32 as u32)
         << 5_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[1] & d))
+        .wrapping_add((bmask[1] & d).count_ones())
         .wrapping_rem(2_i32 as u32)
         << 4_i32;
     D |= D29
-        .wrapping_add(countBits(bmask[2] & d))
+        .wrapping_add((bmask[2] & d).count_ones())
         .wrapping_rem(2_i32 as u32)
         << 3_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[3] & d))
+        .wrapping_add((bmask[3] & d).count_ones())
         .wrapping_rem(2_i32 as u32)
         << 2_i32;
     D |= D30
-        .wrapping_add(countBits(bmask[4] & d))
+        .wrapping_add((bmask[4] & d).count_ones())
         .wrapping_rem(2_i32 as u32)
         << 1_i32;
     D |= D29
-        .wrapping_add(countBits(bmask[5] & d))
+        .wrapping_add((bmask[5] & d).count_ones())
         .wrapping_rem(2_i32 as u32);
     D &= 0x3fffffff_u32;
 
@@ -630,6 +616,7 @@ pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
     g1
 }
 
+#[allow(non_snake_case)]
 pub fn ionosphericDelay(
     ionoutc: &ionoutc_t,
     g: &gpstime_t,
@@ -850,7 +837,7 @@ pub fn checkSatVisibility(
     eph: ephem_t,
     g: &gpstime_t,
     xyz_0: &[f64; 3],
-    elvMask: f64,
+    elv_mask: f64,
     azel: &mut [f64; 2],
 ) -> i32 {
     let mut llh: [f64; 3] = [0.; 3];
@@ -870,7 +857,7 @@ pub fn checkSatVisibility(
     subVect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
-    if azel[1] * R2D > elvMask {
+    if azel[1] * R2D > elv_mask {
         return 1_i32; // Visible
     }
     0_i32 // Invisible
@@ -882,8 +869,8 @@ pub fn allocateChannel(
     ionoutc: &mut ionoutc_t,
     grx: &gpstime_t,
     xyz_0: &[f64; 3],
-    mut _elvMask: f64,
-    allocatedSat: &mut [i32; MAX_SAT],
+    mut _elv_mask: f64,
+    allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0_i32;
     let mut azel: [f64; 2] = [0.; 2];
@@ -904,7 +891,7 @@ pub fn allocateChannel(
     for sv in 0..MAX_SAT {
         if checkSatVisibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
             nsat += 1; // Number of visible satellites
-            if allocatedSat[sv] == -1_i32 {
+            if allocated_sat[sv] == -1_i32 {
                 // Visible but not allocated
                 //
                 // Allocated new satellite
@@ -942,22 +929,22 @@ pub fn allocateChannel(
                 }
                 // Set satellite allocation channel
                 if i < MAX_CHAN {
-                    allocatedSat[sv] = i as i32;
+                    allocated_sat[sv] = i as i32;
                 }
             }
-        } else if allocatedSat[sv] >= 0_i32 {
+        } else if allocated_sat[sv] >= 0_i32 {
             // Not visible but allocated
             // Clear channel
-            (chan[allocatedSat[sv] as usize]).prn = 0_i32;
+            (chan[allocated_sat[sv] as usize]).prn = 0_i32;
             // Clear satellite allocation flag
-            allocatedSat[sv] = -1_i32;
+            allocated_sat[sv] = -1_i32;
         }
     }
     nsat
 }
 
 pub fn process(params: Params) -> i32 {
-    let mut allocatedSat: [i32; MAX_SAT] = [0; 32];
+    let mut allocated_sat: [i32; MAX_SAT] = [0; 32];
 
     let mut fp_out: Option<std::fs::File>;
     let mut eph: [[ephem_t; MAX_SAT]; EPHEM_ARRAY_SIZE] =
@@ -995,9 +982,9 @@ pub fn process(params: Params) -> i32 {
     let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
     let navfile = params.navfile;
     let umfile = params.umfile;
-    let nmeaGGA = params.nmeaGGA;
-    let umLLH = params.umLLH;
-    let mut staticLocationMode = params.staticLocationMode;
+    let nmea_gga = params.nmea_gga;
+    let um_llh = params.um_llh;
+    let mut static_location_mode = params.static_location_mode;
     let mut xyz = params.xyz;
     let mut llh = params.llh;
     let outfile = params.outfile;
@@ -1012,16 +999,16 @@ pub fn process(params: Params) -> i32 {
     let path_loss_enable = params.path_loss_enable;
     let verb = params.verb;
 
-    if umfile.is_none() && !staticLocationMode {
+    if umfile.is_none() && !static_location_mode {
         // Default static location; Tokyo
-        staticLocationMode = true;
+        static_location_mode = true;
         llh[0] = 35.681298f64 / R2D;
         llh[1] = 139.766247f64 / R2D;
         llh[2] = 10.0f64;
     }
     if duration < 0.0f64
-        || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && !staticLocationMode
-        || duration > STATIC_MAX_DURATION as f64 && staticLocationMode
+        || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && !static_location_mode
+        || duration > STATIC_MAX_DURATION as f64 && static_location_mode
     {
         eprintln!("ERROR: Invalid duration.");
         panic!();
@@ -1037,13 +1024,13 @@ pub fn process(params: Params) -> i32 {
     // Receiver position
     ////////////////////////////////////////////////////////////
     let mut numd: i32;
-    if !staticLocationMode {
+    if !static_location_mode {
         let umfilex = umfile.clone().unwrap();
-        if nmeaGGA {
-            numd = read_Nmea_GGA(&mut xyz, &umfilex).unwrap();
+        if nmea_gga {
+            numd = read_nmea_gga(&mut xyz, &umfilex).unwrap();
             // numd = readNmeaGGA(&mut xyz, umfile);
-        } else if umLLH {
-            numd = read_user_motion_LLH(&mut xyz, &umfilex).unwrap();
+        } else if um_llh {
+            numd = read_user_motion_llh(&mut xyz, &umfilex).unwrap();
             // numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
         } else {
             numd = read_user_motion(&mut xyz, &umfilex).unwrap();
@@ -1257,7 +1244,7 @@ pub fn process(params: Params) -> i32 {
     // Clear all channels
     chan.iter_mut().take(MAX_CHAN).for_each(|ch| ch.prn = 0);
     // Clear satellite allocation flag
-    allocatedSat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
+    allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
     // Initial reception time
     let mut grx = incGpsTime(g0, 0.0f64);
     // Allocate visible satellites
@@ -1268,7 +1255,7 @@ pub fn process(params: Params) -> i32 {
         &grx,
         &xyz[0],
         elvmask,
-        &mut allocatedSat,
+        &mut allocated_sat,
     );
     // for i in 0..MAX_CHAN {
     for ichan in chan.iter().take(MAX_CHAN) {
@@ -1310,7 +1297,7 @@ pub fn process(params: Params) -> i32 {
                 };
                 let sv = chan[i].prn - 1;
                 // Current pseudorange
-                if !staticLocationMode {
+                if !static_location_mode {
                     computeRange(
                         &mut rho,
                         &eph[ieph][sv as usize],
@@ -1355,9 +1342,9 @@ pub fn process(params: Params) -> i32 {
                     // #ifdef FLOAT_CARR_PHASE
                     //                     iTable = (int)floor(chan[i].carr_phase*512.0);
                     // #else
-                    let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
-                    let ip = chan[i].dataBit * chan[i].codeCA * COS_TABLE512[iTable] * gain[i];
-                    let qp = chan[i].dataBit * chan[i].codeCA * SIN_TABLE512[iTable] * gain[i];
+                    let i_table = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
+                    let ip = chan[i].dataBit * chan[i].codeCA * COS_TABLE512[i_table] * gain[i];
+                    let qp = chan[i].dataBit * chan[i].codeCA * SIN_TABLE512[i_table] * gain[i];
                     // Accumulate for all visible satellites
                     i_acc += ip;
                     q_acc += qp;
@@ -1496,7 +1483,7 @@ pub fn process(params: Params) -> i32 {
                 }
             }
             // Update channel allocation
-            if !staticLocationMode {
+            if !static_location_mode {
                 allocateChannel(
                     &mut chan,
                     &mut eph[ieph],
@@ -1504,7 +1491,7 @@ pub fn process(params: Params) -> i32 {
                     &grx,
                     &xyz[iumd as usize],
                     elvmask,
-                    &mut allocatedSat,
+                    &mut allocated_sat,
                 );
             } else {
                 allocateChannel(
@@ -1514,7 +1501,7 @@ pub fn process(params: Params) -> i32 {
                     &grx,
                     &xyz[0],
                     elvmask,
-                    &mut allocatedSat,
+                    &mut allocated_sat,
                 );
             }
             // Show details about simulated channels

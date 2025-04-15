@@ -7,7 +7,7 @@ pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.parse()
 }
 
-pub fn read_Nmea_GGA(
+pub fn read_nmea_gga(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
 ) -> anyhow::Result<i32> {
@@ -32,7 +32,7 @@ pub fn read_Nmea_GGA(
         let _a_units = line_vec[10];
         let undulation = line_vec[11];
         let _u_units = line_vec[12];
-        let _age_or_stn_Id = line_vec[13];
+        let _age_or_stn_id = line_vec[13];
         let _checksum = line_vec[14];
         let mut llh = [0.0f64; 3];
         let mut pos = [0.0f64; 3];
