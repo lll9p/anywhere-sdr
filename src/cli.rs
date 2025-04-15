@@ -96,8 +96,8 @@ pub struct Args {
     ionospheric_disable: bool,
 
     /// Disable path loss and hold power level constant [fixed_gain]
-    #[arg(short = 'p', long, default_value_t = 128)]
-    path_loss: i32,
+    #[arg(short = 'p', long)]
+    path_loss: Option<i32>,
 
     /// Show details about simulated channels
     #[arg(short = 'v', long,default_value_t = false, action = ArgAction::SetTrue)]
@@ -114,8 +114,8 @@ pub struct Params {
     pub timeoverwrite: bool,
     pub staticLocationMode: bool,
     pub outfile: PathBuf,
-    pub samp_freq: usize,
-    pub data_format: usize,
+    pub samp_freq: f64,
+    pub data_format: i32,
     pub t0: datetime_t,
     pub g0: gpstime_t,
     pub duration: f64,
@@ -125,6 +125,10 @@ pub struct Params {
 }
 impl Default for Params {
     fn default() -> Self {
+        let g0 = gpstime_t {
+            week: -1,
+            ..Default::default()
+        };
         Self {
             xyz: [[0.0; 3]; USER_MOTION_SIZE],
             llh: [0.0; 3],
@@ -136,13 +140,13 @@ impl Default for Params {
             timeoverwrite: false,
             staticLocationMode: false,
             outfile: PathBuf::from("gpssim.bin"),
-            samp_freq: 2600000,
-            data_format: 16,
+            samp_freq: 2600000f64,
+            data_format: 16i32,
             t0: datetime_t::default(),
-            g0: gpstime_t::default(),
-            duration: 0.0,
+            g0,
+            duration: USER_MOTION_SIZE as f64 / 10.0f64,
             fixed_gain: 128,
-            path_loss_enable: false,
+            path_loss_enable: true,
             verb: false,
         }
     }
@@ -151,6 +155,7 @@ impl Default for Params {
 impl Args {
     pub fn get_params(self) -> Params {
         let mut params = Params::default();
+        params.g0.week = -1; // Invalid start time
 
         params.navfile = self.ephemerides;
         if self.user_motion_ecef.is_some() {
@@ -177,8 +182,8 @@ impl Args {
             params.llh[0] = location[0];
             params.llh[1] = location[1];
             params.llh[2] = location[2];
-            params.llh[0] = params.llh[0] / R2D;
-            params.llh[1] = params.llh[1] / R2D;
+            params.llh[0] /= R2D;
+            params.llh[1] /= R2D;
             crate::process::llh2xyz(&params.llh, &mut params.xyz[0]);
         }
         params.outfile = PathBuf::from("gpssim.bin");
@@ -189,8 +194,8 @@ impl Args {
             self.frequency >= 1000000,
             "ERROR: Invalid sampling frequency."
         );
-        params.samp_freq = self.frequency;
-        params.data_format = self.bits;
+        params.samp_freq = self.frequency as f64;
+        params.data_format = self.bits as i32;
         assert!(
             params.data_format == 1 || params.data_format == 8 || params.data_format == 16,
             "ERROR: Invalid I/Q data format."
@@ -212,6 +217,7 @@ impl Args {
             );
         }
         if let Some(time) = self.time_override {
+            params.timeoverwrite = true;
             if time == "now" {
                 let now = Timestamp::now().in_tz("UTC").unwrap();
                 params.t0.y = now.year() as i32;
@@ -244,13 +250,17 @@ impl Args {
 
             date2gps(&params.t0, &mut params.g0);
         }
-        params.duration = self.duration.unwrap_or(300) as f64;
+        if let Some(duration) = self.duration {
+            params.duration = duration as f64;
+        }
         // Disable ionospheric correction
         params.ionoutc.enable = if self.ionospheric_disable { 0 } else { 1 };
-        params.fixed_gain = self.path_loss;
-        params.path_loss_enable = false;
+        if let Some(fixed_gain) = self.path_loss {
+            params.fixed_gain = fixed_gain;
+            params.path_loss_enable = false;
+        }
         assert!(
-            (1..128).contains(&params.fixed_gain),
+            (1..=128).contains(&params.fixed_gain),
             "ERROR: Fixed gain must be between 1 and 128."
         );
         params.verb = self.verbose;

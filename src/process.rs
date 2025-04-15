@@ -1,18 +1,17 @@
 use crate::{
+    cli::Params,
     constants::*,
     datetime::{datetime_t, gpstime_t},
     eph::ephem_t,
-    getopt::loop_through_opts,
     ionoutc::ionoutc_t,
-    read_nmea_gga::readNmeaGGA,
-    read_rinex::readRinexNavAll,
+    read_nmea_gga::{read_Nmea_GGA, readNmeaGGA},
+    read_rinex::read_rinex_nav_all,
     read_user_motion::{readUserMotion, readUserMotionLLH},
-    strcpy,
     table::{ant_pat_db, cosTable512, sinTable512},
     utils::*,
 };
-use std::io::Write;
 use std::time::Instant;
+use std::{ffi::CString, io::Write};
 
 #[derive(Copy, Clone, Default)]
 #[repr(C)]
@@ -958,617 +957,604 @@ pub fn allocateChannel(
     nsat
 }
 
-pub unsafe fn process(argc: i32, argv: *mut *mut libc::c_char) -> i32 {
+pub fn process(params: Params) -> i32 {
     let mut allocatedSat: [i32; MAX_SAT] = [0; 32];
 
-    let mut xyz: [[f64; 3]; USER_MOTION_SIZE] = [[0.; 3]; USER_MOTION_SIZE];
-    unsafe {
-        let mut fp_out: Option<std::fs::File> = None;
-        let mut eph: [[ephem_t; MAX_SAT]; EPHEM_ARRAY_SIZE] =
-            [[ephem_t::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
-        let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut llh: [f64; 3] = [0.; 3];
-        let mut chan: [channel_t; 16] = [channel_t {
-            prn: 0,
-            ca: [0; 1023],
-            f_carr: 0.,
-            f_code: 0.,
-            carr_phase: 0,
-            carr_phasestep: 0,
-            code_phase: 0.,
-            g0: gpstime_t::default(),
-            sbf: [[0; 10]; 5],
-            dwrd: [0; 60],
-            iword: 0,
-            ibit: 0,
-            icode: 0,
-            dataBit: 0,
-            codeCA: 0,
-            azel: [0.; 2],
-            rho0: range_t::default(),
-        }; 16];
-        let elvmask: f64 = 0.0f64;
+    let mut fp_out: Option<std::fs::File>;
+    let mut eph: [[ephem_t; MAX_SAT]; EPHEM_ARRAY_SIZE] =
+        [[ephem_t::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
+    let mut chan: [channel_t; 16] = [channel_t {
+        prn: 0,
+        ca: [0; 1023],
+        f_carr: 0.,
+        f_code: 0.,
+        carr_phase: 0,
+        carr_phasestep: 0,
+        code_phase: 0.,
+        g0: gpstime_t::default(),
+        sbf: [[0; 10]; 5],
+        dwrd: [0; 60],
+        iword: 0,
+        ibit: 0,
+        icode: 0,
+        dataBit: 0,
+        codeCA: 0,
+        azel: [0.; 2],
+        rho0: range_t::default(),
+    }; 16];
+    let elvmask: f64 = 0.0f64;
 
-        // Default options
-        let mut umfile: [libc::c_char; 100] = [0; 100];
-        let mut staticLocationMode: i32 = 0_i32;
-        let mut nmeaGGA: i32 = 0_i32;
-        let mut umLLH: i32 = 0_i32;
-        let mut navfile: [libc::c_char; 100] = [0; 100];
-        let mut outfile: [libc::c_char; 100] = [0; 100];
-        let mut gain: [i32; 16] = [0; 16];
-        let mut fixed_gain: i32 = 128_i32;
-        let mut ant_pat: [f64; 37] = [0.; 37];
-        let mut t0: datetime_t = datetime_t::default();
-        let mut tmin: datetime_t = datetime_t::default();
-        let mut tmax: datetime_t = datetime_t::default();
-        let mut gmin: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
-        let mut timeoverwrite: i32 = 0_i32;
-        let mut ionoutc: ionoutc_t = ionoutc_t::default();
-        let mut path_loss_enable: i32 = 1_i32;
-        navfile[0] = 0_i32 as libc::c_char;
-        umfile[0] = 0_i32 as libc::c_char;
-        strcpy(
-            outfile.as_mut_ptr(),
-            b"gpssim.bin\0" as *const u8 as *const libc::c_char,
-        );
-        let mut samp_freq = 2.6e6f64;
-        let mut data_format = SC16;
-        g0.week = -1_i32; // Invalid start time
-        let iduration = USER_MOTION_SIZE as i32;
-        let mut duration = iduration as f64 / 10.0f64; // Default duration
-        let mut verb = 0_i32;
-        ionoutc.enable = 1_i32;
-        ionoutc.leapen = 0_i32;
-        loop_through_opts(
-            argc,
-            argv,
-            &mut navfile,
-            &mut umfile,
-            &mut nmeaGGA,
-            &mut umLLH,
-            &mut staticLocationMode,
-            &mut xyz,
-            &mut llh,
-            &mut outfile,
-            &mut samp_freq,
-            &mut data_format,
-            &mut ionoutc,
-            &mut timeoverwrite,
-            &mut t0,
-            &mut g0,
-            &mut duration,
-            &mut fixed_gain,
-            &mut path_loss_enable,
-            &mut verb,
-        );
-        if navfile[0] as i32 == 0_i32 {
-            eprintln!("ERROR: GPS ephemeris file is not specified.\n");
-            panic!();
-        }
-        if umfile[0] as i32 == 0_i32 && staticLocationMode == 0 {
-            // Default static location; Tokyo
-            staticLocationMode = 1_i32;
-            llh[0] = 35.681298f64 / 57.2957795131f64;
-            llh[1] = 139.766247f64 / 57.2957795131f64;
-            llh[2] = 10.0f64;
-        }
-        if duration < 0.0f64
-            || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && staticLocationMode == 0
-            || duration > 86400_f64 && staticLocationMode != 0
-        {
-            eprintln!("ERROR: Invalid duration.");
-            panic!();
-        }
-        let iduration = (duration * 10.0f64 + 0.5f64) as i32;
-        let mut samp_freq = floor(samp_freq / 10.0f64);
-        let iq_buff_size = samp_freq as usize; // samples per 0.1sec
-        samp_freq *= 10.0f64;
-        // let delt = 1.0f64 / samp_freq;
-        let delt = samp_freq.recip();
+    // Default options
+    // let mut umfile: [libc::c_char; 100] = [0; 100];
+    // let mut navfile: [libc::c_char; 100] = [0; 100];
+    // let mut outfile: [libc::c_char; 100] = [0; 100];
+    let mut gain: [i32; 16] = [0; 16];
+    let mut ant_pat: [f64; 37] = [0.; 37];
+    let mut tmin: datetime_t = datetime_t::default();
+    let mut tmax: datetime_t = datetime_t::default();
+    let mut gmin: gpstime_t = gpstime_t { week: 0, sec: 0. };
+    let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
+    let mut ionoutc: ionoutc_t = ionoutc_t::default();
+    // navfile[0] = 0_i32 as libc::c_char;
+    // umfile[0] = 0_i32 as libc::c_char;
+    // strcpy(
+    //     outfile.as_mut_ptr(),
+    //     b"gpssim.bin\0" as *const u8 as *const libc::c_char,
+    // );
+    ionoutc.enable = 1_i32;
+    ionoutc.leapen = 0_i32;
+    let navfile = params.navfile;
+    let umfile = params.umfile;
+    let nmeaGGA = params.nmeaGGA;
+    let umLLH = params.umLLH;
+    let mut staticLocationMode = params.staticLocationMode;
+    let mut xyz = params.xyz;
+    let mut llh = params.llh;
+    let outfile = params.outfile;
+    let samp_freq = params.samp_freq;
+    let data_format = params.data_format;
+    let mut ionoutc = params.ionoutc;
+    let timeoverwrite = params.timeoverwrite;
+    let mut t0 = params.t0;
+    let mut g0 = params.g0;
+    let duration = params.duration;
+    let fixed_gain = params.fixed_gain;
+    let path_loss_enable = params.path_loss_enable;
+    let verb = params.verb;
 
-        ////////////////////////////////////////////////////////////
-        // Receiver position
-        ////////////////////////////////////////////////////////////
-        let mut numd: i32;
-        if staticLocationMode == 0 {
-            if nmeaGGA == 1_i32 {
-                numd = readNmeaGGA(xyz.as_mut_ptr(), umfile.as_mut_ptr());
-            } else if umLLH == 1_i32 {
-                numd = readUserMotionLLH(&mut xyz, umfile.as_mut_ptr());
-            } else {
-                numd = readUserMotion(&mut xyz, umfile.as_mut_ptr());
-            }
-            if numd == -1_i32 {
-                eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
-                panic!();
-            } else if numd == 0_i32 {
-                eprintln!("ERROR: Failed to read user motion / NMEA GGA data.");
-                panic!();
-            }
-            // Set simulation duration
-            if numd > iduration {
-                numd = iduration;
-            }
-            // Set user initial position
-            xyz2llh(&xyz[0], &mut llh);
+    if umfile.is_none() && !staticLocationMode {
+        // Default static location; Tokyo
+        staticLocationMode = true;
+        llh[0] = 35.681298f64 / R2D;
+        llh[1] = 139.766247f64 / R2D;
+        llh[2] = 10.0f64;
+    }
+    if duration < 0.0f64
+        || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && !staticLocationMode
+        || duration > 86400_f64 && staticLocationMode
+    {
+        eprintln!("ERROR: Invalid duration.");
+        panic!();
+    }
+    let iduration = (duration * 10.0f64 + 0.5f64) as i32;
+    let mut samp_freq = floor(samp_freq / 10.0f64);
+    let iq_buff_size = samp_freq as usize; // samples per 0.1sec
+    samp_freq *= 10.0f64;
+    // let delt = 1.0f64 / samp_freq;
+    let delt = samp_freq.recip();
+
+    ////////////////////////////////////////////////////////////
+    // Receiver position
+    ////////////////////////////////////////////////////////////
+    let mut numd: i32;
+    let umfilex = umfile.clone().unwrap();
+    let umfile = umfile.map(|f| f.to_str().unwrap().to_string());
+    if !staticLocationMode {
+        let umfile = CString::new(umfile.unwrap()).unwrap().into_raw();
+        if nmeaGGA {
+            numd = read_Nmea_GGA(&mut xyz, &umfilex).unwrap();
+            // numd = readNmeaGGA(&mut xyz, umfile);
+        } else if umLLH {
+            numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
         } else {
-            // Static geodetic coordinates input mode: "-l"
-            // Added by scateu@gmail.com
-            eprintln!("Using static location mode.");
-            // Set simulation duration
+            numd = unsafe { readUserMotion(&mut xyz, umfile) };
+        }
+        if numd == -1_i32 {
+            eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
+            panic!();
+        } else if numd == 0_i32 {
+            eprintln!("ERROR: Failed to read user motion / NMEA GGA data.");
+            panic!();
+        }
+        // Set simulation duration
+        if numd > iduration {
             numd = iduration;
-            // Set user initial position
-            llh2xyz(&llh, &mut xyz[0]);
         }
+        // Set user initial position
+        xyz2llh(&xyz[0], &mut llh);
+    } else {
+        // Static geodetic coordinates input mode: "-l"
+        // Added by scateu@gmail.com
+        eprintln!("Using static location mode.");
+        // Set simulation duration
+        numd = iduration;
+        // Set user initial position
+        llh2xyz(&llh, &mut xyz[0]);
+    }
 
-        eprintln!("xyz = {}, {}, {}", xyz[0][0], xyz[0][1], xyz[0][2],);
+    eprintln!("xyz = {}, {}, {}", xyz[0][0], xyz[0][1], xyz[0][2],);
 
-        eprintln!("llh = {}, {}, {}", llh[0] * R2D, llh[1] * R2D, llh[2],);
+    eprintln!("llh = {}, {}, {}", llh[0] * R2D, llh[1] * R2D, llh[2],);
 
-        ////////////////////////////////////////////////////////////
-        // Read ephemeris
-        ////////////////////////////////////////////////////////////
-        let neph = readRinexNavAll(&mut eph, &mut ionoutc, navfile.as_mut_ptr());
-        if neph == 0 {
-            eprintln!("ERROR: No ephemeris available.",);
-            panic!();
-        } else if neph == usize::MAX {
-            eprintln!("ERROR: ephemeris file not found.");
-            panic!();
-        }
-        if verb == 1_i32 && ionoutc.vflg == 1_i32 {
-            eprintln!(
-                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
-                ionoutc.alpha0, ionoutc.alpha1, ionoutc.alpha2, ionoutc.alpha3,
-            );
-
-            eprintln!(
-                "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
-                ionoutc.beta0, ionoutc.beta1, ionoutc.beta2, ionoutc.beta3,
-            );
-
-            eprintln!(
-                "   {:19.11e} {:19.11e}  {:9} {:9}",
-                ionoutc.A0, ionoutc.A1, ionoutc.tot, ionoutc.wnt,
-            );
-
-            eprintln!("{:6}", ionoutc.dtls,);
-        }
-        for sv in 0..MAX_SAT {
-            if eph[0][sv].vflg == 1_i32 {
-                gmin = eph[0][sv].toc;
-                tmin = eph[0][sv].t;
-                break;
-            }
-        }
-        gmax.sec = 0_i32 as f64;
-        gmax.week = 0_i32;
-        tmax.sec = 0_i32 as f64;
-        tmax.mm = 0_i32;
-        tmax.hh = 0_i32;
-        tmax.d = 0_i32;
-        tmax.m = 0_i32;
-        tmax.y = 0_i32;
-
-        for sv in 0..MAX_SAT {
-            if eph[neph - 1][sv].vflg == 1_i32 {
-                gmax = eph[neph - 1][sv].toc;
-                tmax = eph[neph - 1][sv].t;
-                break;
-            }
-        }
-        if g0.week >= 0_i32 {
-            // Scenario start time has been set.
-            if timeoverwrite == 1_i32 {
-                let mut gtmp: gpstime_t = gpstime_t::default();
-                let mut ttmp: datetime_t = datetime_t::default();
-                gtmp.week = g0.week;
-                gtmp.sec = (g0.sec as i32 / 7200_i32) as f64 * 7200.0f64;
-                // Overwrite the UTC reference week number
-                let dsec = subGpsTime(gtmp, gmin);
-                ionoutc.wnt = gtmp.week;
-                ionoutc.tot = gtmp.sec as i32;
-                // Iono/UTC parameters may no longer valid
-                //ionoutc.vflg = FALSE;
-                for sv in 0..MAX_SAT {
-                    for i_eph in eph.iter_mut().take(neph) {
-                        if i_eph[sv].vflg == 1_i32 {
-                            gtmp = incGpsTime(i_eph[sv].toc, dsec);
-                            gps2date(&gtmp, &mut ttmp);
-                            i_eph[sv].toc = gtmp;
-                            i_eph[sv].t = ttmp;
-                            gtmp = incGpsTime(i_eph[sv].toe, dsec);
-                            i_eph[sv].toe = gtmp;
-                        }
-                    }
-                }
-            } else if subGpsTime(g0, gmin) < 0.0f64 || subGpsTime(gmax, g0) < 0.0f64 {
-                eprintln!("ERROR: Invalid start time.");
-                eprintln!(
-                    "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
-                    tmin.y, tmin.m, tmin.d, tmin.hh, tmin.mm, tmin.sec, gmin.week, gmin.sec,
-                );
-                eprintln!(
-                    "tmax = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
-                    tmax.y, tmax.m, tmax.d, tmax.hh, tmax.mm, tmax.sec, gmax.week, gmax.sec,
-                );
-                panic!();
-            }
-        } else {
-            g0 = gmin;
-            t0 = tmin;
-        }
+    ////////////////////////////////////////////////////////////
+    // Read ephemeris
+    ////////////////////////////////////////////////////////////
+    // let navfile = navfile.to_str().unwrap_or("");
+    // let c_string = CString::new(navfile).unwrap();
+    // let navff = c_string.into_raw();
+    // let neph = readRinexNavAll(&mut eph, &mut ionoutc, navff);
+    let neph = read_rinex_nav_all(&mut eph, &mut ionoutc, &navfile).unwrap();
+    if neph == 0 {
+        eprintln!("ERROR: No ephemeris available.",);
+        panic!();
+    } else if neph == usize::MAX {
+        eprintln!("ERROR: ephemeris file not found.");
+        panic!();
+    }
+    if verb && ionoutc.vflg == 1_i32 {
+        eprintln!(
+            "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
+            ionoutc.alpha0, ionoutc.alpha1, ionoutc.alpha2, ionoutc.alpha3,
+        );
 
         eprintln!(
-            "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
-            t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
+            "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
+            ionoutc.beta0, ionoutc.beta1, ionoutc.beta2, ionoutc.beta3,
         );
 
-        eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
+        eprintln!(
+            "   {:19.11e} {:19.11e}  {:9} {:9}",
+            ionoutc.A0, ionoutc.A1, ionoutc.tot, ionoutc.wnt,
+        );
 
-        // Select the current set of ephemerides
-        let mut ieph = usize::MAX;
-        for (i, eph_item) in eph.iter().enumerate().take(neph) {
-            for e in eph_item.iter().take(MAX_SAT) {
-                if e.vflg == 1_i32 {
-                    let dt = subGpsTime(g0, e.toc);
-                    if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
-                        ieph = i;
-                        break;
+        eprintln!("{:6}", ionoutc.dtls,);
+    }
+    for sv in 0..MAX_SAT {
+        if eph[0][sv].vflg == 1_i32 {
+            gmin = eph[0][sv].toc;
+            tmin = eph[0][sv].t;
+            break;
+        }
+    }
+    gmax.sec = 0_i32 as f64;
+    gmax.week = 0_i32;
+    tmax.sec = 0_i32 as f64;
+    tmax.mm = 0_i32;
+    tmax.hh = 0_i32;
+    tmax.d = 0_i32;
+    tmax.m = 0_i32;
+    tmax.y = 0_i32;
+
+    for sv in 0..MAX_SAT {
+        if eph[neph - 1][sv].vflg == 1_i32 {
+            gmax = eph[neph - 1][sv].toc;
+            tmax = eph[neph - 1][sv].t;
+            break;
+        }
+    }
+    if g0.week >= 0_i32 {
+        // Scenario start time has been set.
+        if timeoverwrite {
+            let mut gtmp: gpstime_t = gpstime_t::default();
+            let mut ttmp: datetime_t = datetime_t::default();
+            gtmp.week = g0.week;
+            gtmp.sec = (g0.sec as i32 / 7200_i32) as f64 * 7200.0f64;
+            // Overwrite the UTC reference week number
+            let dsec = subGpsTime(gtmp, gmin);
+            ionoutc.wnt = gtmp.week;
+            ionoutc.tot = gtmp.sec as i32;
+            // Iono/UTC parameters may no longer valid
+            //ionoutc.vflg = FALSE;
+            for sv in 0..MAX_SAT {
+                for i_eph in eph.iter_mut().take(neph) {
+                    if i_eph[sv].vflg == 1_i32 {
+                        gtmp = incGpsTime(i_eph[sv].toc, dsec);
+                        gps2date(&gtmp, &mut ttmp);
+                        i_eph[sv].toc = gtmp;
+                        i_eph[sv].t = ttmp;
+                        gtmp = incGpsTime(i_eph[sv].toe, dsec);
+                        i_eph[sv].toe = gtmp;
                     }
                 }
             }
-            if ieph != usize::MAX {
-                // ieph has been set
-                break;
-            }
-            // if ieph >= 0 {
-            //     break;
-            // }
-        }
-
-        if ieph == usize::MAX {
-            eprintln!("ERROR: No current set of ephemerides has been found.",);
+        } else if subGpsTime(g0, gmin) < 0.0f64 || subGpsTime(gmax, g0) < 0.0f64 {
+            eprintln!("ERROR: Invalid start time.");
+            eprintln!(
+                "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
+                tmin.y, tmin.m, tmin.d, tmin.hh, tmin.mm, tmin.sec, gmin.week, gmin.sec,
+            );
+            eprintln!(
+                "tmax = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
+                tmax.y, tmax.m, tmax.d, tmax.hh, tmax.mm, tmax.sec, gmax.week, gmax.sec,
+            );
             panic!();
         }
+    } else {
+        g0 = gmin;
+        t0 = tmin;
+    }
 
-        ////////////////////////////////////////////////////////////
-        // Baseband signal buffer and output file
-        ////////////////////////////////////////////////////////////
+    eprintln!(
+        "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
+        t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
+    );
 
-        // Allocate I/Q buffer
-        let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
-        let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
-        if data_format == SC08 {
-            iq8_buff = vec![0i8; 2 * iq_buff_size as usize];
-        } else if data_format == SC01 {
-            iq8_buff = vec![0i8; iq_buff_size as usize / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
+    eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
+
+    // Select the current set of ephemerides
+    let mut ieph = usize::MAX;
+    for (i, eph_item) in eph.iter().enumerate().take(neph) {
+        for e in eph_item.iter().take(MAX_SAT) {
+            if e.vflg == 1_i32 {
+                let dt = subGpsTime(g0, e.toc);
+                if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
+                    ieph = i;
+                    break;
+                }
+            }
         }
-
-        // Open output file
-        // "-" can be used as name for stdout
-        // if strcmp(
-        //     b"-\0" as *const u8 as *const libc::c_char,
-        //     outfile.as_mut_ptr(),
-        // ) != 0
-        // {
-        //     fp = fopen(
-        //         outfile.as_mut_ptr(),
-        //         b"wb\0" as *const u8 as *const libc::c_char,
-        //     );
-        //     if fp.is_null() {
-        //         eprintln!("ERROR: Failed to open output file.");
-        //         panic!();
-        //     }
-        // } else {
-        //     // todo: temporarily disable
-        //     // fp = stdout;
+        if ieph != usize::MAX {
+            // ieph has been set
+            break;
+        }
+        // if ieph >= 0 {
+        //     break;
         // }
-        let out_file = String::from_utf8(outfile.iter().map(|&c| c as u8).collect());
-        if let Ok(out_file) = out_file {
-            if out_file != "-" {
-                let file_name = out_file.trim_end_matches("\0");
-                fp_out = std::fs::File::create(file_name).ok();
-            } else {
-                // use stdout
-                unimplemented!()
-            }
+    }
+
+    if ieph == usize::MAX {
+        eprintln!("ERROR: No current set of ephemerides has been found.",);
+        panic!();
+    }
+
+    ////////////////////////////////////////////////////////////
+    // Baseband signal buffer and output file
+    ////////////////////////////////////////////////////////////
+
+    // Allocate I/Q buffer
+    let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
+    let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
+    if data_format == SC08 {
+        iq8_buff = vec![0i8; 2 * iq_buff_size as usize];
+    } else if data_format == SC01 {
+        iq8_buff = vec![0i8; iq_buff_size as usize / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
+    }
+
+    // Open output file
+    // "-" can be used as name for stdout
+    // if strcmp(
+    //     b"-\0" as *const u8 as *const libc::c_char,
+    //     outfile.as_mut_ptr(),
+    // ) != 0
+    // {
+    //     fp = fopen(
+    //         outfile.as_mut_ptr(),
+    //         b"wb\0" as *const u8 as *const libc::c_char,
+    //     );
+    //     if fp.is_null() {
+    //         eprintln!("ERROR: Failed to open output file.");
+    //         panic!();
+    //     }
+    // } else {
+    //     // todo: temporarily disable
+    //     // fp = stdout;
+    // }
+    // let out_file = String::from_utf8(outfile.iter().map(|&c| c as u8).collect());
+    // if let Ok(out_file) = out_file {
+    //     if out_file != "-" {
+    //         let file_name = out_file.trim_end_matches("\0");
+    fp_out = std::fs::File::create(outfile).ok();
+    //     } else {
+    //         // use stdout
+    //         unimplemented!()
+    //     }
+    // }
+
+    ////////////////////////////////////////////////////////////
+    // Initialize channels
+    ////////////////////////////////////////////////////////////
+
+    // Clear all channels
+    chan.iter_mut().take(MAX_CHAN).for_each(|ch| ch.prn = 0);
+    // Clear satellite allocation flag
+    allocatedSat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
+    // Initial reception time
+    let mut grx = incGpsTime(g0, 0.0f64);
+    // Allocate visible satellites
+    allocateChannel(
+        &mut chan,
+        &mut eph[ieph],
+        &mut ionoutc,
+        &grx,
+        &xyz[0],
+        elvmask,
+        &mut allocatedSat,
+    );
+    for i in 0..MAX_CHAN {
+        if chan[i].prn > 0_i32 {
+            eprintln!(
+                "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
+                chan[i].prn,
+                chan[i].azel[0] * R2D,
+                chan[i].azel[1] * R2D,
+                chan[i].rho0.d,
+                chan[i].rho0.iono_delay,
+            );
         }
+    }
 
-        ////////////////////////////////////////////////////////////
-        // Initialize channels
-        ////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////
+    // Receiver antenna gain pattern
+    ////////////////////////////////////////////////////////////
+    for i in 0..37 {
+        ant_pat[i] = pow(10.0f64, -ant_pat_db[i] / 20.0f64);
+    }
 
-        // Clear all channels
-        chan.iter_mut().take(MAX_CHAN).for_each(|ch| ch.prn = 0);
-        // Clear satellite allocation flag
-        allocatedSat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
-        // Initial reception time
-        let mut grx = incGpsTime(g0, 0.0f64);
-        // Allocate visible satellites
-        allocateChannel(
-            &mut chan,
-            &mut eph[ieph],
-            &mut ionoutc,
-            &grx,
-            &xyz[0],
-            elvmask,
-            &mut allocatedSat,
-        );
+    ////////////////////////////////////////////////////////////
+    // Generate baseband signals
+    ////////////////////////////////////////////////////////////
+    let time_start = Instant::now();
+    grx = incGpsTime(grx, 0.1f64);
+    for iumd in 1..numd {
         for i in 0..MAX_CHAN {
-            if chan[i].prn > 0_i32 {
-                eprintln!(
-                    "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
-                    chan[i].prn,
-                    chan[i].azel[0] * R2D,
-                    chan[i].azel[1] * R2D,
-                    chan[i].rho0.d,
-                    chan[i].rho0.iono_delay,
-                );
-            }
-        }
+            if chan[i].prn > 0 {
+                // Refresh code phase and data bit counters
+                let mut rho: range_t = range_t {
+                    g: gpstime_t { week: 0, sec: 0. },
+                    range: 0.,
+                    rate: 0.,
+                    d: 0.,
+                    azel: [0.; 2],
+                    iono_delay: 0.,
+                };
+                let sv = chan[i].prn - 1;
+                // Current pseudorange
+                if !staticLocationMode {
+                    computeRange(
+                        &mut rho,
+                        &eph[ieph][sv as usize],
+                        &mut ionoutc,
+                        &grx,
+                        &xyz[iumd as usize],
+                    );
+                } else {
+                    computeRange(
+                        &mut rho,
+                        &eph[ieph][sv as usize],
+                        &mut ionoutc,
+                        &grx,
+                        &xyz[0],
+                    );
+                }
+                // Update code phase and data bit counters
+                chan[i].azel[0] = rho.azel[0];
+                chan[i].azel[1] = rho.azel[1];
+                computeCodePhase(&mut chan[i], rho, 0.1f64);
+                chan[i].carr_phasestep =
+                    round(512.0f64 * 65536.0f64 * chan[i].f_carr * delt) as i32;
 
-        ////////////////////////////////////////////////////////////
-        // Receiver antenna gain pattern
-        ////////////////////////////////////////////////////////////
-        for i in 0..37 {
-            ant_pat[i] = pow(10.0f64, -ant_pat_db[i] / 20.0f64);
-        }
-
-        ////////////////////////////////////////////////////////////
-        // Generate baseband signals
-        ////////////////////////////////////////////////////////////
-        let time_start = Instant::now();
-        grx = incGpsTime(grx, 0.1f64);
-        for iumd in 1..numd {
-            for i in 0..MAX_CHAN {
-                if chan[i].prn > 0 {
-                    // Refresh code phase and data bit counters
-                    let mut rho: range_t = range_t {
-                        g: gpstime_t { week: 0, sec: 0. },
-                        range: 0.,
-                        rate: 0.,
-                        d: 0.,
-                        azel: [0.; 2],
-                        iono_delay: 0.,
-                    };
-                    let sv = chan[i].prn - 1;
-                    // Current pseudorange
-                    if staticLocationMode == 0 {
-                        computeRange(
-                            &mut rho,
-                            &eph[ieph][sv as usize],
-                            &mut ionoutc,
-                            &grx,
-                            &xyz[iumd as usize],
-                        );
-                    } else {
-                        computeRange(
-                            &mut rho,
-                            &eph[ieph][sv as usize],
-                            &mut ionoutc,
-                            &grx,
-                            &xyz[0],
-                        );
-                    }
-                    // Update code phase and data bit counters
-                    chan[i].azel[0] = rho.azel[0];
-                    chan[i].azel[1] = rho.azel[1];
-                    computeCodePhase(&mut *chan.as_mut_ptr().add(i), rho, 0.1f64);
-                    chan[i].carr_phasestep =
-                        round(512.0f64 * 65536.0f64 * chan[i].f_carr * delt) as i32;
-
-                    // Path loss
-                    let path_loss = 20200000.0f64 / rho.d;
-                    // Receiver antenna gain
-                    let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
-                    let ant_gain = ant_pat[ibs];
-                    // Signal gain
-                    if path_loss_enable == 1_i32 {
-                        gain[i] = (path_loss * ant_gain * 128.0f64) as i32; // scaled by 2^7
-                    } else {
-                        gain[i] = fixed_gain; // hold the power level constant
-                    }
+                // Path loss
+                let path_loss = 20200000.0f64 / rho.d;
+                // Receiver antenna gain
+                let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
+                let ant_gain = ant_pat[ibs];
+                // Signal gain
+                if path_loss_enable {
+                    gain[i] = (path_loss * ant_gain * 128.0f64) as i32; // scaled by 2^7
+                } else {
+                    gain[i] = fixed_gain; // hold the power level constant
                 }
             }
-            for isamp in 0..iq_buff_size {
-                let mut i_acc: i32 = 0_i32;
-                let mut q_acc: i32 = 0_i32;
-                for i in 0..16 {
-                    if chan[i].prn > 0_i32 {
-                        // #ifdef FLOAT_CARR_PHASE
-                        //                     iTable = (int)floor(chan[i].carr_phase*512.0);
-                        // #else
-                        let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
-                        let ip = chan[i].dataBit * chan[i].codeCA * cosTable512[iTable] * gain[i];
-                        let qp = chan[i].dataBit * chan[i].codeCA * sinTable512[iTable] * gain[i];
-                        // Accumulate for all visible satellites
-                        i_acc += ip;
-                        q_acc += qp;
-                        // Update code phase
-                        chan[i].code_phase += chan[i].f_code * delt;
-                        if chan[i].code_phase >= CA_SEQ_LEN as f64 {
-                            chan[i].code_phase -= CA_SEQ_LEN as f64;
-                            chan[i].icode += 1;
-                            if chan[i].icode >= 20_i32 {
-                                // 20 C/A codes = 1 navigation data bit
-                                chan[i].icode = 0_i32;
-                                chan[i].ibit += 1;
-                                if chan[i].ibit >= 30_i32 {
-                                    // 30 navigation data bits = 1 word
-                                    chan[i].ibit = 0_i32;
-                                    chan[i].iword += 1;
+        }
+        for isamp in 0..iq_buff_size {
+            let mut i_acc: i32 = 0_i32;
+            let mut q_acc: i32 = 0_i32;
+            for i in 0..16 {
+                if chan[i].prn > 0_i32 {
+                    // #ifdef FLOAT_CARR_PHASE
+                    //                     iTable = (int)floor(chan[i].carr_phase*512.0);
+                    // #else
+                    let iTable = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
+                    let ip = chan[i].dataBit * chan[i].codeCA * cosTable512[iTable] * gain[i];
+                    let qp = chan[i].dataBit * chan[i].codeCA * sinTable512[iTable] * gain[i];
+                    // Accumulate for all visible satellites
+                    i_acc += ip;
+                    q_acc += qp;
+                    // Update code phase
+                    chan[i].code_phase += chan[i].f_code * delt;
+                    if chan[i].code_phase >= CA_SEQ_LEN as f64 {
+                        chan[i].code_phase -= CA_SEQ_LEN as f64;
+                        chan[i].icode += 1;
+                        if chan[i].icode >= 20_i32 {
+                            // 20 C/A codes = 1 navigation data bit
+                            chan[i].icode = 0_i32;
+                            chan[i].ibit += 1;
+                            if chan[i].ibit >= 30_i32 {
+                                // 30 navigation data bits = 1 word
+                                chan[i].ibit = 0_i32;
+                                chan[i].iword += 1;
 
-                                    /*
-                                    if (chan[i].iword>=N_DWRD)
-                                        fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
-                                    */
-                                }
-                                // Set new navigation data bit
-                                chan[i].dataBit = (chan[i].dwrd[chan[i].iword as usize]
-                                    >> (29_i32 - chan[i].ibit)
-                                    & 0x1_u32)
-                                    as i32
-                                    * 2_i32
-                                    - 1_i32;
+                                /*
+                                if (chan[i].iword>=N_DWRD)
+                                    fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
+                                */
                             }
+                            // Set new navigation data bit
+                            chan[i].dataBit = (chan[i].dwrd[chan[i].iword as usize]
+                                >> (29_i32 - chan[i].ibit)
+                                & 0x1_u32) as i32
+                                * 2_i32
+                                - 1_i32;
                         }
-                        // Set current code chip
-                        chan[i].codeCA =
-                            chan[i].ca[chan[i].code_phase as i32 as usize] * 2_i32 - 1_i32;
-                        // Update carrier phase
-                        // #ifdef FLOAT_CARR_PHASE
-                        //                     chan[i].carr_phase += chan[i].f_carr * delt;
-                        //
-                        //                     if (chan[i].carr_phase >= 1.0)
-                        //                         chan[i].carr_phase -= 1.0;
-                        //                     else if (chan[i].carr_phase<0.0)
-                        //                         chan[i].carr_phase += 1.0;
-                        // #else
-                        chan[i].carr_phase =
-                            (chan[i].carr_phase).wrapping_add(chan[i].carr_phasestep as u32);
                     }
+                    // Set current code chip
+                    chan[i].codeCA = chan[i].ca[chan[i].code_phase as i32 as usize] * 2_i32 - 1_i32;
+                    // Update carrier phase
+                    // #ifdef FLOAT_CARR_PHASE
+                    //                     chan[i].carr_phase += chan[i].f_carr * delt;
+                    //
+                    //                     if (chan[i].carr_phase >= 1.0)
+                    //                         chan[i].carr_phase -= 1.0;
+                    //                     else if (chan[i].carr_phase<0.0)
+                    //                         chan[i].carr_phase += 1.0;
+                    // #else
+                    chan[i].carr_phase =
+                        (chan[i].carr_phase).wrapping_add(chan[i].carr_phasestep as u32);
                 }
-                // Scaled by 2^7
-                i_acc = (i_acc + 64_i32) >> 7_i32;
-                q_acc = (q_acc + 64_i32) >> 7_i32;
-                // Store I/Q samples into buffer
-                iq_buff[isamp * 2] = i_acc as i16;
-                iq_buff[isamp * 2 + 1] = q_acc as i16;
             }
-            if data_format == SC01 {
-                for isamp in 0..2 * iq_buff_size {
-                    if isamp % 8 == 0 {
-                        iq8_buff[isamp / 8] = 0i8;
-                    }
-                    let fresh1_new = &mut iq8_buff[isamp / 8];
-
-                    *fresh1_new = (*fresh1_new as i32
-                        | (if iq_buff[isamp] as i32 > 0_i32 {
-                            0x1_i32
-                        } else {
-                            0_i32
-                        }) << (7_i32 - isamp as i32 % 8_i32))
-                        as libc::c_schar;
+            // Scaled by 2^7
+            i_acc = (i_acc + 64_i32) >> 7_i32;
+            q_acc = (q_acc + 64_i32) >> 7_i32;
+            // Store I/Q samples into buffer
+            iq_buff[isamp * 2] = i_acc as i16;
+            iq_buff[isamp * 2 + 1] = q_acc as i16;
+        }
+        if data_format == SC01 {
+            for isamp in 0..2 * iq_buff_size {
+                if isamp % 8 == 0 {
+                    iq8_buff[isamp / 8] = 0i8;
                 }
+                let fresh1_new = &mut iq8_buff[isamp / 8];
 
-                if let Some(file) = &mut fp_out {
+                *fresh1_new = (*fresh1_new as i32
+                    | (if iq_buff[isamp] as i32 > 0_i32 {
+                        0x1_i32
+                    } else {
+                        0_i32
+                    }) << (7_i32 - isamp as i32 % 8_i32))
+                    as libc::c_schar;
+            }
+
+            if let Some(file) = &mut fp_out {
+                unsafe {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
                         (iq_buff_size as i32 / 4_i32) as usize,
                     ))
                     .ok();
                 }
-            } else if data_format == SC08 {
-                for isamp in 0..2 * iq_buff_size {
-                    iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
-                    // 12-bit bladeRF -> 8-bit HackRF
-                    //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for PocketSDR
-                }
+            }
+        } else if data_format == SC08 {
+            for isamp in 0..2 * iq_buff_size {
+                iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
+                // 12-bit bladeRF -> 8-bit HackRF
+                //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for PocketSDR
+            }
 
-                if let Some(file) = &mut fp_out {
+            if let Some(file) = &mut fp_out {
+                unsafe {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
                         (2_i32 * iq_buff_size as i32) as usize,
                     ))
                     .ok();
                 }
-            } else if let Some(file) = &mut fp_out {
-                // data_format==SC16
-                let byte_slice = std::slice::from_raw_parts(
+            }
+        } else if let Some(file) = &mut fp_out {
+            // data_format==SC16
+            let byte_slice = unsafe {
+                std::slice::from_raw_parts(
                     iq_buff.as_ptr() as *const u8,
                     (2_i32 * iq_buff_size as i32 * 2) as usize, // 2 bytes per sample
-                );
-                file.write_all(byte_slice).ok();
-            }
-            //
-            // Update navigation message and channel allocation every 30 seconds
-            //
-            let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
-            if igrx % 300 == 0 {
-                // Every 30 seconds
-                for i in 0..MAX_CHAN {
-                    if chan[i].prn > 0_i32 {
-                        generateNavMsg(&grx, &mut *chan.as_mut_ptr().add(i), 0_i32);
-                    }
+                )
+            };
+            file.write_all(byte_slice).ok();
+        }
+        //
+        // Update navigation message and channel allocation every 30 seconds
+        //
+        let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
+        if igrx % 300 == 0 {
+            // Every 30 seconds
+            for i in 0..MAX_CHAN {
+                if chan[i].prn > 0_i32 {
+                    generateNavMsg(&grx, &mut chan[i], 0_i32);
                 }
-                // Refresh ephemeris and subframes
-                // Quick and dirty fix. Need more elegant way.
-                for sv in 0..MAX_SAT {
-                    if eph[ieph + 1][sv].vflg == 1_i32 {
-                        let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
-                        if dt < SECONDS_IN_HOUR {
-                            ieph += 1;
-                            for i in 0..MAX_CHAN {
-                                // Generate new subframes if allocated
-                                if chan[i].prn != 0_i32 {
-                                    eph2sbf(
-                                        eph[ieph][(chan[i].prn - 1_i32) as usize],
-                                        &ionoutc,
-                                        &mut chan[i].sbf,
-                                    );
-                                }
+            }
+            // Refresh ephemeris and subframes
+            // Quick and dirty fix. Need more elegant way.
+            for sv in 0..MAX_SAT {
+                if eph[ieph + 1][sv].vflg == 1_i32 {
+                    let dt = subGpsTime(eph[ieph + 1][sv].toc, grx);
+                    if dt < SECONDS_IN_HOUR {
+                        ieph += 1;
+                        for i in 0..MAX_CHAN {
+                            // Generate new subframes if allocated
+                            if chan[i].prn != 0_i32 {
+                                eph2sbf(
+                                    eph[ieph][(chan[i].prn - 1_i32) as usize],
+                                    &ionoutc,
+                                    &mut chan[i].sbf,
+                                );
                             }
                         }
-                        break;
                     }
+                    break;
                 }
-                // Update channel allocation
-                if staticLocationMode == 0 {
-                    allocateChannel(
-                        &mut chan,
-                        &mut eph[ieph],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[iumd as usize],
-                        elvmask,
-                        &mut allocatedSat,
-                    );
-                } else {
-                    allocateChannel(
-                        &mut chan,
-                        &mut eph[ieph],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[0],
-                        elvmask,
-                        &mut allocatedSat,
-                    );
-                }
-                // Show details about simulated channels
-                if verb == 1_i32 {
-                    eprintln!();
-                    for i in 0..MAX_CHAN {
-                        if chan[i].prn > 0_i32 {
-                            eprintln!(
-                                "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
-                                chan[i].prn,
-                                chan[i].azel[0] * R2D,
-                                chan[i].azel[1] * R2D,
-                                chan[i].rho0.d,
-                                chan[i].rho0.iono_delay,
-                            );
-                        }
+            }
+            // Update channel allocation
+            if !staticLocationMode {
+                allocateChannel(
+                    &mut chan,
+                    &mut eph[ieph],
+                    &mut ionoutc,
+                    &grx,
+                    &xyz[iumd as usize],
+                    elvmask,
+                    &mut allocatedSat,
+                );
+            } else {
+                allocateChannel(
+                    &mut chan,
+                    &mut eph[ieph],
+                    &mut ionoutc,
+                    &grx,
+                    &xyz[0],
+                    elvmask,
+                    &mut allocatedSat,
+                );
+            }
+            // Show details about simulated channels
+            if verb {
+                eprintln!();
+                for i in 0..MAX_CHAN {
+                    if chan[i].prn > 0_i32 {
+                        eprintln!(
+                            "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
+                            chan[i].prn,
+                            chan[i].azel[0] * R2D,
+                            chan[i].azel[1] * R2D,
+                            chan[i].rho0.d,
+                            chan[i].rho0.iono_delay,
+                        );
                     }
                 }
             }
-            // Update receiver time
-            grx = incGpsTime(grx, 0.1f64);
-
-            // Update time counter
-            eprint!("\rTime into run = {:4.1}\0", subGpsTime(grx, g0));
-            // todo: temporarily disable
-            // fflush(stdout);
-            // iumd += 1;
         }
+        // Update receiver time
+        grx = incGpsTime(grx, 0.1f64);
 
-        eprintln!("\nDone!");
-        eprintln!(
-            "Process time = {:.1} [sec]",
-            time_start.elapsed().as_secs_f32()
-        );
-        0_i32
+        // Update time counter
+        eprint!("\rTime into run = {:4.1}\0", subGpsTime(grx, g0));
+        // todo: temporarily disable
+        // fflush(stdout);
+        // iumd += 1;
     }
+
+    eprintln!("\nDone!");
+    eprintln!(
+        "Process time = {:.1} [sec]",
+        time_start.elapsed().as_secs_f32()
+    );
+    0_i32
 }

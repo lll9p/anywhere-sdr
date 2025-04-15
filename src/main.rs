@@ -58,7 +58,6 @@ mod utils;
 use clap::Parser;
 use datetime::{datetime_t, gpstime_t, tm};
 use eph::ephem_t;
-use getopt::usage;
 use ionoutc::ionoutc_t;
 use process::process;
 use utils::*;
@@ -104,20 +103,6 @@ type time_t = libc::c_long;
 pub fn main() -> anyhow::Result<()> {
     let _guard = tracing_init();
 
-    let args = cli::Args::parse().get_params();
-    // let mut args: Vec<*mut libc::c_char> = Vec::new();
-    // for arg in ::std::env::args() {
-    //     args.push(
-    //         (::std::ffi::CString::new(arg))
-    //             .expect("Failed to convert argument into CString.")
-    //             .into_raw(),
-    //     );
-    // }
-    // args.push(::core::ptr::null_mut());
-    //
-    // if args.len() - 1 < 3 {
-    //     usage();
-    //     panic!();
-    // }
-    unsafe { ::std::process::exit(process(params)) };
+    let params = cli::Args::parse().get_params();
+    ::std::process::exit(process(params))
 }
