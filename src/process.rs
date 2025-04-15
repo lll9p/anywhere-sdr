@@ -8,7 +8,6 @@ use crate::{
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_LLH},
     table::{ant_pat_db, cosTable512, sinTable512},
-    utils::*,
 };
 use std::{io::Write, time::Instant};
 
@@ -73,7 +72,7 @@ pub fn subVect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
 }
 
 pub fn normVect(x: &[f64; 3]) -> f64 {
-    sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2])
+    (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]).sqrt()
 }
 
 pub fn dotProd(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
@@ -143,8 +142,8 @@ pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
 
 // Convert Julian day number to calendar date
 pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
-    let c: i32 =
-        ((7_i32 * (g).week) as f64 + floor((g).sec / 86400.0f64) + 2444245.0f64) as i32 + 1537_i32;
+    let c: i32 = ((7_i32 * (g).week) as f64 + ((g).sec / 86400.0f64).floor() + 2444245.0f64) as i32
+        + 1537_i32;
     let d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
     let e: i32 = 365_i32 * d + d / 4_i32;
     let f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
@@ -153,7 +152,7 @@ pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
     (t).y = d - 4715_i32 - (7_i32 + (t).m) / 10_i32;
     (t).hh = ((g).sec / 3600.0f64) as i32 % 24_i32;
     (t).mm = ((g).sec / 60.0f64) as i32 % 60_i32;
-    (t).sec = g.sec - 60.0f64 * floor((g).sec / 60.0f64);
+    (t).sec = g.sec - 60.0f64 * ((g).sec / 60.0f64).floor();
 }
 ///  Convert Earth-centered Earth-fixed (ECEF) into Lat/Long/Height
 ///  \param[in] xyz Input Array of X, Y and Z ECEF coordinates
@@ -182,17 +181,17 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     let mut dz = e2 * z;
     loop {
         zdz = z + dz;
-        nh = sqrt(rho2 + zdz * zdz);
+        nh = (rho2 + zdz * zdz).sqrt();
         slat = zdz / nh;
-        n = a / sqrt(1.0f64 - e2 * slat * slat);
+        n = a / (1.0f64 - e2 * slat * slat).sqrt();
         dz_new = n * e2 * slat;
-        if fabs(dz - dz_new) < eps {
+        if (dz - dz_new).abs() < eps {
             break;
         }
         dz = dz_new;
     }
-    llh[0] = atan2(zdz, sqrt(rho2));
-    llh[1] = atan2(y, x);
+    llh[0] = zdz.atan2(rho2.sqrt());
+    llh[1] = y.atan2(x);
     llh[2] = nh - n;
 }
 
@@ -203,12 +202,12 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let a = WGS84_RADIUS;
     let e = WGS84_ECCENTRICITY;
     let e2 = e * e;
-    let clat = cos(llh[0]);
-    let slat = sin(llh[0]);
-    let clon = cos(llh[1]);
-    let slon = sin(llh[1]);
+    let clat = (llh[0]).cos();
+    let slat = (llh[0]).sin();
+    let clon = (llh[1]).cos();
+    let slon = (llh[1]).sin();
     let d = e * slat;
-    let n = a / sqrt(1.0f64 - d * d);
+    let n = a / (1.0f64 - d * d).sqrt();
     let nph = n + llh[2];
     let tmp = nph * clat;
     xyz_0[0] = tmp * clon;
@@ -220,10 +219,10 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
 ///  \param[in] llh Input position in Latitude-Longitude-Height format
 ///  \param[out] t Three-by-Three output matrix
 pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
-    let slat = sin(llh[0]);
-    let clat = cos(llh[0]);
-    let slon = sin(llh[1]);
-    let clon = cos(llh[1]);
+    let slat = (llh[0]).sin();
+    let clat = (llh[0]).cos();
+    let slon = (llh[1]).sin();
+    let clon = (llh[1]).cos();
     t[0][0] = -slat * clon;
     t[0][1] = -slat * slon;
     t[0][2] = clat;
@@ -250,12 +249,12 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
 /// \param[out] azel Output array of azimuth + elevation as double
 ///
 pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
-    azel[0] = atan2(neu[1], neu[0]);
+    azel[0] = neu[1].atan2(neu[0]);
     if azel[0] < 0.0f64 {
         azel[0] += 2.0f64 * PI;
     }
-    let ne = sqrt(neu[0] * neu[0] + neu[1] * neu[1]);
-    azel[1] = atan2(neu[2], ne);
+    let ne = (neu[0] * neu[0] + neu[1] * neu[1]).sqrt();
+    azel[1] = neu[2].atan2(ne);
 }
 
 /// \brief Compute Satellite position, velocity and clock at given time
@@ -285,36 +284,36 @@ pub fn satpos(
     let mut ek = mk;
     let mut ekold = ek + 1.0f64;
     let mut OneMinusecosE = 0_i32 as f64; // Suppress the uninitialized warning.
-    while fabs(ek - ekold) > 1.0E-14f64 {
+    while (ek - ekold).abs() > 1.0E-14f64 {
         ekold = ek;
-        OneMinusecosE = 1.0f64 - eph.ecc * cos(ekold);
-        ek += (mk - ekold + eph.ecc * sin(ekold)) / OneMinusecosE;
+        OneMinusecosE = 1.0f64 - eph.ecc * (ekold).cos();
+        ek += (mk - ekold + eph.ecc * (ekold.sin())) / OneMinusecosE;
     }
-    let sek = sin(ek);
-    let cek = cos(ek);
+    let sek = (ek).sin();
+    let cek = (ek).cos();
     let ekdot = eph.n / OneMinusecosE;
     let relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
-    let pk = atan2(eph.sq1e2 * sek, cek - eph.ecc) + eph.aop;
+    let pk = (eph.sq1e2 * sek).atan2(cek - eph.ecc) + eph.aop;
     let pkdot = eph.sq1e2 * ekdot / OneMinusecosE;
-    let s2pk = sin(2.0f64 * pk);
-    let c2pk = cos(2.0f64 * pk);
+    let s2pk = (2.0f64 * pk).sin();
+    let c2pk = (2.0f64 * pk).cos();
     let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
-    let suk = sin(uk);
-    let cuk = cos(uk);
+    let suk = (uk).sin();
+    let cuk = (uk).cos();
     let ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
     let rk = eph.A * OneMinusecosE + eph.crc * c2pk + eph.crs * s2pk;
     let rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
     let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
-    let sik = sin(ik);
-    let cik = cos(ik);
+    let sik = (ik).sin();
+    let cik = (ik).cos();
     let ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
     let xpk = rk * cuk;
     let ypk = rk * suk;
     let xpkdot = rkdot * cuk - ypk * ukdot;
     let ypkdot = rkdot * suk + xpk * ukdot;
     let ok = eph.omg0 + tk * eph.omgkdot - OMEGA_EARTH * eph.toe.sec;
-    let sok = sin(ok);
-    let cok = cos(ok);
+    let sok = (ok).sin();
+    let cok = (ok).cos();
     pos[0] = xpk * cok - ypk * cik * sok;
     pos[1] = xpk * sok + ypk * cik * cok;
     pos[2] = ypk * sik;
@@ -376,16 +375,16 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     let codeL2 = eph.codeL2 as u32 as i32;
     let wna = (eph.toe.week % 256_i32) as u32;
     let toa = (eph.toe.sec / 4096.0f64) as u32;
-    let alpha0 = round(ionoutc.alpha0 / POW2_M30) as i32;
-    let alpha1 = round(ionoutc.alpha1 / POW2_M27) as i32;
-    let alpha2 = round(ionoutc.alpha2 / POW2_M24) as i32;
-    let alpha3 = round(ionoutc.alpha3 / POW2_M24) as i32;
-    let beta0 = round(ionoutc.beta0 / 2048.0f64) as i32;
-    let beta1 = round(ionoutc.beta1 / 16384.0f64) as i32;
-    let beta2 = round(ionoutc.beta2 / 65536.0f64) as i32;
-    let beta3 = round(ionoutc.beta3 / 65536.0f64) as i32;
-    let A0 = round(ionoutc.A0 / POW2_M30) as i32;
-    let A1 = round(ionoutc.A1 / POW2_M50) as i32;
+    let alpha0 = (ionoutc.alpha0 / POW2_M30).round() as i32;
+    let alpha1 = (ionoutc.alpha1 / POW2_M27).round() as i32;
+    let alpha2 = (ionoutc.alpha2 / POW2_M24).round() as i32;
+    let alpha3 = (ionoutc.alpha3 / POW2_M24).round() as i32;
+    let beta0 = (ionoutc.beta0 / 2048.0f64).round() as i32;
+    let beta1 = (ionoutc.beta1 / 16384.0f64).round() as i32;
+    let beta2 = (ionoutc.beta2 / 65536.0f64).round() as i32;
+    let beta3 = (ionoutc.beta3 / 65536.0f64).round() as i32;
+    let A0 = (ionoutc.A0 / POW2_M30).round() as i32;
+    let A1 = (ionoutc.A1 / POW2_M50).round() as i32;
     let dtls = ionoutc.dtls;
     let tot = (ionoutc.tot / 4096_i32) as u32;
     let wnt = (ionoutc.wnt % 256_i32) as u32;
@@ -618,7 +617,7 @@ pub fn incGpsTime(g0: gpstime_t, dt: f64) -> gpstime_t {
     let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
-    g1.sec = round(g1.sec * 1000.0f64) / 1000.0f64; // Avoid rounding error
+    g1.sec = (g1.sec * 1000.0f64).round() / 1000.0f64; // Avoid rounding error
     while g1.sec >= SECONDS_IN_WEEK {
         g1.sec -= SECONDS_IN_WEEK;
         g1.week += 1;
@@ -644,7 +643,7 @@ pub fn ionosphericDelay(
     let E = azel[1] / PI;
     let phi_u = llh[0] / PI;
     let lam_u = llh[1] / PI;
-    let F = 1.0f64 + 16.0f64 * pow(0.53f64 - E, 3.0f64);
+    let F = 1.0f64 + 16.0f64 * (0.53f64 - E).powf(3.0f64);
     if ionoutc.vflg == 0_i32 {
         iono_delay = F * 5.0e-9f64 * SPEED_OF_LIGHT;
     } else {
@@ -656,15 +655,15 @@ pub fn ionosphericDelay(
 
         // Geodetic latitude of the earth projection of the ionospheric intersection point
         // (semi-circles)
-        let phi_i = phi_u + psi * cos(azel[0]);
+        let phi_i = phi_u + psi * (azel[0]).cos();
         let phi_i = phi_i.clamp(-0.416f64, 0.416f64);
 
         // Geodetic longitude of the earth projection of the ionospheric intersection point
         // (semi-circles)
-        let lam_i = lam_u + psi * sin(azel[0]) / cos(phi_i * PI);
+        let lam_i = lam_u + psi * (azel[0]).sin() / (phi_i * PI).cos();
         // Geomagnetic latitude of the earth projection of the ionospheric intersection
         // point (mean ionospheric height assumed 350 km) (semi-circles)
-        let phi_m = phi_i + 0.064f64 * cos((lam_i - 1.617f64) * PI);
+        let phi_m = phi_i + 0.064f64 * ((lam_i - 1.617f64) * PI).cos();
         let phi_m2 = phi_m * phi_m;
         let phi_m3 = phi_m2 * phi_m;
         let mut AMP = ionoutc.alpha0
@@ -689,7 +688,7 @@ pub fn ionosphericDelay(
         }
         // Phase (radians)
         let X = 2.0f64 * PI * (t - 50400.0f64) / PER;
-        if fabs(X) < 1.57f64 {
+        if (X).abs() < 1.57f64 {
             let X2 = X * X;
             let X4 = X2 * X2;
             iono_delay =
@@ -933,7 +932,7 @@ pub fn allocateChannel(
                         // #ifdef FLOAT_CARR_PHASE
                         //                         chan[i].carr_phase = phase_ini - floor(phase_ini);
                         // #else
-                        phase_ini -= floor(phase_ini);
+                        phase_ini -= (phase_ini).floor();
                         (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
                         break;
                     } else {
@@ -1021,13 +1020,13 @@ pub fn process(params: Params) -> i32 {
     }
     if duration < 0.0f64
         || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && !staticLocationMode
-        || duration > 86400_f64 && staticLocationMode
+        || duration > STATIC_MAX_DURATION as f64 && staticLocationMode
     {
         eprintln!("ERROR: Invalid duration.");
         panic!();
     }
     let iduration = (duration * 10.0f64 + 0.5f64) as i32;
-    let mut samp_freq = floor(samp_freq / 10.0f64);
+    let mut samp_freq = (samp_freq / 10.0f64).floor();
     let iq_buff_size = samp_freq as usize; // samples per 0.1sec
     samp_freq *= 10.0f64;
     // let delt = 1.0f64 / samp_freq;
@@ -1212,12 +1211,12 @@ pub fn process(params: Params) -> i32 {
     ////////////////////////////////////////////////////////////
 
     // Allocate I/Q buffer
-    let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size as usize];
-    let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size as usize];
+    let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size];
+    let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size];
     if data_format == SC08 {
-        iq8_buff = vec![0i8; 2 * iq_buff_size as usize];
+        iq8_buff = vec![0i8; 2 * iq_buff_size];
     } else if data_format == SC01 {
-        iq8_buff = vec![0i8; iq_buff_size as usize / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
+        iq8_buff = vec![0i8; iq_buff_size / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
     }
 
     // Open output file
@@ -1288,7 +1287,7 @@ pub fn process(params: Params) -> i32 {
     // Receiver antenna gain pattern
     ////////////////////////////////////////////////////////////
     for i in 0..37 {
-        ant_pat[i] = pow(10.0f64, -ant_pat_db[i] / 20.0f64);
+        ant_pat[i] = 10.0f64.powf(-ant_pat_db[i] / 20.0f64);
     }
 
     ////////////////////////////////////////////////////////////
@@ -1332,7 +1331,7 @@ pub fn process(params: Params) -> i32 {
                 chan[i].azel[1] = rho.azel[1];
                 computeCodePhase(&mut chan[i], rho, 0.1f64);
                 chan[i].carr_phasestep =
-                    round(512.0f64 * 65536.0f64 * chan[i].f_carr * delt) as i32;
+                    (512.0f64 * 65536.0f64 * chan[i].f_carr * delt).round() as i32;
 
                 // Path loss
                 let path_loss = 20200000.0f64 / rho.d;

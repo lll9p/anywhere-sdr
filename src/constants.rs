@@ -55,6 +55,7 @@ pub const SPEED_OF_LIGHT: f64 = 2.99792458e8;
 pub const LAMBDA_L1: f64 = 0.190293672798365;
 
 // \brief GPS L1 Carrier frequency */
+#[allow(dead_code)]
 pub const CARR_FREQ: f64 = 1575.42e6;
 // \brief C/A code frequency */
 pub const CODE_FREQ: f64 = 1.023e6;
@@ -63,6 +64,7 @@ pub const CARR_TO_CODE: f64 = 1.0 / 1540.0;
 // Sampling data format
 pub const SC01: i32 = 1;
 pub const SC08: i32 = 8;
+#[allow(dead_code)]
 pub const SC16: i32 = 16;
 
 pub const EPHEM_ARRAY_SIZE: usize = 15; // for daily GPS broadcast ephemers file (brdc)

@@ -7,9 +7,6 @@ pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.parse()
 }
 
-pub fn parse_i32(num_string: &str) -> Result<i32, std::num::ParseIntError> {
-    num_string.parse()
-}
 pub fn read_Nmea_GGA(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
