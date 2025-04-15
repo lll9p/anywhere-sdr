@@ -1,9 +1,9 @@
 use crate::{
     cli::Params,
     constants::*,
-    datetime::{datetime_t, gpstime_t},
-    eph::ephem_t,
-    ionoutc::ionoutc_t,
+    datetime::{DateTime, GpsTime},
+    eph::Ephemeris,
+    ionoutc::IonoUtc,
     read_nmea_gga::read_nmea_gga,
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_llh},
@@ -13,8 +13,8 @@ use std::{io::Write, time::Instant};
 
 #[derive(Copy, Clone, Default)]
 #[repr(C)]
-pub struct range_t {
-    pub g: gpstime_t,
+pub struct Range {
+    pub g: GpsTime,
     // pseudorange
     pub range: f64,
     pub rate: f64,
@@ -28,7 +28,7 @@ pub struct range_t {
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct channel_t {
+pub struct Channel {
     //< PRN Number
     pub prn: i32,
     //< C/A Sequence
@@ -47,7 +47,7 @@ pub struct channel_t {
     //< Code phase
     pub code_phase: f64,
     // < GPS time at start
-    pub g0: gpstime_t,
+    pub g0: GpsTime,
     // < current subframe
     pub sbf: [[u32; N_DWRD_SBF]; 5],
     // < Data words of sub-frame
@@ -63,7 +63,7 @@ pub struct channel_t {
     // < current C/A code
     pub codeCA: i32,
     pub azel: [f64; 2],
-    pub rho0: range_t,
+    pub rho0: Range,
 }
 
 pub fn sub_vect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
@@ -97,7 +97,7 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
         return;
     }
     for i in 0..N_DWRD_SBF {
-        r2[i] = -1_i32;
+        r2[i] = -1;
         r1[i] = r2[i];
     }
     for i in 0..CA_SEQ_LEN {
@@ -114,13 +114,13 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
     }
     let mut j = CA_SEQ_LEN - delay[(prn - 1) as usize];
     for i in 0..CA_SEQ_LEN {
-        ca[i] = (1_i32 - g1[i] * g2[j % CA_SEQ_LEN]) / 2_i32;
+        ca[i] = (1 - g1[i] * g2[j % CA_SEQ_LEN]) / 2;
         j += 1;
     }
 }
 
 //  Convert a UTC date into a GPS date
-pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
+pub fn date2gps(t: &DateTime, g: &mut GpsTime) {
     let doy: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     let ye = (t).y - 1980;
 
@@ -142,7 +142,7 @@ pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
 }
 
 // Convert Julian day number to calendar date
-pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
+pub fn gps2date(g: &GpsTime, t: &mut DateTime) {
     let c = ((7 * (g).week) as f64 + ((g).sec / 86400.0).floor() + 2444245.0) as i32 + 1537;
     let d = ((c as f64 - 122.1f64) / 365.25f64) as i32;
     let e = 365 * d + d / 4;
@@ -268,8 +268,8 @@ pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
 /// \param[clk] clk Computed clock
 ///
 pub fn satpos(
-    eph: &ephem_t,
-    g: &gpstime_t,
+    eph: &Ephemeris,
+    g: &GpsTime,
     pos: &mut [f64; 3],
     vel: &mut [f64; 3],
     clk: &mut [f64; 2],
@@ -335,7 +335,7 @@ pub fn satpos(
 /// \param[in] eph Ephemeris of given SV
 /// \param[out] sbf Array of five sub-frames, 10 long words each
 ///
-pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 5]) {
+pub fn eph2sbf(eph: Ephemeris, ionoutc: &IonoUtc, sbf: &mut [[u32; N_DWRD_SBF]; 5]) {
     let ura = 0;
     let data_id = 1;
     let sbf4_page25_sv_id = 63;
@@ -576,14 +576,14 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     D
 }
 
-pub fn sub_gps_time(g1: gpstime_t, g0: gpstime_t) -> f64 {
+pub fn sub_gps_time(g1: GpsTime, g0: GpsTime) -> f64 {
     let mut dt = g1.sec - g0.sec;
     dt += (g1.week - g0.week) as f64 * SECONDS_IN_WEEK;
     dt
 }
 
-pub fn inc_gps_time(g0: gpstime_t, dt: f64) -> gpstime_t {
-    let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
+pub fn inc_gps_time(g0: GpsTime, dt: f64) -> GpsTime {
+    let mut g1: GpsTime = GpsTime { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
     g1.sec = (g1.sec * 1000.0).round() / 1000.0; // Avoid rounding error
@@ -599,12 +599,7 @@ pub fn inc_gps_time(g0: gpstime_t, dt: f64) -> gpstime_t {
 }
 
 #[allow(non_snake_case)]
-pub fn ionospheric_delay(
-    ionoutc: &ionoutc_t,
-    g: &gpstime_t,
-    llh: &[f64; 3],
-    azel: &[f64; 2],
-) -> f64 {
+pub fn ionospheric_delay(ionoutc: &IonoUtc, g: &GpsTime, llh: &[f64; 3], azel: &[f64; 2]) -> f64 {
     let iono_delay: f64;
     if !ionoutc.enable {
         // No ionospheric delay
@@ -675,10 +670,10 @@ pub fn ionospheric_delay(
 ///  \param[in] g GPS time at time of receiving the signal
 ///  \param[in] xyz position of the receiver
 pub fn compute_range(
-    rho: &mut range_t,
-    eph: &ephem_t,
-    ionoutc: &mut ionoutc_t,
-    g: &gpstime_t,
+    rho: &mut Range,
+    eph: &Ephemeris,
+    ionoutc: &mut IonoUtc,
+    g: &GpsTime,
     xyz_0: &[f64; 3],
 ) {
     let mut pos: [f64; 3] = [0.; 3];
@@ -727,7 +722,7 @@ pub fn compute_range(
 ///  \param chan Channel on which we operate (is updated)
 ///  \param[in] rho1 Current range, after \a dt has expired
 ///  \param[in dt delta-t (time difference) in seconds
-pub fn compute_code_phase(chan: &mut channel_t, rho1: range_t, dt: f64) {
+pub fn compute_code_phase(chan: &mut Channel, rho1: Range, dt: f64) {
     // Pseudorange rate.
     let rhorate = (rho1.range - chan.rho0.range) / dt;
     // Carrier and code frequency.
@@ -748,8 +743,8 @@ pub fn compute_code_phase(chan: &mut channel_t, rho1: range_t, dt: f64) {
     chan.rho0 = rho1;
 }
 
-pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: bool) {
-    let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
+pub fn generate_nav_msg(g: &GpsTime, chan: &mut Channel, init: bool) {
+    let mut g0: GpsTime = GpsTime { week: 0, sec: 0. };
     let mut sbfwrd: u32;
     let mut prevwrd: u32 = 0;
     let mut nib: i32;
@@ -812,8 +807,8 @@ pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: bool) {
 }
 
 pub fn check_sat_visibility(
-    eph: ephem_t,
-    g: &gpstime_t,
+    eph: Ephemeris,
+    g: &GpsTime,
     xyz_0: &[f64; 3],
     elv_mask: f64,
     azel: &mut [f64; 2],
@@ -842,18 +837,18 @@ pub fn check_sat_visibility(
 }
 
 pub fn allocate_channel(
-    chan: &mut [channel_t; 16],
-    eph: &mut [ephem_t; 32],
-    ionoutc: &mut ionoutc_t,
-    grx: &gpstime_t,
+    chan: &mut [Channel; 16],
+    eph: &mut [Ephemeris; 32],
+    ionoutc: &mut IonoUtc,
+    grx: &GpsTime,
     xyz_0: &[f64; 3],
     _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0;
     let mut azel: [f64; 2] = [0.; 2];
-    let mut rho: range_t = range_t {
-        g: gpstime_t { week: 0, sec: 0. },
+    let mut rho: Range = Range {
+        g: GpsTime { week: 0, sec: 0. },
         range: 0.,
         rate: 0.,
         d: 0.,
@@ -925,17 +920,17 @@ pub fn process(params: Params) -> i32 {
     let mut allocated_sat: [i32; MAX_SAT] = [0; 32];
 
     let mut fp_out: Option<std::fs::File>;
-    let mut eph: [[ephem_t; MAX_SAT]; EPHEM_ARRAY_SIZE] =
-        [[ephem_t::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
-    let mut chan: [channel_t; 16] = [channel_t {
+    let mut eph: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
+        [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
+    let mut chan: [Channel; 16] = [Channel {
         prn: 0,
-        ca: [0; 1023],
+        ca: [0; CA_SEQ_LEN],
         f_carr: 0.,
         f_code: 0.,
         carr_phase: 0,
         carr_phasestep: 0,
         code_phase: 0.,
-        g0: gpstime_t::default(),
+        g0: GpsTime::default(),
         sbf: [[0; 10]; 5],
         dwrd: [0; 60],
         iword: 0,
@@ -944,7 +939,7 @@ pub fn process(params: Params) -> i32 {
         dataBit: 0,
         codeCA: 0,
         azel: [0.; 2],
-        rho0: range_t::default(),
+        rho0: Range::default(),
     }; 16];
     let elvmask: f64 = 0.0;
 
@@ -954,10 +949,10 @@ pub fn process(params: Params) -> i32 {
     // let mut outfile: [libc::c_char; 100] = [0; 100];
     let mut gain: [i32; 16] = [0; 16];
     let mut ant_pat: [f64; 37] = [0.; 37];
-    let mut tmin = datetime_t::default();
-    let mut tmax = datetime_t::default();
-    let mut gmin = gpstime_t::default();
-    let mut gmax = gpstime_t::default();
+    let mut tmin = DateTime::default();
+    let mut tmax = DateTime::default();
+    let mut gmin = GpsTime::default();
+    let mut gmax = GpsTime::default();
     let navfile = params.navfile;
     let umfile = params.umfile;
     let nmea_gga = params.nmea_gga;
@@ -1096,8 +1091,8 @@ pub fn process(params: Params) -> i32 {
     if g0.week >= 0 {
         // Scenario start time has been set.
         if timeoverwrite {
-            let mut gtmp: gpstime_t = gpstime_t::default();
-            let mut ttmp: datetime_t = datetime_t::default();
+            let mut gtmp: GpsTime = GpsTime::default();
+            let mut ttmp: DateTime = DateTime::default();
             gtmp.week = g0.week;
             gtmp.sec = (g0.sec as i32 / 7200) as f64 * 7200.0;
             // Overwrite the UTC reference week number
@@ -1261,8 +1256,8 @@ pub fn process(params: Params) -> i32 {
         for i in 0..MAX_CHAN {
             if chan[i].prn > 0 {
                 // Refresh code phase and data bit counters
-                let mut rho: range_t = range_t {
-                    g: gpstime_t::default(),
+                let mut rho: Range = Range {
+                    g: GpsTime::default(),
                     range: 0.,
                     rate: 0.,
                     d: 0.,

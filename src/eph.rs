@@ -1,16 +1,16 @@
-use crate::{datetime_t, gpstime_t};
+use crate::{DateTime, GpsTime};
 //  Structure representing ephemeris of a single satellite
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub struct ephem_t {
+pub struct Ephemeris {
     // < Valid Flag
     pub vflg: bool,
-    pub t: datetime_t,
+    pub t: DateTime,
     // < Time of Clock
-    pub toc: gpstime_t,
+    pub toc: GpsTime,
     // < Time of Ephemeris
-    pub toe: gpstime_t,
+    pub toe: GpsTime,
     // < Issue of Data, Clock
     pub iodc: i32,
     // < Isuse of Data, Ephemeris

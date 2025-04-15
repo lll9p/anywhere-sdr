@@ -1,7 +1,7 @@
 #[allow(non_snake_case)]
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub struct ionoutc_t {
+pub struct IonoUtc {
     pub enable: bool,
     pub vflg: bool,
     pub alpha0: f64,

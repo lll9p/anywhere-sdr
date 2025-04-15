@@ -1,6 +1,5 @@
 use crate::{
-    constants::*, datetime_t, ephem_t, gpstime_t, ionoutc_t, process::date2gps,
-    process::sub_gps_time,
+    DateTime, Ephemeris, GpsTime, IonoUtc, constants::*, process::date2gps, process::sub_gps_time,
 };
 use std::{fs, path::Path};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
@@ -12,8 +11,8 @@ pub fn parse_i32(num_string: &str) -> Result<i32, std::num::ParseIntError> {
 }
 #[allow(clippy::too_many_lines)]
 pub fn read_rinex_nav_all(
-    data: &mut [[ephem_t; MAX_SAT]; EPHEM_ARRAY_SIZE],
-    iono_utc: &mut ionoutc_t,
+    data: &mut [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE],
+    iono_utc: &mut IonoUtc,
     fname: &dyn AsRef<Path>,
 ) -> anyhow::Result<usize> {
     // Ephemeris vec of vec init;
@@ -24,9 +23,9 @@ pub fn read_rinex_nav_all(
     // read header
     let lines = content.lines();
     let mut processing_header = true;
-    let mut g = gpstime_t::default();
-    let mut g0 = gpstime_t::default();
-    let mut t = datetime_t::default();
+    let mut g = GpsTime::default();
+    let mut g0 = GpsTime::default();
+    let mut t = DateTime::default();
     let mut lines_of_headers: usize = 0;
     for (iline, line) in lines.enumerate() {
         let strncpy = |start, n| &line[start..start + n];

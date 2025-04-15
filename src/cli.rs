@@ -1,15 +1,15 @@
 use crate::constants::*;
-use crate::datetime::datetime_t;
-use crate::datetime::gpstime_t;
-use crate::ionoutc::ionoutc_t;
+use crate::datetime::DateTime;
+use crate::datetime::GpsTime;
+use crate::ionoutc::IonoUtc;
 use crate::process::date2gps;
 use clap::ArgAction;
 use clap::Parser;
-use jiff::{Timestamp, civil::DateTime};
+use jiff::Timestamp;
 use std::path::PathBuf;
 
-pub fn parse_datetime(value: String) -> Result<DateTime, jiff::Error> {
-    let time: DateTime = value.parse()?;
+pub fn parse_datetime(value: String) -> Result<jiff::civil::DateTime, jiff::Error> {
+    let time: jiff::civil::DateTime = value.parse()?;
     Ok(time)
 }
 /*
@@ -105,7 +105,7 @@ pub struct Args {
 pub struct Params {
     pub xyz: [[f64; 3]; USER_MOTION_SIZE],
     pub llh: [f64; 3],
-    pub ionoutc: ionoutc_t,
+    pub ionoutc: IonoUtc,
     pub navfile: PathBuf,
     pub nmea_gga: bool,
     pub um_llh: bool,
@@ -115,8 +115,8 @@ pub struct Params {
     pub outfile: PathBuf,
     pub samp_freq: f64,
     pub data_format: i32,
-    pub t0: datetime_t,
-    pub g0: gpstime_t,
+    pub t0: DateTime,
+    pub g0: GpsTime,
     pub duration: f64,
     pub fixed_gain: i32,
     pub path_loss_enable: bool,
@@ -124,14 +124,14 @@ pub struct Params {
 }
 impl Default for Params {
     fn default() -> Self {
-        let g0 = gpstime_t {
+        let g0 = GpsTime {
             week: -1,
             ..Default::default()
         };
         Self {
             xyz: [[0.0; 3]; USER_MOTION_SIZE],
             llh: [0.0; 3],
-            ionoutc: ionoutc_t::default(),
+            ionoutc: IonoUtc::default(),
             navfile: PathBuf::new(),
             nmea_gga: false,
             um_llh: false,
@@ -141,7 +141,7 @@ impl Default for Params {
             outfile: PathBuf::from("gpssim.bin"),
             samp_freq: 2600000f64,
             data_format: 16i32,
-            t0: datetime_t::default(),
+            t0: DateTime::default(),
             g0,
             duration: USER_MOTION_SIZE as f64 / 10.0f64,
             fixed_gain: 128,

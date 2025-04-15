@@ -1,5 +1,3 @@
-#![allow(non_camel_case_types)]
-
 pub fn tracing_init() -> tracing_appender::non_blocking::WorkerGuard {
     let file_appender = tracing_appender::rolling::daily("./", "app.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -26,9 +24,9 @@ mod table;
 mod utils;
 
 use clap::Parser;
-use datetime::{datetime_t, gpstime_t};
-use eph::ephem_t;
-use ionoutc::ionoutc_t;
+use datetime::{DateTime, GpsTime};
+use eph::Ephemeris;
+use ionoutc::IonoUtc;
 use process::process;
 
 pub fn main() -> anyhow::Result<()> {
