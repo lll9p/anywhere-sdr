@@ -8,7 +8,7 @@ use std::{fs, path::PathBuf};
 pub fn read_user_motion(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
-) -> anyhow::Result<i32> {
+) -> anyhow::Result<usize> {
     let mut umd = 0;
     let content = fs::read_to_string(filename)?;
     let lines = content.lines();
@@ -17,7 +17,7 @@ pub fn read_user_motion(
         xyz[i][0] = line_vec[1].trim().parse()?;
         xyz[i][1] = line_vec[2].trim().parse()?;
         xyz[i][2] = line_vec[3].trim().parse()?;
-        umd = i as i32;
+        umd = i;
     }
     Ok(umd + 1)
 }
@@ -30,7 +30,7 @@ pub fn read_user_motion(
 pub fn read_user_motion_llh(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
-) -> anyhow::Result<i32> {
+) -> anyhow::Result<usize> {
     let mut umd = 0;
     let content = fs::read_to_string(filename)?;
     let lines = content.lines();
@@ -48,7 +48,7 @@ pub fn read_user_motion_llh(
         llh[0] /= R2D; // convert to RAD
         llh[1] /= R2D; // convert to RAD
         llh2xyz(&llh, &mut xyz[i]);
-        umd = i as i32;
+        umd = i;
     }
     Ok(umd + 1)
 }

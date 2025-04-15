@@ -122,20 +122,20 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
 //  Convert a UTC date into a GPS date
 pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
     let doy: [i32; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    let ye = (t).y - 1980_i32;
+    let ye = (t).y - 1980;
 
     // Compute the number of leap days since Jan 5/Jan 6, 1980.
-    let mut lpdays = ye / 4_i32 + 1_i32;
-    if ye % 4_i32 == 0_i32 && (t).m <= 2_i32 {
+    let mut lpdays = ye / 4 + 1;
+    if ye % 4 == 0 && (t).m <= 2 {
         lpdays -= 1;
     }
 
     // Compute the number of days elapsed since Jan 5/Jan 6, 1980.
-    let de = ye * 365_i32 + doy[((t).m - 1_i32) as usize] + (t).d + lpdays - 6_i32;
+    let de = ye * 365 + doy[((t).m - 1) as usize] + (t).d + lpdays - 6;
 
     // Convert time to GPS weeks and seconds.
-    (g).week = de / 7_i32;
-    (g).sec = (de % 7_i32) as f64 * SECONDS_IN_DAY
+    (g).week = de / 7;
+    (g).sec = (de % 7) as f64 * SECONDS_IN_DAY
         + (t).hh as f64 * SECONDS_IN_HOUR
         + (t).mm as f64 * SECONDS_IN_MINUTE
         + (t).sec;
@@ -143,17 +143,16 @@ pub fn date2gps(t: &datetime_t, g: &mut gpstime_t) {
 
 // Convert Julian day number to calendar date
 pub fn gps2date(g: &gpstime_t, t: &mut datetime_t) {
-    let c: i32 = ((7_i32 * (g).week) as f64 + ((g).sec / 86400.0f64).floor() + 2444245.0f64) as i32
-        + 1537_i32;
-    let d: i32 = ((c as f64 - 122.1f64) / 365.25f64) as i32;
-    let e: i32 = 365_i32 * d + d / 4_i32;
-    let f: i32 = ((c - e) as f64 / 30.6001f64) as i32;
-    (t).d = c - e - (30.6001f64 * f as f64) as i32;
-    (t).m = f - 1_i32 - 12_i32 * (f / 14_i32);
-    (t).y = d - 4715_i32 - (7_i32 + (t).m) / 10_i32;
-    (t).hh = ((g).sec / 3600.0f64) as i32 % 24_i32;
-    (t).mm = ((g).sec / 60.0f64) as i32 % 60_i32;
-    (t).sec = g.sec - 60.0f64 * ((g).sec / 60.0f64).floor();
+    let c = ((7 * (g).week) as f64 + ((g).sec / 86400.0).floor() + 2444245.0) as i32 + 1537;
+    let d = ((c as f64 - 122.1f64) / 365.25f64) as i32;
+    let e = 365 * d + d / 4;
+    let f = ((c - e) as f64 / 30.6001) as i32;
+    (t).d = c - e - (30.6001 * f as f64) as i32;
+    (t).m = f - 1 - 12 * (f / 14);
+    (t).y = d - 4715 - (7 + (t).m) / 10;
+    (t).hh = ((g).sec / 3600.0) as i32 % 24;
+    (t).mm = ((g).sec / 60.0) as i32 % 60;
+    (t).sec = g.sec - 60.0 * ((g).sec / 60.0).floor();
 }
 ///  Convert Earth-centered Earth-fixed (ECEF) into Lat/Long/Height
 ///  \param[in] xyz Input Array of X, Y and Z ECEF coordinates
@@ -166,12 +165,12 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     let mut dz_new: f64;
     let a = WGS84_RADIUS;
     let e = WGS84_ECCENTRICITY;
-    let eps = 1.0e-3f64;
+    let eps = 1.0e-3;
     let e2 = e * e;
     if norm_vect(xyz_0) < eps {
         // Invalid ECEF vector
-        llh[0] = 0.0f64;
-        llh[1] = 0.0f64;
+        llh[0] = 0.0;
+        llh[1] = 0.0;
         llh[2] = -a;
         return;
     }
@@ -184,7 +183,7 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
         zdz = z + dz;
         nh = (rho2 + zdz * zdz).sqrt();
         slat = zdz / nh;
-        n = a / (1.0f64 - e2 * slat * slat).sqrt();
+        n = a / (1.0 - e2 * slat * slat).sqrt();
         dz_new = n * e2 * slat;
         if (dz - dz_new).abs() < eps {
             break;
@@ -208,12 +207,12 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let clon = (llh[1]).cos();
     let slon = (llh[1]).sin();
     let d = e * slat;
-    let n = a / (1.0f64 - d * d).sqrt();
+    let n = a / (1.0 - d * d).sqrt();
     let nph = n + llh[2];
     let tmp = nph * clat;
     xyz_0[0] = tmp * clon;
     xyz_0[1] = tmp * slon;
-    xyz_0[2] = ((1.0f64 - e2) * n + llh[2]) * slat;
+    xyz_0[2] = ((1.0 - e2) * n + llh[2]) * slat;
 }
 
 ///  \brief Compute the intermediate matrix for LLH to ECEF
@@ -229,7 +228,7 @@ pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
     t[0][2] = clat;
     t[1][0] = -slon;
     t[1][1] = clon;
-    t[1][2] = 0.0f64;
+    t[1][2] = 0.0;
     t[2][0] = clat * clon;
     t[2][1] = clat * slon;
     t[2][2] = slat;
@@ -251,8 +250,8 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
 ///
 pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
     azel[0] = neu[1].atan2(neu[0]);
-    if azel[0] < 0.0f64 {
-        azel[0] += 2.0f64 * PI;
+    if azel[0] < 0.0 {
+        azel[0] += 2.0 * PI;
     }
     let ne = (neu[0] * neu[0] + neu[1] * neu[1]).sqrt();
     azel[1] = neu[2].atan2(ne);
@@ -283,31 +282,31 @@ pub fn satpos(
     }
     let mk = eph.m0 + eph.n * tk;
     let mut ek = mk;
-    let mut ekold = ek + 1.0f64;
-    let mut one_minusecos_e = 0_i32 as f64; // Suppress the uninitialized warning.
-    while (ek - ekold).abs() > 1.0E-14f64 {
+    let mut ekold = ek + 1.0;
+    let mut one_minusecos_e = 0.0; // Suppress the uninitialized warning.
+    while (ek - ekold).abs() > 1.0e-14 {
         ekold = ek;
-        one_minusecos_e = 1.0f64 - eph.ecc * (ekold).cos();
+        one_minusecos_e = 1.0 - eph.ecc * (ekold).cos();
         ek += (mk - ekold + eph.ecc * (ekold.sin())) / one_minusecos_e;
     }
     let sek = (ek).sin();
     let cek = (ek).cos();
     let ekdot = eph.n / one_minusecos_e;
-    let relativistic = -4.442807633E-10f64 * eph.ecc * eph.sqrta * sek;
+    let relativistic = -4.442807633E-10 * eph.ecc * eph.sqrta * sek;
     let pk = (eph.sq1e2 * sek).atan2(cek - eph.ecc) + eph.aop;
     let pkdot = eph.sq1e2 * ekdot / one_minusecos_e;
-    let s2pk = (2.0f64 * pk).sin();
-    let c2pk = (2.0f64 * pk).cos();
+    let s2pk = (2.0 * pk).sin();
+    let c2pk = (2.0 * pk).cos();
     let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
     let suk = (uk).sin();
     let cuk = (uk).cos();
-    let ukdot = pkdot * (1.0f64 + 2.0f64 * (eph.cus * c2pk - eph.cuc * s2pk));
+    let ukdot = pkdot * (1.0 + 2.0 * (eph.cus * c2pk - eph.cuc * s2pk));
     let rk = eph.A * one_minusecos_e + eph.crc * c2pk + eph.crs * s2pk;
-    let rkdot = eph.A * eph.ecc * sek * ekdot + 2.0f64 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
+    let rkdot = eph.A * eph.ecc * sek * ekdot + 2.0 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
     let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
     let sik = (ik).sin();
     let cik = (ik).cos();
-    let ikdot = eph.idot + 2.0f64 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
+    let ikdot = eph.idot + 2.0 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
     let xpk = rk * cuk;
     let ypk = rk * suk;
     let xpkdot = rkdot * cuk - ypk * ukdot;
@@ -329,7 +328,7 @@ pub fn satpos(
         tk += SECONDS_IN_WEEK;
     }
     clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd;
-    clk[1] = eph.af1 + 2.0f64 * tk * eph.af2;
+    clk[1] = eph.af1 + 2.0 * tk * eph.af2;
 }
 
 /// \brief Compute Subframe from Ephemeris
@@ -337,20 +336,20 @@ pub fn satpos(
 /// \param[out] sbf Array of five sub-frames, 10 long words each
 ///
 pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 5]) {
-    let ura: u32 = 0_u32;
-    let data_id: u32 = 1_u32;
-    let sbf4_page25_sv_id: u32 = 63_u32;
-    let sbf5_page25_sv_id: u32 = 51_u32;
-    let wnlsf: u32;
-    let dtlsf: u32;
-    let dn: u32;
-    let sbf4_page18_sv_id: u32 = 56_u32;
+    let ura = 0;
+    let data_id = 1;
+    let sbf4_page25_sv_id = 63;
+    let sbf5_page25_sv_id = 51;
+    let wnlsf;
+    let dtlsf;
+    let dn;
+    let sbf4_page18_sv_id = 56;
 
     // FIXED: This has to be the "transmission" week number, not for the ephemeris reference time
     //wn = (unsigned long)(eph.toe.week%1024);
-    let wn = 0_u32;
-    let toe = (eph.toe.sec / 16.0f64) as u32;
-    let toc = (eph.toc.sec / 16.0f64) as u32;
+    let wn = 0;
+    let toe = (eph.toe.sec / 16.0) as u32;
+    let toc = (eph.toc.sec / 16.0) as u32;
     let iode = eph.iode as u32;
     let iodc = eph.iodc as u32;
     let deltan = (eph.deltan / POW2_M43 / PI) as i32;
@@ -376,16 +375,16 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
 
     #[allow(non_snake_case)]
     let codeL2 = eph.codeL2 as u32 as i32;
-    let wna = (eph.toe.week % 256_i32) as u32;
-    let toa = (eph.toe.sec / 4096.0f64) as u32;
+    let wna = (eph.toe.week % 256) as u32;
+    let toa = (eph.toe.sec / 4096.0) as u32;
     let alpha0 = (ionoutc.alpha0 / POW2_M30).round() as i32;
     let alpha1 = (ionoutc.alpha1 / POW2_M27).round() as i32;
     let alpha2 = (ionoutc.alpha2 / POW2_M24).round() as i32;
     let alpha3 = (ionoutc.alpha3 / POW2_M24).round() as i32;
-    let beta0 = (ionoutc.beta0 / 2048.0f64).round() as i32;
-    let beta1 = (ionoutc.beta1 / 16384.0f64).round() as i32;
-    let beta2 = (ionoutc.beta2 / 65536.0f64).round() as i32;
-    let beta3 = (ionoutc.beta3 / 65536.0f64).round() as i32;
+    let beta0 = (ionoutc.beta0 / 2048.0).round() as i32;
+    let beta1 = (ionoutc.beta1 / 16384.0).round() as i32;
+    let beta2 = (ionoutc.beta2 / 65536.0).round() as i32;
+    let beta3 = (ionoutc.beta3 / 65536.0).round() as i32;
 
     #[allow(non_snake_case)]
     let A0 = (ionoutc.A0 / POW2_M30).round() as i32;
@@ -393,110 +392,98 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     #[allow(non_snake_case)]
     let A1 = (ionoutc.A1 / POW2_M50).round() as i32;
     let dtls = ionoutc.dtls;
-    let tot = (ionoutc.tot / 4096_i32) as u32;
-    let wnt = (ionoutc.wnt % 256_i32) as u32;
+    let tot = (ionoutc.tot / 4096) as u32;
+    let wnt = (ionoutc.wnt % 256) as u32;
     // 2016/12/31 (Sat) -> WNlsf = 1929, DN = 7 (http://navigationservices.agi.com/GNSSWeb/)
     // Days are counted from 1 to 7 (Sunday is 1).
-    if ionoutc.leapen == 1_i32 {
-        wnlsf = (ionoutc.wnlsf % 256_i32) as u32;
+    if ionoutc.leapen == 1 {
+        wnlsf = (ionoutc.wnlsf % 256) as u32;
         dn = ionoutc.dn as u32;
         dtlsf = ionoutc.dtlsf as u32;
     } else {
-        wnlsf = (1929_i32 % 256_i32) as u32;
-        dn = 7_i32 as u32;
-        dtlsf = 18_i32 as u32;
+        wnlsf = (1929 % 256) as u32;
+        dn = 7;
+        dtlsf = 18;
     }
     // Subframe 1
-    (sbf[0])[0] = 0x8b0000_u32 << 6_i32;
-    (sbf[0])[1] = 0x1_u32 << 8_i32;
-    (sbf[0])[2] = (wn & 0x3ff_u32) << 20_i32
-        | (codeL2 as u32 & 0x3_u32) << 18_i32
-        | (ura & 0xf_u32) << 14_i32
-        | (svhlth as u32 & 0x3f_u32) << 8_i32
-        | (iodc >> 8_i32 & 0x3_u32) << 6_i32;
-    (sbf[0])[3] = 0_u32;
-    (sbf[0])[4] = 0_u32;
-    (sbf[0])[5] = 0_u32;
-    (sbf[0])[6] = (tgd as u32 & 0xff_u32) << 6_i32;
-    (sbf[0])[7] = (iodc & 0xff_u32) << 22_i32 | (toc & 0xffff_u32) << 6_i32;
-    (sbf[0])[8] = (af2 as u32 & 0xff_u32) << 22_i32 | (af1 as u32 & 0xffff_u32) << 6_i32;
-    (sbf[0])[9] = (af0 as u32 & 0x3fffff_u32) << 8_i32;
+    (sbf[0])[0] = 0x8b0000 << 6;
+    (sbf[0])[1] = 0x1 << 8;
+    (sbf[0])[2] = (wn & 0x3ff) << 20
+        | (codeL2 as u32 & 0x3) << 18
+        | (ura & 0xf) << 14
+        | (svhlth as u32 & 0x3f) << 8
+        | (iodc >> 8 & 0x3) << 6;
+    (sbf[0])[3] = 0;
+    (sbf[0])[4] = 0;
+    (sbf[0])[5] = 0;
+    (sbf[0])[6] = (tgd as u32 & 0xff) << 6;
+    (sbf[0])[7] = (iodc & 0xff) << 22 | (toc & 0xffff) << 6;
+    (sbf[0])[8] = (af2 as u32 & 0xff) << 22 | (af1 as u32 & 0xffff) << 6;
+    (sbf[0])[9] = (af0 as u32 & 0x3fffff) << 8;
     // Subframe 2
-    (sbf[1])[0] = 0x8b0000_u32 << 6_i32;
-    (sbf[1])[1] = 0x2_u32 << 8_i32;
-    (sbf[1])[2] = (iode & 0xff_u32) << 22_i32 | (crs as u32 & 0xffff_u32) << 6_i32;
-    (sbf[1])[3] =
-        (deltan as u32 & 0xffff_u32) << 14_i32 | ((m0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-    (sbf[1])[4] = (m0 as u32 & 0xffffff_u32) << 6_i32;
-    (sbf[1])[5] = (cuc as u32 & 0xffff_u32) << 14_i32 | (ecc >> 24_i32 & 0xff_u32) << 6_i32;
-    (sbf[1])[6] = (ecc & 0xffffff_u32) << 6_i32;
-    (sbf[1])[7] = (cus as u32 & 0xffff_u32) << 14_i32 | (sqrta >> 24_i32 & 0xff_u32) << 6_i32;
-    (sbf[1])[8] = (sqrta & 0xffffff_u32) << 6_i32;
-    (sbf[1])[9] = (toe & 0xffff_u32) << 14_i32;
+    (sbf[1])[0] = 0x8b0000 << 6;
+    (sbf[1])[1] = 0x2 << 8;
+    (sbf[1])[2] = (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6;
+    (sbf[1])[3] = (deltan as u32 & 0xffff) << 14 | ((m0 >> 24) as u32 & 0xff) << 6;
+    (sbf[1])[4] = (m0 as u32 & 0xffffff) << 6;
+    (sbf[1])[5] = (cuc as u32 & 0xffff) << 14 | (ecc >> 24 & 0xff) << 6;
+    (sbf[1])[6] = (ecc & 0xffffff) << 6;
+    (sbf[1])[7] = (cus as u32 & 0xffff) << 14 | (sqrta >> 24 & 0xff) << 6;
+    (sbf[1])[8] = (sqrta & 0xffffff) << 6;
+    (sbf[1])[9] = (toe & 0xffff) << 14;
     // Subframe 3
-    (sbf[2])[0] = 0x8b0000_u32 << 6_i32;
-    (sbf[2])[1] = 0x3_u32 << 8_i32;
-    (sbf[2])[2] =
-        (cic as u32 & 0xffff_u32) << 14_i32 | ((omg0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-    (sbf[2])[3] = (omg0 as u32 & 0xffffff_u32) << 6_i32;
-    (sbf[2])[4] =
-        (cis as u32 & 0xffff_u32) << 14_i32 | ((inc0 >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-    (sbf[2])[5] = (inc0 as u32 & 0xffffff_u32) << 6_i32;
-    (sbf[2])[6] =
-        (crc as u32 & 0xffff_u32) << 14_i32 | ((aop >> 24_i32) as u32 & 0xff_u32) << 6_i32;
-    (sbf[2])[7] = (aop as u32 & 0xffffff_u32) << 6_i32;
-    (sbf[2])[8] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
-    (sbf[2])[9] = (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
+    (sbf[2])[0] = 0x8b0000 << 6;
+    (sbf[2])[1] = 0x3 << 8;
+    (sbf[2])[2] = (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6;
+    (sbf[2])[3] = (omg0 as u32 & 0xffffff) << 6;
+    (sbf[2])[4] = (cis as u32 & 0xffff) << 14 | ((inc0 >> 24) as u32 & 0xff) << 6;
+    (sbf[2])[5] = (inc0 as u32 & 0xffffff) << 6;
+    (sbf[2])[6] = (crc as u32 & 0xffff) << 14 | ((aop >> 24) as u32 & 0xff) << 6;
+    (sbf[2])[7] = (aop as u32 & 0xffffff) << 6;
+    (sbf[2])[8] = (omgdot as u32 & 0xffffff_u32) << 6;
+    (sbf[2])[9] = (iode & 0xff) << 22 | (idot as u32 & 0x3fff) << 8;
     if ionoutc.vflg {
         // Subframe 4, page 18
-        (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
-        (sbf[3])[1] = 0x4_u32 << 8_i32;
-        (sbf[3])[2] = data_id << 28_i32
-            | sbf4_page18_sv_id << 22_i32
-            | (alpha0 as u32 & 0xff_u32) << 14_i32
-            | (alpha1 as u32 & 0xff_u32) << 6_i32;
-        (sbf[3])[3] = (alpha2 as u32 & 0xff_u32) << 22_i32
-            | (alpha3 as u32 & 0xff_u32) << 14_i32
-            | (beta0 as u32 & 0xff_u32) << 6_i32;
-        (sbf[3])[4] = (beta1 as u32 & 0xff_u32) << 22_i32
-            | (beta2 as u32 & 0xff_u32) << 14_i32
-            | (beta3 as u32 & 0xff_u32) << 6_i32;
-        (sbf[3])[5] = (A1 as u32 & 0xffffff_u32) << 6_i32;
-        (sbf[3])[6] = ((A0 >> 8_i32) as u32 & 0xffffff_u32) << 6_i32;
-        (sbf[3])[7] = (A0 as u32 & 0xff_u32) << 22_i32
-            | (tot & 0xff_u32) << 14_i32
-            | (wnt & 0xff_u32) << 6_i32;
-        (sbf[3])[8] = (dtls as u32 & 0xff_u32) << 22_i32
-            | (wnlsf & 0xff_u32) << 14_i32
-            | (dn & 0xff_u32) << 6_i32;
-        (sbf[3])[9] = (dtlsf & 0xff_u32) << 22_i32;
+        (sbf[3])[0] = 0x8b0000 << 6;
+        (sbf[3])[1] = 0x4 << 8;
+        (sbf[3])[2] = data_id << 28
+            | sbf4_page18_sv_id << 22
+            | (alpha0 as u32 & 0xff) << 14
+            | (alpha1 as u32 & 0xff) << 6;
+        (sbf[3])[3] = (alpha2 as u32 & 0xff) << 22
+            | (alpha3 as u32 & 0xff) << 14
+            | (beta0 as u32 & 0xff) << 6;
+        (sbf[3])[4] =
+            (beta1 as u32 & 0xff) << 22 | (beta2 as u32 & 0xff) << 14 | (beta3 as u32 & 0xff) << 6;
+        (sbf[3])[5] = (A1 as u32 & 0xffffff) << 6;
+        (sbf[3])[6] = ((A0 >> 8) as u32 & 0xffffff) << 6;
+        (sbf[3])[7] = (A0 as u32 & 0xff) << 22 | (tot & 0xff) << 14 | (wnt & 0xff) << 6;
+        (sbf[3])[8] = (dtls as u32 & 0xff) << 22 | (wnlsf & 0xff) << 14 | (dn & 0xff) << 6;
+        (sbf[3])[9] = (dtlsf & 0xff) << 22;
     } else {
         // Subframe 4, page 25
-        (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
-        (sbf[3])[1] = 0x4_u32 << 8_i32;
-        (sbf[3])[2] = data_id << 28_i32 | sbf4_page25_sv_id << 22_i32;
-        (sbf[3])[3] = 0_u32;
-        (sbf[3])[4] = 0_u32;
-        (sbf[3])[5] = 0_u32;
-        (sbf[3])[6] = 0_u32;
-        (sbf[3])[7] = 0_u32;
-        (sbf[3])[8] = 0_u32;
-        (sbf[3])[9] = 0_u32;
+        (sbf[3])[0] = 0x8b0000 << 6;
+        (sbf[3])[1] = 0x4 << 8;
+        (sbf[3])[2] = data_id << 28 | sbf4_page25_sv_id << 22;
+        (sbf[3])[3] = 0;
+        (sbf[3])[4] = 0;
+        (sbf[3])[5] = 0;
+        (sbf[3])[6] = 0;
+        (sbf[3])[7] = 0;
+        (sbf[3])[8] = 0;
+        (sbf[3])[9] = 0;
     }
     // Subframe 5, page 25
-    (sbf[4])[0] = 0x8b0000_u32 << 6_i32;
-    (sbf[4])[1] = 0x5_u32 << 8_i32;
-    (sbf[4])[2] = data_id << 28_i32
-        | sbf5_page25_sv_id << 22_i32
-        | (toa & 0xff_u32) << 14_i32
-        | (wna & 0xff_u32) << 6_i32;
-    (sbf[4])[3] = 0_u32;
-    (sbf[4])[4] = 0_u32;
-    (sbf[4])[5] = 0_u32;
-    (sbf[4])[6] = 0_u32;
-    (sbf[4])[7] = 0_u32;
-    (sbf[4])[8] = 0_u32;
-    (sbf[4])[9] = 0_u32;
+    (sbf[4])[0] = 0x8b0000 << 6;
+    (sbf[4])[1] = 0x5 << 8;
+    (sbf[4])[2] = data_id << 28 | sbf5_page25_sv_id << 22 | (toa & 0xff) << 14 | (wna & 0xff) << 6;
+    (sbf[4])[3] = 0;
+    (sbf[4])[4] = 0;
+    (sbf[4])[5] = 0;
+    (sbf[4])[6] = 0;
+    (sbf[4])[7] = 0;
+    (sbf[4])[8] = 0;
+    (sbf[4])[9] = 0;
 }
 
 ///  \brief Compute the Checksum for one given word of a subframe
@@ -529,17 +516,12 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     D30    00 1011 0111 1010 1000 1001 1100 0000
     */
     let bmask: [u32; 6] = [
-        0x3b1f3480_u32,
-        0x1d8f9a40_u32,
-        0x2ec7cd00_u32,
-        0x1763e680_u32,
-        0x2bb1f340_u32,
-        0xb7a89c0_u32,
+        0x3b1f3480, 0x1d8f9a40, 0x2ec7cd00, 0x1763e680, 0x2bb1f340, 0xb7a89c0,
     ];
     let mut D: u32;
-    let mut d: u32 = source & 0x3fffffc0_u32;
-    let D29: u32 = source >> 31_i32 & 0x1_u32;
-    let D30: u32 = source >> 30_i32 & 0x1_u32;
+    let mut d: u32 = source & 0x3fffffc0;
+    let D29: u32 = source >> 31 & 0x1;
+    let D30: u32 = source >> 30 & 0x1;
     if nib != 0 {
         // Non-information bearing bits for word 2 and 10
         /*
@@ -548,47 +530,47 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
         */
         if D30
             .wrapping_add((bmask[4] & d).count_ones())
-            .wrapping_rem(2_i32 as u32)
+            .wrapping_rem(2)
             != 0
         {
-            d ^= 0x1_u32 << 6_i32;
+            d ^= 0x1 << 6;
         }
         if D29
             .wrapping_add((bmask[5] & d).count_ones())
-            .wrapping_rem(2_i32 as u32)
+            .wrapping_rem(2)
             != 0
         {
-            d ^= 0x1_u32 << 7_i32;
+            d ^= 0x1 << 7;
         }
     }
     D = d;
     if D30 != 0 {
-        D ^= 0x3fffffc0_u32;
+        D ^= 0x3fffffc0;
     }
     D |= D29
         .wrapping_add((bmask[0] & d).count_ones())
-        .wrapping_rem(2_i32 as u32)
-        << 5_i32;
+        .wrapping_rem(2)
+        << 5;
     D |= D30
         .wrapping_add((bmask[1] & d).count_ones())
-        .wrapping_rem(2_i32 as u32)
-        << 4_i32;
+        .wrapping_rem(2)
+        << 4;
     D |= D29
         .wrapping_add((bmask[2] & d).count_ones())
-        .wrapping_rem(2_i32 as u32)
-        << 3_i32;
+        .wrapping_rem(2)
+        << 3;
     D |= D30
         .wrapping_add((bmask[3] & d).count_ones())
-        .wrapping_rem(2_i32 as u32)
-        << 2_i32;
+        .wrapping_rem(2)
+        << 2;
     D |= D30
         .wrapping_add((bmask[4] & d).count_ones())
-        .wrapping_rem(2_i32 as u32)
-        << 1_i32;
+        .wrapping_rem(2)
+        << 1;
     D |= D29
         .wrapping_add((bmask[5] & d).count_ones())
-        .wrapping_rem(2_i32 as u32);
-    D &= 0x3fffffff_u32;
+        .wrapping_rem(2);
+    D &= 0x3fffffff;
 
     //D |= (source & 0xC0000000UL); // Add D29* and D30* from source data bits
     D
@@ -604,12 +586,12 @@ pub fn inc_gps_time(g0: gpstime_t, dt: f64) -> gpstime_t {
     let mut g1: gpstime_t = gpstime_t { week: 0, sec: 0. };
     g1.week = g0.week;
     g1.sec = g0.sec + dt;
-    g1.sec = (g1.sec * 1000.0f64).round() / 1000.0f64; // Avoid rounding error
+    g1.sec = (g1.sec * 1000.0).round() / 1000.0; // Avoid rounding error
     while g1.sec >= SECONDS_IN_WEEK {
         g1.sec -= SECONDS_IN_WEEK;
         g1.week += 1;
     }
-    while g1.sec < 0.0f64 {
+    while g1.sec < 0.0 {
         g1.sec += SECONDS_IN_WEEK;
         g1.week -= 1;
     }
@@ -626,63 +608,62 @@ pub fn ionospheric_delay(
     let iono_delay: f64;
     if !ionoutc.enable {
         // No ionospheric delay
-        return 0.0f64;
+        return 0.0;
     }
     let E = azel[1] / PI;
     let phi_u = llh[0] / PI;
     let lam_u = llh[1] / PI;
-    let F = 1.0f64 + 16.0f64 * (0.53f64 - E).powf(3.0f64);
+    let F = 1.0 + 16.0 * (0.53f64 - E).powf(3.0);
     if !ionoutc.vflg {
-        iono_delay = F * 5.0e-9f64 * SPEED_OF_LIGHT;
+        iono_delay = F * 5.0e-9 * SPEED_OF_LIGHT;
     } else {
         let mut PER: f64;
 
         // Earth's central angle between the user position and the earth projection of
         // ionospheric intersection point (semi-circles)
-        let psi = 0.0137f64 / (E + 0.11f64) - 0.022f64;
+        let psi = 0.0137 / (E + 0.11) - 0.022;
 
         // Geodetic latitude of the earth projection of the ionospheric intersection point
         // (semi-circles)
         let phi_i = phi_u + psi * (azel[0]).cos();
-        let phi_i = phi_i.clamp(-0.416f64, 0.416f64);
+        let phi_i = phi_i.clamp(-0.416, 0.416);
 
         // Geodetic longitude of the earth projection of the ionospheric intersection point
         // (semi-circles)
         let lam_i = lam_u + psi * (azel[0]).sin() / (phi_i * PI).cos();
         // Geomagnetic latitude of the earth projection of the ionospheric intersection
         // point (mean ionospheric height assumed 350 km) (semi-circles)
-        let phi_m = phi_i + 0.064f64 * ((lam_i - 1.617f64) * PI).cos();
+        let phi_m = phi_i + 0.064 * ((lam_i - 1.617) * PI).cos();
         let phi_m2 = phi_m * phi_m;
         let phi_m3 = phi_m2 * phi_m;
         let mut AMP = ionoutc.alpha0
             + ionoutc.alpha1 * phi_m
             + ionoutc.alpha2 * phi_m2
             + ionoutc.alpha3 * phi_m3;
-        if AMP < 0.0f64 {
-            AMP = 0.0f64;
+        if AMP < 0.0 {
+            AMP = 0.0;
         }
         PER =
             ionoutc.beta0 + ionoutc.beta1 * phi_m + ionoutc.beta2 * phi_m2 + ionoutc.beta3 * phi_m3;
-        if PER < 72000.0f64 {
-            PER = 72000.0f64;
+        if PER < 72000.0 {
+            PER = 72000.0;
         }
         // Local time (sec)
-        let mut t = SECONDS_IN_DAY / 2.0f64 * lam_i + g.sec;
+        let mut t = SECONDS_IN_DAY / 2.0 * lam_i + g.sec;
         while t >= SECONDS_IN_DAY {
             t -= SECONDS_IN_DAY;
         }
-        while t < 0_i32 as f64 {
+        while t < 0.0 {
             t += SECONDS_IN_DAY;
         }
         // Phase (radians)
-        let X = 2.0f64 * PI * (t - 50400.0f64) / PER;
-        if (X).abs() < 1.57f64 {
+        let X = 2.0 * PI * (t - 50400.0) / PER;
+        if (X).abs() < 1.57 {
             let X2 = X * X;
             let X4 = X2 * X2;
-            iono_delay =
-                F * (5.0e-9f64 + AMP * (1.0f64 - X2 / 2.0f64 + X4 / 24.0f64)) * SPEED_OF_LIGHT;
+            iono_delay = F * (5.0e-9 + AMP * (1.0 - X2 / 2.0 + X4 / 24.0)) * SPEED_OF_LIGHT;
         } else {
-            iono_delay = F * 5.0e-9f64 * SPEED_OF_LIGHT;
+            iono_delay = F * 5.0e-9 * SPEED_OF_LIGHT;
         }
     }
     iono_delay
@@ -753,44 +734,42 @@ pub fn compute_code_phase(chan: &mut channel_t, rho1: range_t, dt: f64) {
     chan.f_carr = -rhorate / LAMBDA_L1;
     chan.f_code = CODE_FREQ + chan.f_carr * CARR_TO_CODE;
     // Initial code phase and data bit counters.
-    let ms = (sub_gps_time(chan.rho0.g, chan.g0) + 6.0f64 - chan.rho0.range / SPEED_OF_LIGHT)
-        * 1000.0f64;
+    let ms = (sub_gps_time(chan.rho0.g, chan.g0) + 6.0 - chan.rho0.range / SPEED_OF_LIGHT) * 1000.0;
     let mut ims = ms as i32;
     chan.code_phase = (ms - ims as f64) * CA_SEQ_LEN as f64; // in chip
-    chan.iword = ims / 600_i32; // 1 word = 30 bits = 600 ms
-    ims -= chan.iword * 600_i32;
-    chan.ibit = ims / 20_i32; // 1 bit = 20 code = 20 ms
-    ims -= chan.ibit * 20_i32;
+    chan.iword = ims / 600; // 1 word = 30 bits = 600 ms
+    ims -= chan.iword * 600;
+    chan.ibit = ims / 20; // 1 bit = 20 code = 20 ms
+    ims -= chan.ibit * 20;
     chan.icode = ims; // 1 code = 1 ms
-    chan.codeCA = chan.ca[chan.code_phase as i32 as usize] * 2_i32 - 1_i32;
-    chan.dataBit =
-        (chan.dwrd[chan.iword as usize] >> (29_i32 - chan.ibit) & 0x1_u32) as i32 * 2_i32 - 1_i32;
+    chan.codeCA = chan.ca[chan.code_phase as usize] * 2 - 1;
+    chan.dataBit = (chan.dwrd[chan.iword as usize] >> (29 - chan.ibit) & 0x1) as i32 * 2 - 1;
     // Save current pseudorange
     chan.rho0 = rho1;
 }
 
-pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
+pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: bool) {
     let mut g0: gpstime_t = gpstime_t { week: 0, sec: 0. };
     let mut sbfwrd: u32;
     let mut prevwrd: u32 = 0;
     let mut nib: i32;
     g0.week = g.week;
-    g0.sec = ((g.sec + 0.5f64) as u32).wrapping_div(30) as f64 * 30.0f64; // Align with the full frame length = 30 sec
+    g0.sec = ((g.sec + 0.5) as u32).wrapping_div(30) as f64 * 30.0; // Align with the full frame length = 30 sec
     chan.g0 = g0; // Data bit reference time
 
-    let wn = (g0.week % 1024_i32) as u32;
+    let wn = (g0.week % 1024) as u32;
     let mut tow = (g0.sec as u32).wrapping_div(6);
-    if init == 1_i32 {
+    if init {
         // Initialize subframe 5
-        prevwrd = 0_u32;
+        prevwrd = 0;
         for iwrd in 0..N_DWRD_SBF {
             sbfwrd = chan.sbf[4][iwrd];
             // Add TOW-count message into HOW
             if iwrd == 1 {
-                sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
+                sbfwrd |= (tow & 0x1ffff) << 13;
             }
             // Compute checksum
-            sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32; // 2 LSBs of the previous transmitted word
+            sbfwrd |= prevwrd << 30 & 0xc0000000; // 2 LSBs of the previous transmitted word
             nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
             chan.dwrd[iwrd] = compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[iwrd];
@@ -817,20 +796,19 @@ pub fn generate_nav_msg(g: &gpstime_t, chan: &mut channel_t, init: i32) -> i32 {
             sbfwrd = chan.sbf[isbf][iwrd];
             // Add transmission week number to Subframe 1
             if isbf == 0 && iwrd == 2 {
-                sbfwrd |= (wn & 0x3ff_u32) << 20_i32;
+                sbfwrd |= (wn & 0x3ff) << 20;
             }
             // Add TOW-count message into HOW
             if iwrd == 1 {
-                sbfwrd |= (tow & 0x1ffff_u32) << 13_i32;
+                sbfwrd |= (tow & 0x1ffff) << 13;
             }
             // Compute checksum
-            sbfwrd |= prevwrd << 30_i32 & 0xc0000000_u32; // 2 LSBs of the previous transmitted word
+            sbfwrd |= prevwrd << 30 & 0xc0000000; // 2 LSBs of the previous transmitted word
             nib = if iwrd == 1 || iwrd == 9 { 1 } else { 0 }; // Non-information bearing bits for word 2 and 10
             chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] = compute_checksum(sbfwrd, nib);
             prevwrd = chan.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd];
         }
     }
-    1_i32
 }
 
 pub fn check_sat_visibility(
@@ -849,7 +827,7 @@ pub fn check_sat_visibility(
     let mut los: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     if !eph.vflg {
-        return -1_i32; // Invalid
+        return -1; // Invalid
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
@@ -858,9 +836,9 @@ pub fn check_sat_visibility(
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
     if azel[1] * R2D > elv_mask {
-        return 1_i32; // Visible
+        return 1; // Visible
     }
-    0_i32 // Invisible
+    0 // Invisible
 }
 
 pub fn allocate_channel(
@@ -869,10 +847,10 @@ pub fn allocate_channel(
     ionoutc: &mut ionoutc_t,
     grx: &gpstime_t,
     xyz_0: &[f64; 3],
-    mut _elv_mask: f64,
+    _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
-    let mut nsat: i32 = 0_i32;
+    let mut nsat: i32 = 0;
     let mut azel: [f64; 2] = [0.; 2];
     let mut rho: range_t = range_t {
         g: gpstime_t { week: 0, sec: 0. },
@@ -882,22 +860,22 @@ pub fn allocate_channel(
         azel: [0.; 2],
         iono_delay: 0.,
     };
-    let ref_0: [f64; 3] = [0.0f64, 0., 0.];
+    let ref_0: [f64; 3] = [0., 0., 0.];
     // #[allow(unused_variables)]
     // let mut r_ref: f64 = 0.;
     // #[allow(unused_variables)]
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if check_sat_visibility(eph[sv], grx, xyz_0, 0.0f64, &mut azel) == 1_i32 {
+        if check_sat_visibility(eph[sv], grx, xyz_0, 0.0, &mut azel) == 1 {
             nsat += 1; // Number of visible satellites
-            if allocated_sat[sv] == -1_i32 {
+            if allocated_sat[sv] == -1 {
                 // Visible but not allocated
                 //
                 // Allocated new satellite
                 let mut i = 0;
                 while i < MAX_CHAN {
-                    if chan[i].prn == 0_i32 {
+                    if chan[i].prn == 0 {
                         // Initialize channel
                         chan[i].prn = sv as i32 + 1;
                         chan[i].azel[0] = azel[0];
@@ -907,7 +885,7 @@ pub fn allocate_channel(
                         // Generate subframe
                         eph2sbf(eph[sv], ionoutc, &mut chan[i].sbf);
                         // Generate navigation message
-                        generate_nav_msg(grx, &mut chan[i], 1_i32);
+                        generate_nav_msg(grx, &mut chan[i], true);
                         // Initialize pseudorange
                         compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
                         (chan[i]).rho0 = rho;
@@ -915,13 +893,13 @@ pub fn allocate_channel(
                         // r_xyz = rho.range;
                         compute_range(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
                         // r_ref = rho.range;
-                        phase_ini = 0.0f64; // TODO: Must initialize properly
+                        phase_ini = 0.0; // TODO: Must initialize properly
                         //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
                         // #ifdef FLOAT_CARR_PHASE
                         //                         chan[i].carr_phase = phase_ini - floor(phase_ini);
                         // #else
                         phase_ini -= (phase_ini).floor();
-                        (chan[i]).carr_phase = (512.0f64 * 65536.0f64 * phase_ini) as u32;
+                        (chan[i]).carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
                         break;
                     } else {
                         i += 1;
@@ -932,12 +910,12 @@ pub fn allocate_channel(
                     allocated_sat[sv] = i as i32;
                 }
             }
-        } else if allocated_sat[sv] >= 0_i32 {
+        } else if allocated_sat[sv] >= 0 {
             // Not visible but allocated
             // Clear channel
-            (chan[allocated_sat[sv] as usize]).prn = 0_i32;
+            (chan[allocated_sat[sv] as usize]).prn = 0;
             // Clear satellite allocation flag
-            allocated_sat[sv] = -1_i32;
+            allocated_sat[sv] = -1;
         }
     }
     nsat
@@ -968,7 +946,7 @@ pub fn process(params: Params) -> i32 {
         azel: [0.; 2],
         rho0: range_t::default(),
     }; 16];
-    let elvmask: f64 = 0.0f64;
+    let elvmask: f64 = 0.0;
 
     // Default options
     // let mut umfile: [libc::c_char; 100] = [0; 100];
@@ -976,10 +954,10 @@ pub fn process(params: Params) -> i32 {
     // let mut outfile: [libc::c_char; 100] = [0; 100];
     let mut gain: [i32; 16] = [0; 16];
     let mut ant_pat: [f64; 37] = [0.; 37];
-    let mut tmin: datetime_t = datetime_t::default();
-    let mut tmax: datetime_t = datetime_t::default();
-    let mut gmin: gpstime_t = gpstime_t { week: 0, sec: 0. };
-    let mut gmax: gpstime_t = gpstime_t { week: 0, sec: 0. };
+    let mut tmin = datetime_t::default();
+    let mut tmax = datetime_t::default();
+    let mut gmin = gpstime_t::default();
+    let mut gmax = gpstime_t::default();
     let navfile = params.navfile;
     let umfile = params.umfile;
     let nmea_gga = params.nmea_gga;
@@ -1002,62 +980,62 @@ pub fn process(params: Params) -> i32 {
     if umfile.is_none() && !static_location_mode {
         // Default static location; Tokyo
         static_location_mode = true;
-        llh[0] = 35.681298f64 / R2D;
-        llh[1] = 139.766247f64 / R2D;
+        llh[0] = 35.681298 / R2D;
+        llh[1] = 139.766247 / R2D;
         llh[2] = 10.0f64;
     }
     if duration < 0.0f64
-        || duration > USER_MOTION_SIZE as i32 as f64 / 10.0f64 && !static_location_mode
+        || duration > USER_MOTION_SIZE as f64 / 10.0 && !static_location_mode
         || duration > STATIC_MAX_DURATION as f64 && static_location_mode
     {
         eprintln!("ERROR: Invalid duration.");
         panic!();
     }
-    let iduration = (duration * 10.0f64 + 0.5f64) as i32;
-    let mut samp_freq = (samp_freq / 10.0f64).floor();
+    let iduration = (duration * 10.0 + 0.5) as usize;
+    let mut samp_freq = (samp_freq / 10.0).floor();
     let iq_buff_size = samp_freq as usize; // samples per 0.1sec
-    samp_freq *= 10.0f64;
+    samp_freq *= 10.0;
     // let delt = 1.0f64 / samp_freq;
     let delt = samp_freq.recip();
 
     ////////////////////////////////////////////////////////////
     // Receiver position
     ////////////////////////////////////////////////////////////
-    let mut numd: i32;
-    if !static_location_mode {
+    let numd = if !static_location_mode {
         let umfilex = umfile.clone().unwrap();
-        if nmea_gga {
-            numd = read_nmea_gga(&mut xyz, &umfilex).unwrap();
+        let numd = if nmea_gga {
+            read_nmea_gga(&mut xyz, &umfilex)
             // numd = readNmeaGGA(&mut xyz, umfile);
         } else if um_llh {
-            numd = read_user_motion_llh(&mut xyz, &umfilex).unwrap();
+            read_user_motion_llh(&mut xyz, &umfilex)
             // numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
         } else {
-            numd = read_user_motion(&mut xyz, &umfilex).unwrap();
+            read_user_motion(&mut xyz, &umfilex)
             // numd = unsafe { readUserMotion(&mut xyz, umfile) };
-        }
-        if numd == -1_i32 {
-            eprintln!("ERROR: Failed to open user motion / NMEA GGA file.");
-            panic!();
-        } else if numd == 0_i32 {
-            eprintln!("ERROR: Failed to read user motion / NMEA GGA data.");
-            panic!();
-        }
+        };
+        let Ok(mut numd) = numd else {
+            panic!("ERROR: Failed to open user motion / NMEA GGA file.");
+        };
+        assert_ne!(
+            numd, 0,
+            "ERROR: Failed to read user motion / NMEA GGA data."
+        );
         // Set simulation duration
         if numd > iduration {
             numd = iduration;
         }
         // Set user initial position
         xyz2llh(&xyz[0], &mut llh);
+        numd
     } else {
         // Static geodetic coordinates input mode: "-l"
         // Added by scateu@gmail.com
         eprintln!("Using static location mode.");
-        // Set simulation duration
-        numd = iduration;
         // Set user initial position
         llh2xyz(&llh, &mut xyz[0]);
-    }
+        // Set simulation duration
+        iduration
+    };
 
     eprintln!("xyz = {}, {}, {}", xyz[0][0], xyz[0][1], xyz[0][2],);
 
@@ -1099,14 +1077,14 @@ pub fn process(params: Params) -> i32 {
             break;
         }
     }
-    gmax.sec = 0_i32 as f64;
-    gmax.week = 0_i32;
-    tmax.sec = 0_i32 as f64;
-    tmax.mm = 0_i32;
-    tmax.hh = 0_i32;
-    tmax.d = 0_i32;
-    tmax.m = 0_i32;
-    tmax.y = 0_i32;
+    // gmax.sec = 0.;
+    // gmax.week = 0;
+    // tmax.sec = 0.;
+    // tmax.mm = 0;
+    // tmax.hh = 0;
+    // tmax.d = 0;
+    // tmax.m = 0;
+    // tmax.y = 0;
 
     for sv in 0..MAX_SAT {
         if eph[neph - 1][sv].vflg {
@@ -1115,13 +1093,13 @@ pub fn process(params: Params) -> i32 {
             break;
         }
     }
-    if g0.week >= 0_i32 {
+    if g0.week >= 0 {
         // Scenario start time has been set.
         if timeoverwrite {
             let mut gtmp: gpstime_t = gpstime_t::default();
             let mut ttmp: datetime_t = datetime_t::default();
             gtmp.week = g0.week;
-            gtmp.sec = (g0.sec as i32 / 7200_i32) as f64 * 7200.0f64;
+            gtmp.sec = (g0.sec as i32 / 7200) as f64 * 7200.0;
             // Overwrite the UTC reference week number
             let dsec = sub_gps_time(gtmp, gmin);
             ionoutc.wnt = gtmp.week;
@@ -1140,7 +1118,7 @@ pub fn process(params: Params) -> i32 {
                     }
                 }
             }
-        } else if sub_gps_time(g0, gmin) < 0.0f64 || sub_gps_time(gmax, g0) < 0.0f64 {
+        } else if sub_gps_time(g0, gmin) < 0.0 || sub_gps_time(gmax, g0) < 0.0f64 {
             eprintln!("ERROR: Invalid start time.");
             eprintln!(
                 "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
@@ -1162,7 +1140,7 @@ pub fn process(params: Params) -> i32 {
         t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
     );
 
-    eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0f64);
+    eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0);
 
     // Select the current set of ephemerides
     let mut ieph = usize::MAX;
@@ -1195,12 +1173,12 @@ pub fn process(params: Params) -> i32 {
     ////////////////////////////////////////////////////////////
 
     // Allocate I/Q buffer
-    let mut iq_buff: Vec<i16> = vec![0i16; 2 * iq_buff_size];
-    let mut iq8_buff: Vec<i8> = vec![0i8; 2 * iq_buff_size];
+    let mut iq_buff: Vec<i16> = vec![0; 2 * iq_buff_size];
+    let mut iq8_buff: Vec<i8> = vec![0; 2 * iq_buff_size];
     if data_format == SC08 {
-        iq8_buff = vec![0i8; 2 * iq_buff_size];
+        iq8_buff = vec![0; 2 * iq_buff_size];
     } else if data_format == SC01 {
-        iq8_buff = vec![0i8; iq_buff_size / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
+        iq8_buff = vec![0; iq_buff_size / 4]; // byte = {I0, Q0, I1, Q1, I2, Q2, I3, Q3}
     }
 
     // Open output file
@@ -1242,7 +1220,7 @@ pub fn process(params: Params) -> i32 {
     // Clear satellite allocation flag
     allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
     // Initial reception time
-    let mut grx = inc_gps_time(g0, 0.0f64);
+    let mut grx = inc_gps_time(g0, 0.0);
     // Allocate visible satellites
     allocate_channel(
         &mut chan,
@@ -1255,7 +1233,7 @@ pub fn process(params: Params) -> i32 {
     );
     // for i in 0..MAX_CHAN {
     for ichan in chan.iter().take(MAX_CHAN) {
-        if ichan.prn > 0_i32 {
+        if ichan.prn > 0 {
             eprintln!(
                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                 ichan.prn,
@@ -1271,74 +1249,61 @@ pub fn process(params: Params) -> i32 {
     // Receiver antenna gain pattern
     ////////////////////////////////////////////////////////////
     for i in 0..37 {
-        ant_pat[i] = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0f64);
+        ant_pat[i] = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0);
     }
 
     ////////////////////////////////////////////////////////////
     // Generate baseband signals
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
-    grx = inc_gps_time(grx, 0.1f64);
+    grx = inc_gps_time(grx, 0.1);
     for iumd in 1..numd {
         for i in 0..MAX_CHAN {
             if chan[i].prn > 0 {
                 // Refresh code phase and data bit counters
                 let mut rho: range_t = range_t {
-                    g: gpstime_t { week: 0, sec: 0. },
+                    g: gpstime_t::default(),
                     range: 0.,
                     rate: 0.,
                     d: 0.,
                     azel: [0.; 2],
                     iono_delay: 0.,
                 };
-                let sv = chan[i].prn - 1;
+                let sv = (chan[i].prn - 1) as usize;
                 // Current pseudorange
                 if !static_location_mode {
-                    compute_range(
-                        &mut rho,
-                        &eph[ieph][sv as usize],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[iumd as usize],
-                    );
+                    compute_range(&mut rho, &eph[ieph][sv], &mut ionoutc, &grx, &xyz[iumd]);
                 } else {
-                    compute_range(
-                        &mut rho,
-                        &eph[ieph][sv as usize],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[0],
-                    );
+                    compute_range(&mut rho, &eph[ieph][sv], &mut ionoutc, &grx, &xyz[0]);
                 }
                 // Update code phase and data bit counters
                 chan[i].azel[0] = rho.azel[0];
                 chan[i].azel[1] = rho.azel[1];
-                compute_code_phase(&mut chan[i], rho, 0.1f64);
-                chan[i].carr_phasestep =
-                    (512.0f64 * 65536.0f64 * chan[i].f_carr * delt).round() as i32;
+                compute_code_phase(&mut chan[i], rho, 0.1);
+                chan[i].carr_phasestep = (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
                 // Path loss
-                let path_loss = 20200000.0f64 / rho.d;
+                let path_loss = 20200000.0 / rho.d;
                 // Receiver antenna gain
                 let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
                 let ant_gain = ant_pat[ibs];
                 // Signal gain
                 if path_loss_enable {
-                    gain[i] = (path_loss * ant_gain * 128.0f64) as i32; // scaled by 2^7
+                    gain[i] = (path_loss * ant_gain * 128.0) as i32; // scaled by 2^7
                 } else {
                     gain[i] = fixed_gain; // hold the power level constant
                 }
             }
         }
         for isamp in 0..iq_buff_size {
-            let mut i_acc: i32 = 0_i32;
-            let mut q_acc: i32 = 0_i32;
+            let mut i_acc: i32 = 0;
+            let mut q_acc: i32 = 0;
             for i in 0..16 {
-                if chan[i].prn > 0_i32 {
+                if chan[i].prn > 0 {
                     // #ifdef FLOAT_CARR_PHASE
                     //                     iTable = (int)floor(chan[i].carr_phase*512.0);
                     // #else
-                    let i_table = (chan[i].carr_phase >> 16_i32 & 0x1ff_i32 as u32) as usize; // 9-bit index
+                    let i_table = (chan[i].carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
                     let ip = chan[i].dataBit * chan[i].codeCA * COS_TABLE512[i_table] * gain[i];
                     let qp = chan[i].dataBit * chan[i].codeCA * SIN_TABLE512[i_table] * gain[i];
                     // Accumulate for all visible satellites
@@ -1349,13 +1314,13 @@ pub fn process(params: Params) -> i32 {
                     if chan[i].code_phase >= CA_SEQ_LEN as f64 {
                         chan[i].code_phase -= CA_SEQ_LEN as f64;
                         chan[i].icode += 1;
-                        if chan[i].icode >= 20_i32 {
+                        if chan[i].icode >= 20 {
                             // 20 C/A codes = 1 navigation data bit
-                            chan[i].icode = 0_i32;
+                            chan[i].icode = 0;
                             chan[i].ibit += 1;
-                            if chan[i].ibit >= 30_i32 {
+                            if chan[i].ibit >= 30 {
                                 // 30 navigation data bits = 1 word
-                                chan[i].ibit = 0_i32;
+                                chan[i].ibit = 0;
                                 chan[i].iword += 1;
 
                                 /*
@@ -1365,10 +1330,10 @@ pub fn process(params: Params) -> i32 {
                             }
                             // Set new navigation data bit
                             chan[i].dataBit = (chan[i].dwrd[chan[i].iword as usize]
-                                >> (29_i32 - chan[i].ibit)
-                                & 0x1_u32) as i32
-                                * 2_i32
-                                - 1_i32;
+                                >> (29 - chan[i].ibit)
+                                & 0x1) as i32
+                                * 2
+                                - 1;
                         }
                     }
                     // Set current code chip
@@ -1387,8 +1352,8 @@ pub fn process(params: Params) -> i32 {
                 }
             }
             // Scaled by 2^7
-            i_acc = (i_acc + 64_i32) >> 7_i32;
-            q_acc = (q_acc + 64_i32) >> 7_i32;
+            i_acc = (i_acc + 64) >> 7;
+            q_acc = (q_acc + 64) >> 7;
             // Store I/Q samples into buffer
             iq_buff[isamp * 2] = i_acc as i16;
             iq_buff[isamp * 2 + 1] = q_acc as i16;
@@ -1396,16 +1361,12 @@ pub fn process(params: Params) -> i32 {
         if data_format == SC01 {
             for isamp in 0..2 * iq_buff_size {
                 if isamp % 8 == 0 {
-                    iq8_buff[isamp / 8] = 0i8;
+                    iq8_buff[isamp / 8] = 0;
                 }
                 let fresh1_new = &mut iq8_buff[isamp / 8];
 
                 *fresh1_new = (*fresh1_new as i32
-                    | (if iq_buff[isamp] as i32 > 0_i32 {
-                        0x1_i32
-                    } else {
-                        0_i32
-                    }) << (7_i32 - isamp as i32 % 8_i32))
+                    | (if iq_buff[isamp] as i32 > 0 { 0x1 } else { 0 }) << (7 - isamp as i32 % 8))
                     as libc::c_schar;
             }
 
@@ -1413,14 +1374,14 @@ pub fn process(params: Params) -> i32 {
                 unsafe {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
-                        (iq_buff_size as i32 / 4_i32) as usize,
+                        iq_buff_size / 4,
                     ))
                     .ok();
                 }
             }
         } else if data_format == SC08 {
             for isamp in 0..2 * iq_buff_size {
-                iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4_i32) as libc::c_schar;
+                iq8_buff[isamp] = (iq_buff[isamp] as i32 >> 4) as libc::c_schar;
                 // 12-bit bladeRF -> 8-bit HackRF
                 //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for PocketSDR
             }
@@ -1429,7 +1390,7 @@ pub fn process(params: Params) -> i32 {
                 unsafe {
                     file.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr() as *const u8,
-                        (2_i32 * iq_buff_size as i32) as usize,
+                        2 * iq_buff_size,
                     ))
                     .ok();
                 }
@@ -1439,7 +1400,7 @@ pub fn process(params: Params) -> i32 {
             let byte_slice = unsafe {
                 std::slice::from_raw_parts(
                     iq_buff.as_ptr() as *const u8,
-                    (2_i32 * iq_buff_size as i32 * 2) as usize, // 2 bytes per sample
+                    2 * iq_buff_size * 2, // 2 bytes per sample
                 )
             };
             file.write_all(byte_slice).ok();
@@ -1447,13 +1408,13 @@ pub fn process(params: Params) -> i32 {
         //
         // Update navigation message and channel allocation every 30 seconds
         //
-        let igrx = (grx.sec * 10.0f64 + 0.5f64) as i32;
+        let igrx = (grx.sec * 10.0 + 0.5) as i32;
         if igrx % 300 == 0 {
             // Every 30 seconds
             // for i in 0..MAX_CHAN {
             for ichan in chan.iter_mut().take(MAX_CHAN) {
-                if ichan.prn > 0_i32 {
-                    generate_nav_msg(&grx, ichan, 0_i32);
+                if ichan.prn > 0 {
+                    generate_nav_msg(&grx, ichan, false);
                 }
             }
             // Refresh ephemeris and subframes
@@ -1468,7 +1429,7 @@ pub fn process(params: Params) -> i32 {
                             // Generate new subframes if allocated
                             if ichan.prn != 0_i32 {
                                 eph2sbf(
-                                    eph[ieph][(ichan.prn - 1_i32) as usize],
+                                    eph[ieph][(ichan.prn - 1) as usize],
                                     &ionoutc,
                                     &mut ichan.sbf,
                                 );
@@ -1485,7 +1446,7 @@ pub fn process(params: Params) -> i32 {
                     &mut eph[ieph],
                     &mut ionoutc,
                     &grx,
-                    &xyz[iumd as usize],
+                    &xyz[iumd],
                     elvmask,
                     &mut allocated_sat,
                 );
@@ -1505,7 +1466,7 @@ pub fn process(params: Params) -> i32 {
                 eprintln!();
                 // for i in 0..MAX_CHAN {
                 for ichan in chan.iter().take(MAX_CHAN) {
-                    if ichan.prn > 0_i32 {
+                    if ichan.prn > 0 {
                         eprintln!(
                             "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                             ichan.prn,
@@ -1519,7 +1480,7 @@ pub fn process(params: Params) -> i32 {
             }
         }
         // Update receiver time
-        grx = inc_gps_time(grx, 0.1f64);
+        grx = inc_gps_time(grx, 0.1);
 
         // Update time counter
         eprint!("\rTime into run = {:4.1}\0", sub_gps_time(grx, g0));

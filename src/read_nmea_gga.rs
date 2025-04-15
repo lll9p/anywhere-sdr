@@ -10,8 +10,8 @@ pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
 pub fn read_nmea_gga(
     xyz: &mut [[f64; 3]; USER_MOTION_SIZE],
     filename: &PathBuf,
-) -> anyhow::Result<i32> {
-    let mut numd: i32 = 0;
+) -> anyhow::Result<usize> {
+    let mut numd: usize = 0;
 
     let content = fs::read_to_string(filename)?;
 
@@ -58,7 +58,7 @@ pub fn read_nmea_gga(
         xyz[i][0] = pos[0];
         xyz[i][1] = pos[1];
         xyz[i][2] = pos[2];
-        numd = i as i32;
+        numd = i;
         // if i >= USER_MOTION_SIZE - 1 {
         //     break;
         // }
