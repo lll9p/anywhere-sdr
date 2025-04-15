@@ -1,6 +1,7 @@
 mod constants;
 mod datetime;
 mod eph;
+pub mod geometry;
 mod ionoutc;
 mod process;
 mod read_nmea_gga;

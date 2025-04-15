@@ -23,7 +23,7 @@ fn prepare_params() -> Vec<(Params, String, String)> {
     let _leap: Option<Vec<i32>> = Some(vec![2347, 3, 19]);
     let _time: Option<String> = Some("now".to_string());
     let _time_override: Option<String> =
-        Some("2022-10-10T10::22:22Z".to_string());
+        Some("2022-10-10T10:22:22Z".to_string());
     let duration: Option<usize> = Some(31);
     let _output: Option<PathBuf>;
     let frequency: usize = 2_600_000;
