@@ -1,7 +1,8 @@
 use crate::{datetime_t, gpstime_t};
 //  Structure representing ephemeris of a single satellite
-#[derive(Copy, Clone, Default)]
+#[allow(non_snake_case)]
 #[repr(C)]
+#[derive(Copy, Clone, Default)]
 pub struct ephem_t {
     // < Valid Flag
     pub vflg: i32,

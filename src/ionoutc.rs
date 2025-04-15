@@ -1,5 +1,6 @@
-#[derive(Copy, Clone, Default)]
+#[allow(non_snake_case)]
 #[repr(C)]
+#[derive(Copy, Clone, Default)]
 pub struct ionoutc_t {
     pub enable: i32,
     pub vflg: i32,

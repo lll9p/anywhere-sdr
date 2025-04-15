@@ -25,8 +25,9 @@ pub struct range_t {
 }
 
 //  Structure representing a Channel
-#[derive(Copy, Clone)]
+#[allow(non_snake_case)]
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct channel_t {
     //< PRN Number
     pub prn: i32,
