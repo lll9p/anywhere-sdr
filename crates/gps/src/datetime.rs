@@ -1,6 +1,6 @@
 // Structure representing GPS time
 #[derive(Copy, Clone, Default)]
-#[repr(C)]
+// #[repr(C)]
 pub struct GpsTime {
     // GPS week number (since January 1980)
     pub week: i32,
@@ -9,7 +9,7 @@ pub struct GpsTime {
 }
 //  Structure repreenting UTC time
 #[derive(Copy, Clone, Default)]
-#[repr(C)]
+// #[repr(C)]
 pub struct DateTime {
     // < Calendar year
     pub y: i32,

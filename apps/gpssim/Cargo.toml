@@ -1,0 +1,37 @@
+[package]
+name = "gpssim"
+version.workspace = true
+authors.workspace = true
+description.workspace = true
+documentation.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license-file.workspace = true
+edition.workspace = true
+
+[dependencies]
+# internal dependencies
+gps.workspace = true
+
+# external dependencies
+anyhow.workspace = true
+clap.workspace = true
+jiff.workspace = true
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
+
+[profile.release-distro]
+inherits = "release"
+lto = true
+strip = true
+panic = "abort"
+
+[package.metadata.bundle]
+name = "LaoLilin"
+identifier = "i.laolilin.com"

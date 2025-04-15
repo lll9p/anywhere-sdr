@@ -141,7 +141,7 @@ int getopt(int nargc, char * const nargv[], const char *ostr)
 
 /*! \brief Maximum number of user motion points */
 #ifndef USER_MOTION_SIZE
-#define USER_MOTION_SIZE (300) // max duration at 10Hz
+#define USER_MOTION_SIZE (3000) // max duration at 10Hz
 #endif
 
 /*! \brief Maximum duration for static mode*/

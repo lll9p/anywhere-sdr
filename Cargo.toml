@@ -1,15 +1,32 @@
-[package]
-name = "gps"
-version = "0.1.0"
+[workspace.package]
+version = "0.0.1"
 edition = "2024"
+authors = ["Lao Lilin <lll9p.china@gmail.com>"]
+description = """
+Software-Defined GNNS Signal Simulator.
+"""
+documentation = "https://github.com/lll9p/anywhere-sdr"
+homepage = "https://github.com/lll9p/anywhere-sdr"
+repository = "https://github.com/lll9p/anywhere-sdr"
+keywords = ["sdr", "simulation", "gnns", "gps"]
+categories = ["sdr", "simulation"]
+license-file = "LICENSE"
+exclude = ["/.github/"]
 
-[dependencies]
+[workspace]
+resolver = "2"
+members = ["crates/gps", "apps/gpssim"]
+exclude = ["target", "dist"]
 
+# internal dependencies
+
+[workspace.dependencies]
+gps = { path = "./crates/gps" }
 # internal dependencies
 
 # external dependencies
 libc = { version = "0.2" }
-anyhow = { version = "*" }
+anyhow = { version = "1" }
 clap = { version = "4", features = ["derive", "unicode", "wrap_help", "env"] }
 csv = { version = "1" }
 jiff = { version = "0.2" }
@@ -19,12 +36,11 @@ thiserror = { version = "2" }
 tracing = { version = "0.1" }
 tracing-appender = { version = "0.2" }
 tracing-subscriber = { version = "0.3" }
-
+test-case = { version = "3" }
 
 [workspace.lints.clippy]
 blocks_in_conditions = "allow"
 dbg_macro = "deny"
-struct-field-names = "allow"
 items-after-statements = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
@@ -36,6 +52,17 @@ return_self_not_must_use = "allow"
 struct-excessive-bools = "allow"
 needless_pass_by_value = "allow"
 style = { level = "deny", priority = 1 }
+# todo = "deny"
+# temporary_allowed
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+many_single_char_names = "allow"
+cast_possible_wrap = "allow"
+struct_field_names = "allow"
+wildcard_imports = "allow"
+similar_names = "allow"
+used_underscore_binding = "allow"
 todo = "deny"
 
 [workspace.lints.rust]

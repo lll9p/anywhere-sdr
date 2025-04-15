@@ -1,5 +1,5 @@
 #[allow(non_snake_case)]
-#[repr(C)]
+// #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct IonoUtc {
     pub enable: bool,

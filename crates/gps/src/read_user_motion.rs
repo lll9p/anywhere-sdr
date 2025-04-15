@@ -22,7 +22,7 @@ pub fn read_user_motion(
     Ok(umd + 1)
 }
 ///  \brief Read the list of user motions from the input file
-///  \param[out] xyz Output array of LatLonHei coordinates for user motion
+///  \param[out] xyz Output array of `LatLonHei` coordinates for user motion
 ///  \param[[in] filename File name of the text input file with format Lat,Lon,Hei
 ///  \returns Number of user data motion records read, -1 on error
 ///
@@ -40,11 +40,9 @@ pub fn read_user_motion_llh(
         llh[0] = line_vec[1].trim().parse()?;
         llh[1] = line_vec[2].trim().parse()?;
         llh[2] = line_vec[3].trim().parse()?;
-        if llh[0] > 90.0 || llh[0] < -90.0 || llh[1] > 180.0 || llh[1] < -180.0 {
-            panic!(
+        assert!(!(llh[0] > 90.0 || llh[0] < -90.0 || llh[1] > 180.0 || llh[1] < -180.0), 
                 "ERROR: Invalid file format (time[s], latitude[deg], longitude[deg], height [m].\n"
             );
-        }
         llh[0] /= R2D; // convert to RAD
         llh[1] /= R2D; // convert to RAD
         llh2xyz(&llh, &mut xyz[i]);

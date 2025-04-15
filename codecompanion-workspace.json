@@ -1,0 +1,107 @@
+{
+  "name": "GPS Signal Generator",
+  "version": "0.0.1",
+  "system_prompt": "你正在协助开发GPS信号生成软件，该项目使用c2rust从C代码转换而来。需要特别注意Rust的安全特性和FFI交互。",
+  "vars": {},
+  "groups": [
+    {
+      "name": "全部代码",
+      "system_prompt": "全部代码",
+      "data": [
+        "constants",
+        "datetime",
+        "eph",
+        "getopt",
+        "ionoutc",
+        "main",
+        "read_nmea_gga",
+        "read_rinex",
+        "read_user_motion",
+        "table",
+        "utils"
+      ]
+    },
+    {
+      "name": "核心模块",
+      "system_prompt": "处理GPS信号生成的核心算法和卫星数据计算",
+      "data": ["main", "eph", "ionoutc"]
+    },
+    {
+      "name": "数据处理",
+      "system_prompt": "处理RINEX和NMEA格式的输入数据解析",
+      "data": ["read_rinex", "read_nmea_gga"]
+    },
+    {
+      "name": "时间系统",
+      "system_prompt": "处理GPS时间转换和日期计算",
+      "data": ["datetime"]
+    },
+    {
+      "name": "工具函数",
+      "system_prompt": "命令行参数解析和数学工具函数",
+      "data": ["getopt", "table"]
+    },
+    {
+      "name": "基础定义",
+      "system_prompt": "常量和基础类型定义",
+      "data": ["constants"]
+    }
+  ],
+  "data": {
+    "constants": {
+      "type": "symbols",
+      "path": "src/constants.rs",
+      "description": "包含用户运动大小、π值等核心常量和数学定义"
+    },
+    "datetime": {
+      "type": "symbols",
+      "path": "src/datetime.rs",
+      "description": "GPS时间结构定义和时间转换函数"
+    },
+    "eph": {
+      "type": "symbols",
+      "path": "src/eph.rs",
+      "description": "卫星星历数据结构和相关计算方法"
+    },
+    "getopt": {
+      "type": "symbols",
+      "path": "src/getopt.rs",
+      "description": "命令行参数解析实现"
+    },
+    "ionoutc": {
+      "type": "symbols",
+      "path": "src/ionoutc.rs",
+      "description": "电离层和UTC时间校正参数"
+    },
+    "main": {
+      "type": "symbols",
+      "path": "src/main.rs",
+      "description": "程序入口点，信号生成主循环和通道管理"
+    },
+    "read_nmea_gga": {
+      "type": "symbols",
+      "path": "src/read_nmea_gga.rs",
+      "description": "NMEA GGA格式数据解析器"
+    },
+    "read_rinex": {
+      "type": "symbols",
+      "path": "src/read_rinex.rs",
+      "description": "RINEX导航文件解析实现"
+    },
+    "read_user_motion": {
+      "type": "symbols",
+      "path": "src/read_user_motion.rs",
+      "description": ""
+    },
+    "table": {
+      "type": "symbols",
+      "path": "src/table.rs",
+      "description": "预计算的三角函数表和天线模式数据"
+    },
+    "utils": {
+      "type": "symbols",
+      "path": "src/utils.rs",
+      "description": "工具函数"
+    }
+  }
+}
