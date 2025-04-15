@@ -447,7 +447,7 @@ pub fn eph2sbf(eph: ephem_t, ionoutc: &ionoutc_t, sbf: &mut [[u32; N_DWRD_SBF]; 
     (sbf[2])[7] = (aop as u32 & 0xffffff_u32) << 6_i32;
     (sbf[2])[8] = (omgdot as u32 & 0xffffff_u32) << 6_i32;
     (sbf[2])[9] = (iode & 0xff_u32) << 22_i32 | (idot as u32 & 0x3fff_u32) << 8_i32;
-    if ionoutc.vflg == 1_i32 {
+    if ionoutc.vflg {
         // Subframe 4, page 18
         (sbf[3])[0] = 0x8b0000_u32 << 6_i32;
         (sbf[3])[1] = 0x4_u32 << 8_i32;
@@ -624,7 +624,7 @@ pub fn ionospheric_delay(
     azel: &[f64; 2],
 ) -> f64 {
     let iono_delay: f64;
-    if ionoutc.enable == 0_i32 {
+    if !ionoutc.enable {
         // No ionospheric delay
         return 0.0f64;
     }
@@ -632,7 +632,7 @@ pub fn ionospheric_delay(
     let phi_u = llh[0] / PI;
     let lam_u = llh[1] / PI;
     let F = 1.0f64 + 16.0f64 * (0.53f64 - E).powf(3.0f64);
-    if ionoutc.vflg == 0_i32 {
+    if !ionoutc.vflg {
         iono_delay = F * 5.0e-9f64 * SPEED_OF_LIGHT;
     } else {
         let mut PER: f64;
@@ -848,7 +848,7 @@ pub fn check_sat_visibility(
     let mut clk: [f64; 2] = [0.; 2];
     let mut los: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-    if eph.vflg != 1_i32 {
+    if !eph.vflg {
         return -1_i32; // Invalid
     }
     xyz2llh(xyz_0, &mut llh);
@@ -1070,15 +1070,11 @@ pub fn process(params: Params) -> i32 {
     // let c_string = CString::new(navfile).unwrap();
     // let navff = c_string.into_raw();
     // let neph = readRinexNavAll(&mut eph, &mut ionoutc, navff);
-    let neph = read_rinex_nav_all(&mut eph, &mut ionoutc, &navfile).unwrap();
-    if neph == 0 {
-        eprintln!("ERROR: No ephemeris available.",);
-        panic!();
-    } else if neph == usize::MAX {
-        eprintln!("ERROR: ephemeris file not found.");
-        panic!();
-    }
-    if verb && ionoutc.vflg == 1_i32 {
+    let Ok(neph) = read_rinex_nav_all(&mut eph, &mut ionoutc, &navfile) else {
+        panic!("ERROR: ephemeris file not found or error.");
+    };
+    assert_ne!(neph, 0, "ERROR: No ephemeris available.");
+    if verb && ionoutc.vflg {
         eprintln!(
             "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
             ionoutc.alpha0, ionoutc.alpha1, ionoutc.alpha2, ionoutc.alpha3,
@@ -1097,7 +1093,7 @@ pub fn process(params: Params) -> i32 {
         eprintln!("{:6}", ionoutc.dtls,);
     }
     for sv in 0..MAX_SAT {
-        if eph[0][sv].vflg == 1_i32 {
+        if eph[0][sv].vflg {
             gmin = eph[0][sv].toc;
             tmin = eph[0][sv].t;
             break;
@@ -1113,7 +1109,7 @@ pub fn process(params: Params) -> i32 {
     tmax.y = 0_i32;
 
     for sv in 0..MAX_SAT {
-        if eph[neph - 1][sv].vflg == 1_i32 {
+        if eph[neph - 1][sv].vflg {
             gmax = eph[neph - 1][sv].toc;
             tmax = eph[neph - 1][sv].t;
             break;
@@ -1134,7 +1130,7 @@ pub fn process(params: Params) -> i32 {
             //ionoutc.vflg = FALSE;
             for sv in 0..MAX_SAT {
                 for i_eph in eph.iter_mut().take(neph) {
-                    if i_eph[sv].vflg == 1_i32 {
+                    if i_eph[sv].vflg {
                         gtmp = inc_gps_time(i_eph[sv].toc, dsec);
                         gps2date(&gtmp, &mut ttmp);
                         i_eph[sv].toc = gtmp;
@@ -1172,7 +1168,7 @@ pub fn process(params: Params) -> i32 {
     let mut ieph = usize::MAX;
     for (i, eph_item) in eph.iter().enumerate().take(neph) {
         for e in eph_item.iter().take(MAX_SAT) {
-            if e.vflg == 1_i32 {
+            if e.vflg {
                 let dt = sub_gps_time(g0, e.toc);
                 if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
                     ieph = i;
@@ -1463,7 +1459,7 @@ pub fn process(params: Params) -> i32 {
             // Refresh ephemeris and subframes
             // Quick and dirty fix. Need more elegant way.
             for sv in 0..MAX_SAT {
-                if eph[ieph + 1][sv].vflg == 1_i32 {
+                if eph[ieph + 1][sv].vflg {
                     let dt = sub_gps_time(eph[ieph + 1][sv].toc, grx);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;

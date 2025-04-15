@@ -65,10 +65,10 @@ pub fn read_rinex_nav_all(
             }
         }
         if !processing_header {
-            iono_utc.vflg = 0;
+            iono_utc.vflg = false;
             // Read all Iono/UTC lines
             if flags == 0xF {
-                iono_utc.vflg = 1;
+                iono_utc.vflg = true;
             }
             g0.week = -1;
             ieph = 0;
@@ -148,7 +148,7 @@ pub fn read_rinex_nav_all(
         }
         if iline % 8 == 7 {
             // Set valid flag
-            data[ieph][sv].vflg = 1;
+            data[ieph][sv].vflg = true;
 
             // Update the working variables
             data[ieph][sv].A = data[ieph][sv].sqrta * data[ieph][sv].sqrta;

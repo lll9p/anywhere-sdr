@@ -5,7 +5,7 @@ use crate::{datetime_t, gpstime_t};
 #[derive(Copy, Clone, Default)]
 pub struct ephem_t {
     // < Valid Flag
-    pub vflg: i32,
+    pub vflg: bool,
     pub t: datetime_t,
     // < Time of Clock
     pub toc: gpstime_t,

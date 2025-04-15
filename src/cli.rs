@@ -254,7 +254,7 @@ impl Args {
             params.duration = duration as f64;
         }
         // Disable ionospheric correction
-        params.ionoutc.enable = if self.ionospheric_disable { 0 } else { 1 };
+        params.ionoutc.enable = !self.ionospheric_disable;
         if let Some(fixed_gain) = self.path_loss {
             params.fixed_gain = fixed_gain;
             params.path_loss_enable = false;

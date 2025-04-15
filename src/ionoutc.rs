@@ -2,8 +2,8 @@
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct ionoutc_t {
-    pub enable: i32,
-    pub vflg: i32,
+    pub enable: bool,
+    pub vflg: bool,
     pub alpha0: f64,
     pub alpha1: f64,
     pub alpha2: f64,
