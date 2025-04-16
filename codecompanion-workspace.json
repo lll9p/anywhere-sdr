@@ -1,7 +1,7 @@
 {
   "name": "GPS Signal Generator",
   "version": "0.0.1",
-  "system_prompt": "你正在协助开发GPS信号生成软件，该项目使用c2rust从C代码转换而来。需要特别注意Rust的安全特性和FFI交互。",
+  "system_prompt": "你正在协助开发GPS信号生成软件。",
   "vars": {},
   "groups": [
     {

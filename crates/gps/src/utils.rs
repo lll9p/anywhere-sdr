@@ -172,9 +172,10 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
 /// \param[out] vel Computed velocity (vector)
 /// \param[clk] clk Computed clock
 pub fn satpos(
-    eph: &Ephemeris, g: &GpsTime, pos: &mut [f64; 3], vel: &mut [f64; 3],
-    clk: &mut [f64; 2],
-) {
+    eph: &Ephemeris,
+    g: &GpsTime, /* , pos: &mut [f64; 3], vel: &mut [f64; 3],
+                 * clk: &mut [f64; 2], */
+) -> ([f64; 3], [f64; 3], [f64; 2]) {
     let mut tk = g.sec - eph.toe.sec;
     if tk > SECONDS_IN_HALF_WEEK {
         tk -= SECONDS_IN_WEEK;
@@ -216,21 +217,36 @@ pub fn satpos(
     let ok = eph.omg0 + tk * eph.omgkdot - OMEGA_EARTH * eph.toe.sec;
     let sok = (ok).sin();
     let cok = (ok).cos();
-    pos[0] = xpk * cok - ypk * cik * sok;
-    pos[1] = xpk * sok + ypk * cik * cok;
-    pos[2] = ypk * sik;
+    let pos = [
+        xpk * cok - ypk * cik * sok,
+        xpk * sok + ypk * cik * cok,
+        ypk * sik,
+    ];
+    // pos[0] = xpk * cok - ypk * cik * sok;
+    // pos[1] = xpk * sok + ypk * cik * cok;
+    // pos[2] = ypk * sik;
     let tmp = ypkdot * cik - ypk * sik * ikdot;
-    vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
-    vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
-    vel[2] = ypk * cik * ikdot + ypkdot * sik;
+    let vel = [
+        -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok,
+        eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok,
+        ypk * cik * ikdot + ypkdot * sik,
+    ];
+    // vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
+    // vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
+    // vel[2] = ypk * cik * ikdot + ypkdot * sik;
     let mut tk = g.sec - eph.toc.sec;
     if tk > SECONDS_IN_HALF_WEEK {
         tk -= SECONDS_IN_WEEK;
     } else if tk < -SECONDS_IN_HALF_WEEK {
         tk += SECONDS_IN_WEEK;
     }
-    clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd;
-    clk[1] = eph.af1 + 2.0 * tk * eph.af2;
+    let clk = [
+        eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd,
+        eph.af1 + 2.0 * tk * eph.af2,
+    ];
+    (pos, vel, clk)
+    // clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic -
+    // eph.tgd; clk[1] = eph.af1 + 2.0 * tk * eph.af2;
 }
 
 /// \brief Compute Subframe from Ephemeris
@@ -505,15 +521,12 @@ pub fn compute_range(
     rho: &mut TimeRange, eph: &Ephemeris, ionoutc: &mut IonoUtc, g: &GpsTime,
     xyz_0: &[f64; 3],
 ) {
-    let mut pos: [f64; 3] = [0.; 3];
-    let mut vel: [f64; 3] = [0.; 3];
-    let mut clk: [f64; 2] = [0.; 2];
     let mut los: [f64; 3] = [0.; 3];
     let mut llh: [f64; 3] = [0.; 3];
     let mut neu: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     // SV position at time of the pseudorange observation.
-    satpos(eph, g, &mut pos, &mut vel, &mut clk);
+    let (mut pos, vel, clk) = satpos(eph, g);
     // Receiver to satellite vector and light-time.
     sub_vect(&mut los, &pos, xyz_0);
     let tau = norm_vect(&los) / SPEED_OF_LIGHT;
@@ -528,23 +541,23 @@ pub fn compute_range(
     // New observer to satellite vector and satellite range.
     sub_vect(&mut los, &pos, xyz_0);
     let range = norm_vect(&los);
-    (rho).d = range;
+    rho.d = range;
     // Pseudorange.
-    (rho).range = range - SPEED_OF_LIGHT * clk[0];
+    rho.range = range - SPEED_OF_LIGHT * clk[0];
     // Relative velocity of SV and receiver.
     let rate = dot_prod(&vel, &los) / range;
     // Pseudorange rate.
-    (rho).rate = rate; // - SPEED_OF_LIGHT*clk[1];
+    rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];
     // Time of application.
     rho.g = *g;
     // Azimuth and elevation angles.
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
     ecef2neu(&los, &tmat, &mut neu);
-    neu2azel(&mut (rho).azel, &neu);
+    neu2azel(&mut rho.azel, &neu);
     // Add ionospheric delay
-    (rho).iono_delay = ionospheric_delay(ionoutc, g, &llh, &(rho).azel);
-    (rho).range += (rho).iono_delay;
+    rho.iono_delay = ionospheric_delay(ionoutc, g, &llh, &rho.azel);
+    rho.range += rho.iono_delay;
 }
 
 ///  \brief Compute the code phase for a given channel (satellite)
@@ -646,10 +659,10 @@ pub fn check_sat_visibility(
 ) -> i32 {
     let mut llh: [f64; 3] = [0.; 3];
     let mut neu: [f64; 3] = [0.; 3];
-    let mut pos: [f64; 3] = [0.; 3];
-    let mut vel: [f64; 3] = [0.; 3];
+    // let mut pos: [f64; 3] = [0.; 3];
+    // let mut vel: [f64; 3] = [0.; 3];
     // modified from [f64;3] to [f64;2]
-    let mut clk: [f64; 2] = [0.; 2];
+    // let mut clk: [f64; 2] = [0.; 2];
     let mut los: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     if !eph.vflg {
@@ -657,7 +670,7 @@ pub fn check_sat_visibility(
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
-    satpos(eph, g, &mut pos, &mut vel, &mut clk);
+    let (pos, _vel, _clk) = satpos(eph, g);
     sub_vect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
