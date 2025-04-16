@@ -19,12 +19,12 @@ use crate::{
 
 #[allow(clippy::too_many_lines)]
 pub fn process(params: Params) -> i32 {
-    let mut allocated_sat: [i32; MAX_SAT] = [0; 32];
+    let mut allocated_sat: [i32; MAX_SAT] = [0; MAX_SAT];
 
     let mut fp_out: Option<std::fs::File>;
     let mut eph: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
         [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
-    let mut chan: [Channel; 16] = [Channel {
+    let mut chan: [Channel; MAX_CHAN] = [Channel {
         prn: 0,
         ca: [0; CA_SEQ_LEN],
         f_carr: 0.,
@@ -33,8 +33,8 @@ pub fn process(params: Params) -> i32 {
         carr_phasestep: 0,
         code_phase: 0.,
         g0: GpsTime::default(),
-        sbf: [[0; 10]; 5],
-        dwrd: [0; 60],
+        sbf: [[0; N_DWRD_SBF]; N_SBF],
+        dwrd: [0; N_DWRD],
         iword: 0,
         ibit: 0,
         icode: 0,
@@ -42,14 +42,14 @@ pub fn process(params: Params) -> i32 {
         codeCA: 0,
         azel: [0.; 2],
         rho0: TimeRange::default(),
-    }; 16];
+    }; MAX_CHAN];
     let elvmask: f64 = 0.0;
 
     // Default options
     // let mut umfile: [libc::c_char; 100] = [0; 100];
     // let mut navfile: [libc::c_char; 100] = [0; 100];
     // let mut outfile: [libc::c_char; 100] = [0; 100];
-    let mut gain: [i32; 16] = [0; 16];
+    let mut gain: [i32; MAX_CHAN] = [0; MAX_CHAN];
     let mut ant_pat: [f64; 37] = [0.; 37];
     let mut tmin = DateTime::default();
     let mut tmax = DateTime::default();
@@ -110,13 +110,10 @@ pub fn process(params: Params) -> i32 {
         let umfilex = umfile.clone().unwrap();
         let numd = if nmea_gga {
             read_nmea_gga(&mut xyz, &umfilex)
-            // numd = readNmeaGGA(&mut xyz, umfile);
         } else if um_llh {
             read_user_motion_llh(&mut xyz, &umfilex)
-            // numd = unsafe { readUserMotionLLH(&mut xyz, umfile) };
         } else {
             read_user_motion(&mut xyz, &umfilex)
-            // numd = unsafe { readUserMotion(&mut xyz, umfile) };
         };
         let Ok(mut numd) = numd else {
             panic!("ERROR: Failed to open user motion / NMEA GGA file.");
@@ -195,7 +192,9 @@ pub fn process(params: Params) -> i32 {
         if timeoverwrite {
             let mut gtmp = GpsTime {
                 week: g0.week,
-                sec: f64::from(g0.sec as i32 / 7200) * 7200.0,
+                sec: f64::from(g0.sec as i32 / SECONDS_IN_HOUR as i32 * 2)
+                    * SECONDS_IN_HOUR
+                    * 2.0,
             };
             // let mut gtmp: GpsTime = GpsTime::default();
             // gtmp.week = g0.week;
@@ -345,7 +344,6 @@ pub fn process(params: Params) -> i32 {
         elvmask,
         &mut allocated_sat,
     );
-    // for i in 0..MAX_CHAN {
     for ichan in chan.iter().take(MAX_CHAN) {
         if ichan.prn > 0 {
             eprintln!(
@@ -371,9 +369,13 @@ pub fn process(params: Params) -> i32 {
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
     grx = grx.add_secs(0.1);
+    // 主循环：遍历每个时间间隔（0.1秒）
     for iumd in 1..numd {
+        // 第一步：更新所有通道的伪距、相位和增益参数
         for i in 0..MAX_CHAN {
             if chan[i].prn > 0 {
+                // 仅处理已分配卫星的通道
+                // 计算当前时刻的伪距（传播时延）
                 // Refresh code phase and data bit counters
                 let mut rho: TimeRange = TimeRange {
                     g: GpsTime::default(),
@@ -383,8 +385,10 @@ pub fn process(params: Params) -> i32 {
                     azel: [0.; 2],
                     iono_delay: 0.,
                 };
+                // 卫星PRN号转索引
                 let sv = (chan[i].prn - 1) as usize;
                 // Current pseudorange
+                // 根据静态/动态模式选择接收机位置
                 if static_location_mode {
                     compute_range(
                         &mut rho,
@@ -402,9 +406,10 @@ pub fn process(params: Params) -> i32 {
                         &xyz[iumd],
                     );
                 }
+                // 更新方位角/仰角信息
                 // Update code phase and data bit counters
-                chan[i].azel[0] = rho.azel[0];
-                chan[i].azel[1] = rho.azel[1];
+                chan[i].azel.copy_from_slice(&rho.azel);
+                // 计算码相位（C/A码偏移）
                 compute_code_phase(&mut chan[i], rho, 0.1);
                 chan[i].carr_phasestep =
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
@@ -414,24 +419,33 @@ pub fn process(params: Params) -> i32 {
                 // Receiver antenna gain
                 let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
                 let ant_gain = ant_pat[ibs];
+                // 计算信号增益（考虑路径损耗和天线方向图）
                 // Signal gain
+                // 应用增益模式选择
                 if path_loss_enable {
+                    // 带路径损耗补偿
                     gain[i] = (path_loss * ant_gain * 128.0) as i32; // scaled by 2^7
                 } else {
+                    // 固定增益模式
                     gain[i] = fixed_gain; // hold the power level constant
                 }
             }
         }
+        // 第二步：生成基带I/Q采样数据
         for isamp in 0..iq_buff_size {
             let mut i_acc: i32 = 0;
             let mut q_acc: i32 = 0;
-            for i in 0..16 {
+            // 第三步：累加所有通道的信号分量
+            for i in 0..MAX_CHAN {
                 if chan[i].prn > 0 {
+                    // 仅处理有效通道
                     // #ifdef FLOAT_CARR_PHASE
                     //                     iTable =
                     // (int)floor(chan[i].carr_phase*512.0);
                     // #else
+                    // 使用预计算的正弦/余弦表生成载波
                     let i_table = (chan[i].carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
+                    // 生成I/Q分量（考虑导航数据位和C/A码）
                     let ip = chan[i].dataBit
                         * chan[i].codeCA
                         * COS_TABLE512[i_table]
@@ -441,17 +455,21 @@ pub fn process(params: Params) -> i32 {
                         * SIN_TABLE512[i_table]
                         * gain[i];
                     // Accumulate for all visible satellites
+                    // 累加到总信号
                     i_acc += ip;
                     q_acc += qp;
                     // Update code phase
+                    // 第四步：更新码相位（C/A码序列控制）
                     chan[i].code_phase += chan[i].f_code * delt;
                     if chan[i].code_phase >= CA_SEQ_LEN as f64 {
                         chan[i].code_phase -= CA_SEQ_LEN as f64;
                         chan[i].icode += 1;
                         if chan[i].icode >= 20 {
                             // 20 C/A codes = 1 navigation data bit
+                            // 处理导航数据位（每20个C/A码周期）
                             chan[i].icode = 0;
                             chan[i].ibit += 1;
+                            // 处理导航字（每30个数据位）
                             if chan[i].ibit >= 30 {
                                 // 30 navigation data bits = 1 word
                                 chan[i].ibit = 0;
@@ -462,6 +480,7 @@ pub fn process(params: Params) -> i32 {
                                     fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
                                 */
                             }
+                            // 提取当前导航数据位
                             // Set new navigation data bit
                             chan[i].dataBit = (chan[i].dwrd
                                 [chan[i].iword as usize]
@@ -472,6 +491,7 @@ pub fn process(params: Params) -> i32 {
                                 - 1;
                         }
                     }
+                    // 更新当前C/A码片
                     // Set current code chip
                     chan[i].codeCA =
                         chan[i].ca[chan[i].code_phase as i32 as usize] * 2_i32
@@ -486,17 +506,21 @@ pub fn process(params: Params) -> i32 {
                     //                     else if (chan[i].carr_phase<0.0)
                     //                         chan[i].carr_phase += 1.0;
                     // #else
+                    // 第五步：更新载波相位（使用相位累加器）
                     chan[i].carr_phase = (chan[i].carr_phase)
                         .wrapping_add(chan[i].carr_phasestep as u32);
                 }
             }
+            // 第六步：量化并存储I/Q采样
             // Scaled by 2^7
-            i_acc = (i_acc + 64) >> 7;
-            q_acc = (q_acc + 64) >> 7;
+            // i_acc = (i_acc + 64) >> 7;
+            // q_acc = (q_acc + 64) >> 7;
             // Store I/Q samples into buffer
-            iq_buff[isamp * 2] = i_acc as i16;
-            iq_buff[isamp * 2 + 1] = q_acc as i16;
+            iq_buff[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8位量化（带舍入）
+            iq_buff[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
         }
+
+        // 第七步：将I/Q数据写入输出文件（不同格式处理）
         if data_format == SC01 {
             for isamp in 0..2 * iq_buff_size {
                 if isamp % 8 == 0 {
@@ -507,7 +531,7 @@ pub fn process(params: Params) -> i32 {
                 *fresh1_new = (i32::from(*fresh1_new)
                     | i32::from(i32::from(iq_buff[isamp]) > 0)
                         << (7 - isamp as i32 % 8))
-                    as libc::c_schar;
+                    as i8;
             }
 
             if let Some(file) = &mut fp_out {
@@ -521,8 +545,7 @@ pub fn process(params: Params) -> i32 {
             }
         } else if data_format == SC08 {
             for isamp in 0..2 * iq_buff_size {
-                iq8_buff[isamp] =
-                    (i32::from(iq_buff[isamp]) >> 4) as libc::c_schar;
+                iq8_buff[isamp] = (i32::from(iq_buff[isamp]) >> 4) as i8;
                 // 12-bit bladeRF -> 8-bit HackRF
                 //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for PocketSDR
             }
@@ -549,10 +572,10 @@ pub fn process(params: Params) -> i32 {
         //
         // Update navigation message and channel allocation every 30 seconds
         //
+        // 第八步：定期更新导航信息（每30秒）
         let igrx = (grx.sec * 10.0 + 0.5) as i32;
         if igrx % 300 == 0 {
             // Every 30 seconds
-            // for i in 0..MAX_CHAN {
             for ichan in chan.iter_mut().take(MAX_CHAN) {
                 if ichan.prn > 0 {
                     generate_nav_msg(&grx, ichan, false);
@@ -565,7 +588,6 @@ pub fn process(params: Params) -> i32 {
                     let dt = eph[ieph + 1][sv].toc.diff_secs(&grx);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;
-                        // for i in 0..MAX_CHAN {
                         for ichan in chan.iter_mut().take(MAX_CHAN) {
                             // Generate new subframes if allocated
                             if ichan.prn != 0_i32 {
@@ -605,7 +627,6 @@ pub fn process(params: Params) -> i32 {
             // Show details about simulated channels
             if verb {
                 eprintln!();
-                // for i in 0..MAX_CHAN {
                 for ichan in chan.iter().take(MAX_CHAN) {
                     if ichan.prn > 0 {
                         eprintln!(
@@ -620,6 +641,7 @@ pub fn process(params: Params) -> i32 {
                 }
             }
         }
+        // 第九步：更新时间并显示进度
         // Update receiver time
         grx = grx.add_secs(0.1);
 

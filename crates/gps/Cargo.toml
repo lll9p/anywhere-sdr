@@ -19,7 +19,6 @@ path = "src/gps.rs"
 # internal dependencies
 
 # external dependencies
-libc.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 csv.workspace = true
