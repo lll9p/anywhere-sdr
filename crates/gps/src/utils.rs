@@ -560,35 +560,6 @@ pub fn compute_range(
     rho.range += rho.iono_delay;
 }
 
-///  \brief Compute the code phase for a given channel (satellite)
-///  \param chan Channel on which we operate (is updated)
-///  \param[in] rho1 Current range, after \a dt has expired
-///  \param[in dt delta-t (time difference) in seconds
-pub fn compute_code_phase(chan: &mut Channel, rho1: TimeRange, dt: f64) {
-    // Pseudorange rate.
-    let rhorate = (rho1.range - chan.rho0.range) / dt;
-    // Carrier and code frequency.
-    chan.f_carr = -rhorate / LAMBDA_L1;
-    chan.f_code = CODE_FREQ + chan.f_carr * CARR_TO_CODE;
-    // Initial code phase and data bit counters.
-    let ms = (chan.rho0.g.diff_secs(&chan.g0) + 6.0
-        - chan.rho0.range / SPEED_OF_LIGHT)
-        * 1000.0;
-    let mut ims = ms as i32;
-    chan.code_phase = (ms - f64::from(ims)) * CA_SEQ_LEN as f64; // in chip
-    chan.iword = ims / 600; // 1 word = 30 bits = 600 ms
-    ims -= chan.iword * 600;
-    chan.ibit = ims / 20; // 1 bit = 20 code = 20 ms
-    ims -= chan.ibit * 20;
-    chan.icode = ims; // 1 code = 1 ms
-    chan.codeCA = chan.ca[chan.code_phase as usize] * 2 - 1;
-    chan.dataBit =
-        (chan.dwrd[chan.iword as usize] >> (29 - chan.ibit) & 0x1) as i32 * 2
-            - 1;
-    // Save current pseudorange
-    chan.rho0 = rho1;
-}
-
 pub fn generate_nav_msg(g: &GpsTime, chan: &mut Channel, init: bool) {
     let mut g0: GpsTime = GpsTime { week: 0, sec: 0. };
     let mut sbfwrd: u32;

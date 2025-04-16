@@ -12,8 +12,8 @@ use crate::{
     read_user_motion::{read_user_motion, read_user_motion_llh},
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
     utils::{
-        allocate_channel, compute_code_phase, compute_range, eph2sbf,
-        generate_nav_msg, llh2xyz, xyz2llh,
+        allocate_channel, compute_range, eph2sbf, generate_nav_msg, llh2xyz,
+        xyz2llh,
     },
 };
 
@@ -411,7 +411,7 @@ pub fn process(params: Params) -> i32 {
                 // Update code phase and data bit counters
                 chan[i].azel.copy_from_slice(&rho.azel);
                 // 计算码相位（C/A码偏移）
-                compute_code_phase(&mut chan[i], rho, INTERVAL);
+                chan[i].compute_code_phase(rho, INTERVAL);
                 chan[i].carr_phasestep =
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
