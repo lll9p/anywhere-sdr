@@ -422,7 +422,7 @@ impl Target {
 mod test {
     #![allow(dead_code, unused)]
     use super::*;
-    use crate::process::{ecef2neu, llh2xyz, ltcmat, neu2azel, xyz2llh};
+    use crate::utils::{ecef2neu, llh2xyz, ltcmat, neu2azel, xyz2llh};
     const LLH: [f64; 3] = [35.274_143_229, 137.014_853_084, 99.998];
     const XYZ: [f64; 3] = [-3_813_477.954, 3_554_276.552, 3_662_785.237];
     const EPS: f64 = 1e-28;

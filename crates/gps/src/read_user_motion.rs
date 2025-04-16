@@ -1,6 +1,6 @@
 use std::{fs, path::PathBuf};
 
-use crate::{constants::*, process::llh2xyz};
+use crate::{constants::*, utils::llh2xyz};
 
 ///  \brief Read the list of user motions from the input file
 ///  \param[out] xyz Output array of ECEF vectors for user motion
