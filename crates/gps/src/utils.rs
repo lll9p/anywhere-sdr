@@ -67,10 +67,10 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let a = WGS84_RADIUS;
     let e = WGS84_ECCENTRICITY;
     let e2 = e * e;
-    let clat = (llh[0]).cos();
-    let slat = (llh[0]).sin();
-    let clon = (llh[1]).cos();
-    let slon = (llh[1]).sin();
+    let clat = llh[0].cos();
+    let slat = llh[0].sin();
+    let clon = llh[1].cos();
+    let slon = llh[1].sin();
     let d = e * slat;
     let n = a / (1.0 - d * d).sqrt();
     let nph = n + llh[2];
@@ -84,10 +84,10 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
 ///  \param[in] llh Input position in Latitude-Longitude-Height format
 ///  \param[out] t Three-by-Three output matrix
 pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
-    let slat = (llh[0]).sin();
-    let clat = (llh[0]).cos();
-    let slon = (llh[1]).sin();
-    let clon = (llh[1]).cos();
+    let slat = llh[0].sin();
+    let clat = llh[0].cos();
+    let slon = llh[1].sin();
+    let clon = llh[1].cos();
     t[0][0] = -slat * clon;
     t[0][1] = -slat * slon;
     t[0][2] = clat;
@@ -188,11 +188,11 @@ pub fn satpos(
     let mut one_minusecos_e = 0.0; // Suppress the uninitialized warning.
     while (ek - ekold).abs() > 1.0e-14 {
         ekold = ek;
-        one_minusecos_e = 1.0 - eph.ecc * (ekold).cos();
+        one_minusecos_e = 1.0 - eph.ecc * ekold.cos();
         ek += (mk - ekold + eph.ecc * (ekold.sin())) / one_minusecos_e;
     }
-    let sek = (ek).sin();
-    let cek = (ek).cos();
+    let sek = ek.sin();
+    let cek = ek.cos();
     let ekdot = eph.n / one_minusecos_e;
     let relativistic = -4.442_807_633E-10 * eph.ecc * eph.sqrta * sek;
     let pk = (eph.sq1e2 * sek).atan2(cek - eph.ecc) + eph.aop;
@@ -200,23 +200,23 @@ pub fn satpos(
     let s2pk = (2.0 * pk).sin();
     let c2pk = (2.0 * pk).cos();
     let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
-    let suk = (uk).sin();
-    let cuk = (uk).cos();
+    let suk = uk.sin();
+    let cuk = uk.cos();
     let ukdot = pkdot * (1.0 + 2.0 * (eph.cus * c2pk - eph.cuc * s2pk));
     let rk = eph.A * one_minusecos_e + eph.crc * c2pk + eph.crs * s2pk;
     let rkdot = eph.A * eph.ecc * sek * ekdot
         + 2.0 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
     let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
-    let sik = (ik).sin();
-    let cik = (ik).cos();
+    let sik = ik.sin();
+    let cik = ik.cos();
     let ikdot = eph.idot + 2.0 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
     let xpk = rk * cuk;
     let ypk = rk * suk;
     let xpkdot = rkdot * cuk - ypk * ukdot;
     let ypkdot = rkdot * suk + xpk * ukdot;
     let ok = eph.omg0 + tk * eph.omgkdot - OMEGA_EARTH * eph.toe.sec;
-    let sok = (ok).sin();
-    let cok = (ok).cos();
+    let sok = ok.sin();
+    let cok = ok.cos();
     let pos = [
         xpk * cok - ypk * cik * sok,
         xpk * sok + ypk * cik * cok,
@@ -716,14 +716,14 @@ pub fn allocate_channel(
                         chan[i].azel[0] = azel[0];
                         chan[i].azel[1] = azel[1];
                         // C/A code generation
-                        codegen(&mut chan[i].ca, (chan[i]).prn);
+                        codegen(&mut chan[i].ca, chan[i].prn);
                         // Generate subframe
                         eph2sbf(&eph[sv], ionoutc, &mut chan[i].sbf);
                         // Generate navigation message
                         generate_nav_msg(grx, &mut chan[i], true);
                         // Initialize pseudorange
                         compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
-                        (chan[i]).rho0 = rho;
+                        chan[i].rho0 = rho;
                         // Initialize carrier phase
                         // r_xyz = rho.range;
                         compute_range(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
@@ -734,8 +734,8 @@ pub fn allocate_channel(
                         //                         chan[i].carr_phase =
                         // phase_ini - floor(phase_ini);
                         // #else
-                        phase_ini -= (phase_ini).floor();
-                        (chan[i]).carr_phase =
+                        phase_ini -= phase_ini.floor();
+                        chan[i].carr_phase =
                             (512.0 * 65536.0 * phase_ini) as u32;
                         break;
                     }
@@ -749,7 +749,7 @@ pub fn allocate_channel(
         } else if allocated_sat[sv] >= 0 {
             // Not visible but allocated
             // Clear channel
-            (chan[allocated_sat[sv] as usize]).prn = 0;
+            chan[allocated_sat[sv] as usize].prn = 0;
             // Clear satellite allocation flag
             allocated_sat[sv] = -1;
         }

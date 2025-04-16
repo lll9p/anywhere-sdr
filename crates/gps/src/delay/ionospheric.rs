@@ -12,7 +12,7 @@ pub fn ionospheric_delay(
     let E = azel[1] / PI;
     let phi_u = llh[0] / PI;
     let lam_u = llh[1] / PI;
-    let F = 1.0 + 16.0 * (0.53f64 - E).powf(3.0);
+    let F = 1.0 + 16.0 * (0.53 - E).powf(3.0);
     if ionoutc.vflg {
         let mut PER: f64;
 
@@ -22,12 +22,12 @@ pub fn ionospheric_delay(
 
         // Geodetic latitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let phi_i = phi_u + psi * (azel[0]).cos();
+        let phi_i = phi_u + psi * azel[0].cos();
         let phi_i = phi_i.clamp(-0.416, 0.416);
 
         // Geodetic longitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let lam_i = lam_u + psi * (azel[0]).sin() / (phi_i * PI).cos();
+        let lam_i = lam_u + psi * azel[0].sin() / (phi_i * PI).cos();
         // Geomagnetic latitude of the earth projection of the ionospheric
         // intersection point (mean ionospheric height assumed 350 km)
         // (semi-circles)
@@ -58,7 +58,7 @@ pub fn ionospheric_delay(
         }
         // Phase (radians)
         let X = 2.0 * PI * (t - 50400.0) / PER;
-        if (X).abs() < 1.57 {
+        if X.abs() < 1.57 {
             let X2 = X * X;
             let X4 = X2 * X2;
             iono_delay = F
