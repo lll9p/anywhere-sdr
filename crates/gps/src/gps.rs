@@ -3,6 +3,7 @@ mod constants;
 mod datetime;
 mod delay;
 mod eph;
+pub mod generator;
 pub mod geometry;
 mod ionoutc;
 mod params;

@@ -341,7 +341,7 @@ pub fn compute_range(
     let mut rho = TimeRange::default();
     let mut los: [f64; 3] = [0.; 3];
     // SV position at time of the pseudorange observation.
-    let (mut pos, vel, clk) = eph.satpos(time);
+    let (mut pos, vel, clk) = eph.compute_satellite_state(time);
     // Receiver to satellite vector and light-time.
     sub_vect(&mut los, &pos, xyz);
     let tau = norm_vect(&los) / SPEED_OF_LIGHT;
@@ -394,8 +394,7 @@ pub fn allocate_channel(
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if let Some((azel, true)) = &eph[sv].check_sat_visibility(grx, xyz, 0.0)
-        {
+        if let Some((azel, true)) = &eph[sv].check_visibility(grx, xyz, 0.0) {
             nsat += 1; // Number of visible satellites
             if allocated_sat[sv] == -1 {
                 // Visible but not allocated

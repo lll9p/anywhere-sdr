@@ -79,12 +79,12 @@ impl Ephemeris {
     /// \param[out] vel Computed velocity (vector)
     /// \param[clk] clk Computed clock
     #[inline]
-    pub fn satpos(
+    pub fn compute_satellite_state(
         &self,
-        g: &GpsTime, /* , pos: &mut [f64; 3], vel: &mut [f64; 3],
-                     * clk: &mut [f64; 2], */
+        time: &GpsTime, /* , pos: &mut [f64; 3], vel: &mut [f64; 3],
+                        * clk: &mut [f64; 2], */
     ) -> ([f64; 3], [f64; 3], [f64; 2]) {
-        let mut tk = g.sec - self.toe.sec;
+        let mut tk = time.sec - self.toe.sec;
         if tk > SECONDS_IN_HALF_WEEK {
             tk -= SECONDS_IN_WEEK;
         } else if tk < -SECONDS_IN_HALF_WEEK {
@@ -143,7 +143,7 @@ impl Ephemeris {
         // vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
         // vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
         // vel[2] = ypk * cik * ikdot + ypkdot * sik;
-        let mut tk = g.sec - self.toc.sec;
+        let mut tk = time.sec - self.toc.sec;
         if tk > SECONDS_IN_HALF_WEEK {
             tk -= SECONDS_IN_WEEK;
         } else if tk < -SECONDS_IN_HALF_WEEK {
@@ -160,7 +160,7 @@ impl Ephemeris {
     }
 
     #[inline]
-    pub fn check_sat_visibility(
+    pub fn check_visibility(
         &self, time: &GpsTime, xyz: &[f64; 3], elv_mask: f64,
     ) -> Option<([f64; 2], bool)> {
         if !self.vflg {
@@ -176,7 +176,7 @@ impl Ephemeris {
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
         xyz2llh(xyz, &mut llh);
         ltcmat(&llh, &mut tmat);
-        let (pos, _vel, _clk) = self.satpos(time);
+        let (pos, _vel, _clk) = self.compute_satellite_state(time);
         sub_vect(&mut los, &pos, xyz);
         ecef2neu(&los, &tmat, &mut neu);
         let mut azel: [f64; 2] = [0.0; 2];
