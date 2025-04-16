@@ -2,7 +2,7 @@ use crate::{constants::*, datetime::GpsTime, ionoutc::IonoUtc};
 
 #[allow(non_snake_case)]
 pub fn ionospheric_delay(
-    ionoutc: &IonoUtc, g: &GpsTime, llh: &[f64; 3], azel: &[f64; 2],
+    ionoutc: &IonoUtc, time: &GpsTime, llh: &[f64; 3], azel: &[f64; 2],
 ) -> f64 {
     let iono_delay: f64;
     if !ionoutc.enable {
@@ -49,13 +49,15 @@ pub fn ionospheric_delay(
             PER = 72000.0;
         }
         // Local time (sec)
-        let mut t = SECONDS_IN_DAY / 2.0 * lam_i + g.sec;
-        while t >= SECONDS_IN_DAY {
-            t -= SECONDS_IN_DAY;
-        }
-        while t < 0.0 {
-            t += SECONDS_IN_DAY;
-        }
+        let t = (time.sec + 0.5 * SECONDS_IN_DAY * lam_i)
+            .rem_euclid(SECONDS_IN_DAY);
+        // let mut t = SECONDS_IN_DAY / 2.0 * lam_i + time.sec;
+        // while t >= SECONDS_IN_DAY {
+        //     t -= SECONDS_IN_DAY;
+        // }
+        // while t < 0.0 {
+        //     t += SECONDS_IN_DAY;
+        // }
         // Phase (radians)
         let X = 2.0 * PI * (t - 50400.0) / PER;
         if X.abs() < 1.57 {

@@ -348,7 +348,7 @@ pub fn process(params: Params) -> i32 {
                 ichan.prn,
                 ichan.azel[0] * R2D,
                 ichan.azel[1] * R2D,
-                ichan.rho0.d,
+                ichan.rho0.distance,
                 ichan.rho0.iono_delay,
             );
         }
@@ -369,41 +369,29 @@ pub fn process(params: Params) -> i32 {
     grx = grx.add_secs(INTERVAL);
     // 主循环：遍历每个时间间隔（0.1秒）
     for iumd in 1..numd {
+        // 根据静态/动态模式选择接收机位置
+        let current_location = if static_location_mode {
+            &xyz[0]
+        } else {
+            &xyz[iumd]
+        };
         // 第一步：更新所有通道的伪距、相位和增益参数
         for i in 0..MAX_CHAN {
+            // 仅处理已分配卫星的通道
             if chan[i].prn > 0 {
-                // 仅处理已分配卫星的通道
-                // 计算当前时刻的伪距（传播时延）
-                // Refresh code phase and data bit counters
-                let mut rho: TimeRange = TimeRange {
-                    g: GpsTime::default(),
-                    range: 0.,
-                    rate: 0.,
-                    d: 0.,
-                    azel: [0.; 2],
-                    iono_delay: 0.,
-                };
                 // 卫星PRN号转索引
                 let sv = (chan[i].prn - 1) as usize;
+                // 计算当前时刻的伪距（传播时延）
+                // Refresh code phase and data bit counters
+
                 // Current pseudorange
-                // 根据静态/动态模式选择接收机位置
-                if static_location_mode {
-                    compute_range(
-                        &mut rho,
-                        &eph[ieph][sv],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[0],
-                    );
-                } else {
-                    compute_range(
-                        &mut rho,
-                        &eph[ieph][sv],
-                        &mut ionoutc,
-                        &grx,
-                        &xyz[iumd],
-                    );
-                }
+                let rho = compute_range(
+                    &eph[ieph][sv],
+                    &ionoutc,
+                    &grx,
+                    current_location,
+                );
+
                 // 更新方位角/仰角信息
                 // Update code phase and data bit counters
                 chan[i].azel.copy_from_slice(&rho.azel);
@@ -413,7 +401,7 @@ pub fn process(params: Params) -> i32 {
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
                 // Path loss
-                let path_loss = 20_200_000.0 / rho.d;
+                let path_loss = 20_200_000.0 / rho.distance;
                 // Receiver antenna gain
                 let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
                 let ant_gain = ant_pat[ibs];
@@ -601,27 +589,16 @@ pub fn process(params: Params) -> i32 {
                 }
             }
             // Update channel allocation
-            if static_location_mode {
-                allocate_channel(
-                    &mut chan,
-                    &mut eph[ieph],
-                    &mut ionoutc,
-                    &grx,
-                    &xyz[0],
-                    elvmask,
-                    &mut allocated_sat,
-                );
-            } else {
-                allocate_channel(
-                    &mut chan,
-                    &mut eph[ieph],
-                    &mut ionoutc,
-                    &grx,
-                    &xyz[iumd],
-                    elvmask,
-                    &mut allocated_sat,
-                );
-            }
+            allocate_channel(
+                &mut chan,
+                &mut eph[ieph],
+                &mut ionoutc,
+                &grx,
+                current_location,
+                elvmask,
+                &mut allocated_sat,
+            );
+
             // Show details about simulated channels
             if verb {
                 eprintln!();
@@ -632,7 +609,7 @@ pub fn process(params: Params) -> i32 {
                             ichan.prn,
                             ichan.azel[0] * R2D,
                             ichan.azel[1] * R2D,
-                            ichan.rho0.d,
+                            ichan.rho0.distance,
                             ichan.rho0.iono_delay,
                         );
                     }

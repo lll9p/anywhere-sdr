@@ -56,7 +56,7 @@ impl Channel {
         self.f_carr = -rhorate / LAMBDA_L1;
         self.f_code = CODE_FREQ + self.f_carr * CARR_TO_CODE;
         // Initial code phase and data bit counters.
-        let ms = (self.rho0.g.diff_secs(&self.g0) + 6.0
+        let ms = (self.rho0.time.diff_secs(&self.g0) + 6.0
             - self.rho0.range / SPEED_OF_LIGHT)
             * 1000.0;
         let mut ims = ms as i32;

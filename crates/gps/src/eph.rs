@@ -161,7 +161,7 @@ impl Ephemeris {
 
     #[inline]
     pub fn check_sat_visibility(
-        &self, time: &GpsTime, xyz_0: &[f64; 3], elv_mask: f64,
+        &self, time: &GpsTime, xyz: &[f64; 3], elv_mask: f64,
     ) -> Option<([f64; 2], bool)> {
         if !self.vflg {
             return None; // Invalid
@@ -174,10 +174,10 @@ impl Ephemeris {
         // let mut clk: [f64; 2] = [0.; 2];
         let mut los: [f64; 3] = [0.; 3];
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-        xyz2llh(xyz_0, &mut llh);
+        xyz2llh(xyz, &mut llh);
         ltcmat(&llh, &mut tmat);
         let (pos, _vel, _clk) = self.satpos(time);
-        sub_vect(&mut los, &pos, xyz_0);
+        sub_vect(&mut los, &pos, xyz);
         ecef2neu(&los, &tmat, &mut neu);
         let mut azel: [f64; 2] = [0.0; 2];
         neu2azel(&mut azel, &neu);

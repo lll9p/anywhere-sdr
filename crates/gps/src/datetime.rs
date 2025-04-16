@@ -105,12 +105,12 @@ impl From<&GpsTime> for DateTime {
 
 #[derive(Copy, Clone, Default)]
 pub struct TimeRange {
-    pub g: GpsTime,
+    pub time: GpsTime,
     // pseudorange
     pub range: f64,
     pub rate: f64,
     // geometric distance
-    pub d: f64,
+    pub distance: f64,
     pub azel: [f64; 2],
     pub iono_delay: f64,
 }

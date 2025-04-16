@@ -336,17 +336,14 @@ pub fn eph2sbf(
 ///  \param[in] g GPS time at time of receiving the signal
 ///  \param[in] xyz position of the receiver
 pub fn compute_range(
-    rho: &mut TimeRange, eph: &Ephemeris, ionoutc: &mut IonoUtc, g: &GpsTime,
-    xyz_0: &[f64; 3],
-) {
+    eph: &Ephemeris, ionoutc: &IonoUtc, time: &GpsTime, xyz: &[f64; 3],
+) -> TimeRange {
+    let mut rho = TimeRange::default();
     let mut los: [f64; 3] = [0.; 3];
-    let mut llh: [f64; 3] = [0.; 3];
-    let mut neu: [f64; 3] = [0.; 3];
-    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     // SV position at time of the pseudorange observation.
-    let (mut pos, vel, clk) = eph.satpos(g);
+    let (mut pos, vel, clk) = eph.satpos(time);
     // Receiver to satellite vector and light-time.
-    sub_vect(&mut los, &pos, xyz_0);
+    sub_vect(&mut los, &pos, xyz);
     let tau = norm_vect(&los) / SPEED_OF_LIGHT;
     // Extrapolate the satellite position backwards to the transmission time.
     pos[0] -= vel[0] * tau;
@@ -357,9 +354,9 @@ pub fn compute_range(
     pos[0] = xrot;
     pos[1] = yrot;
     // New observer to satellite vector and satellite range.
-    sub_vect(&mut los, &pos, xyz_0);
+    sub_vect(&mut los, &pos, xyz);
     let range = norm_vect(&los);
-    rho.d = range;
+    rho.distance = range;
     // Pseudorange.
     rho.range = range - SPEED_OF_LIGHT * clk[0];
     // Relative velocity of SV and receiver.
@@ -367,82 +364,80 @@ pub fn compute_range(
     // Pseudorange rate.
     rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];
     // Time of application.
-    rho.g = *g;
+    rho.time = *time;
+
     // Azimuth and elevation angles.
-    xyz2llh(xyz_0, &mut llh);
+    let mut llh: [f64; 3] = [0.; 3];
+    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
+    xyz2llh(xyz, &mut llh);
     ltcmat(&llh, &mut tmat);
+
+    let mut neu: [f64; 3] = [0.; 3];
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(&mut rho.azel, &neu);
     // Add ionospheric delay
-    rho.iono_delay = ionospheric_delay(ionoutc, g, &llh, &rho.azel);
+    rho.iono_delay = ionospheric_delay(ionoutc, time, &llh, &rho.azel);
     rho.range += rho.iono_delay;
+    rho
 }
 
 pub fn allocate_channel(
     chan: &mut [Channel; MAX_CHAN], eph: &mut [Ephemeris; MAX_SAT],
-    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz0: &[f64; 3], _elv_mask: f64,
+    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz: &[f64; 3], _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0;
-    let mut rho: TimeRange = TimeRange {
-        g: GpsTime::default(),
-        range: 0.,
-        rate: 0.,
-        d: 0.,
-        azel: [0.; 2],
-        iono_delay: 0.,
-    };
-    let ref_0: [f64; 3] = [0., 0., 0.];
+    // let ref_0: [f64; 3] = [0., 0., 0.];
     // #[allow(unused_variables)]
     // let mut r_ref: f64 = 0.;
     // #[allow(unused_variables)]
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if let Some((azel, true)) =
-            &eph[sv].check_sat_visibility(grx, xyz0, 0.0)
+        if let Some((azel, true)) = &eph[sv].check_sat_visibility(grx, xyz, 0.0)
         {
             nsat += 1; // Number of visible satellites
             if allocated_sat[sv] == -1 {
                 // Visible but not allocated
                 //
                 // Allocated new satellite
-                let mut i = 0;
-                while i < MAX_CHAN {
-                    if chan[i].prn == 0 {
+                let mut channel_index = 0;
+                for (i, ichan) in chan.iter_mut().take(MAX_CHAN).enumerate() {
+                    if ichan.prn == 0 {
                         // Initialize channel
-                        chan[i].prn = sv as i32 + 1;
-                        chan[i].azel[0] = azel[0];
-                        chan[i].azel[1] = azel[1];
+                        ichan.prn = sv as i32 + 1;
+                        ichan.azel[0] = azel[0];
+                        ichan.azel[1] = azel[1];
                         // C/A code generation
-                        codegen(&mut chan[i].ca, chan[i].prn);
+                        codegen(&mut ichan.ca, ichan.prn);
                         // Generate subframe
-                        eph2sbf(&eph[sv], ionoutc, &mut chan[i].sbf);
+                        eph2sbf(&eph[sv], ionoutc, &mut ichan.sbf);
                         // Generate navigation message
-                        chan[i].generate_nav_msg(grx, true);
+                        ichan.generate_nav_msg(grx, true);
                         // Initialize pseudorange
-                        compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz0);
-                        chan[i].rho0 = rho;
+                        let rho = compute_range(&eph[sv], ionoutc, grx, xyz);
+                        ichan.rho0 = rho;
                         // Initialize carrier phase
                         // r_xyz = rho.range;
-                        compute_range(&mut rho, &eph[sv], ionoutc, grx, &ref_0);
+                        // below line does nothing
+                        // let _rho =
+                        //     compute_range(&eph[sv], ionoutc, grx, &ref_0);
                         // r_ref = rho.range;
                         phase_ini = 0.0; // TODO: Must initialize properly
                         //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
                         // #ifdef FLOAT_CARR_PHASE
-                        //                         chan[i].carr_phase =
+                        //                         ichan.carr_phase =
                         // phase_ini - floor(phase_ini);
                         // #else
                         phase_ini -= phase_ini.floor();
-                        chan[i].carr_phase =
-                            (512.0 * 65536.0 * phase_ini) as u32;
+                        ichan.carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
                         break;
                     }
-                    i += 1;
+                    channel_index = i + 1;
                 }
                 // Set satellite allocation channel
-                if i < MAX_CHAN {
-                    allocated_sat[sv] = i as i32;
+                if channel_index < MAX_CHAN {
+                    allocated_sat[sv] = channel_index as i32;
                 }
             }
         } else if allocated_sat[sv] >= 0 {
