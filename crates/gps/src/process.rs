@@ -368,7 +368,8 @@ pub fn process(params: Params) -> i32 {
     // Generate baseband signals
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
-    grx = grx.add_secs(0.1);
+    const INTERVAL: f64 = 0.1;
+    grx = grx.add_secs(INTERVAL);
     // 主循环：遍历每个时间间隔（0.1秒）
     for iumd in 1..numd {
         // 第一步：更新所有通道的伪距、相位和增益参数
@@ -410,7 +411,7 @@ pub fn process(params: Params) -> i32 {
                 // Update code phase and data bit counters
                 chan[i].azel.copy_from_slice(&rho.azel);
                 // 计算码相位（C/A码偏移）
-                compute_code_phase(&mut chan[i], rho, 0.1);
+                compute_code_phase(&mut chan[i], rho, INTERVAL);
                 chan[i].carr_phasestep =
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
@@ -643,7 +644,7 @@ pub fn process(params: Params) -> i32 {
         }
         // 第九步：更新时间并显示进度
         // Update receiver time
-        grx = grx.add_secs(0.1);
+        grx = grx.add_secs(INTERVAL);
 
         // Update time counter
         eprint!("\rTime into run = {:4.1}\0", grx.diff_secs(&g0));
