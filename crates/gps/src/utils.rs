@@ -378,42 +378,14 @@ pub fn compute_range(
     rho.range += rho.iono_delay;
 }
 
-pub fn check_sat_visibility(
-    eph: &Ephemeris, g: &GpsTime, xyz_0: &[f64; 3], elv_mask: f64,
-    azel: &mut [f64; 2],
-) -> i32 {
-    let mut llh: [f64; 3] = [0.; 3];
-    let mut neu: [f64; 3] = [0.; 3];
-    // let mut pos: [f64; 3] = [0.; 3];
-    // let mut vel: [f64; 3] = [0.; 3];
-    // modified from [f64;3] to [f64;2]
-    // let mut clk: [f64; 2] = [0.; 2];
-    let mut los: [f64; 3] = [0.; 3];
-    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-    if !eph.vflg {
-        return -1; // Invalid
-    }
-    xyz2llh(xyz_0, &mut llh);
-    ltcmat(&llh, &mut tmat);
-    let (pos, _vel, _clk) = eph.satpos(g);
-    sub_vect(&mut los, &pos, xyz_0);
-    ecef2neu(&los, &tmat, &mut neu);
-    neu2azel(azel, &neu);
-    if azel[1] * R2D > elv_mask {
-        return 1; // Visible
-    }
-    0 // Invisible
-}
-
 pub fn allocate_channel(
     chan: &mut [Channel; MAX_CHAN], eph: &mut [Ephemeris; MAX_SAT],
-    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz_0: &[f64; 3], _elv_mask: f64,
+    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz0: &[f64; 3], _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0;
-    let mut azel: [f64; 2] = [0.; 2];
     let mut rho: TimeRange = TimeRange {
-        g: GpsTime { week: 0, sec: 0. },
+        g: GpsTime::default(),
         range: 0.,
         rate: 0.,
         d: 0.,
@@ -427,7 +399,9 @@ pub fn allocate_channel(
     // let mut r_xyz: f64;
     let mut phase_ini: f64;
     for sv in 0..MAX_SAT {
-        if check_sat_visibility(&eph[sv], grx, xyz_0, 0.0, &mut azel) == 1 {
+        if let Some((azel, true)) =
+            &eph[sv].check_sat_visibility(grx, xyz0, 0.0)
+        {
             nsat += 1; // Number of visible satellites
             if allocated_sat[sv] == -1 {
                 // Visible but not allocated
@@ -447,7 +421,7 @@ pub fn allocate_channel(
                         // Generate navigation message
                         chan[i].generate_nav_msg(grx, true);
                         // Initialize pseudorange
-                        compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz_0);
+                        compute_range(&mut rho, &eph[sv], ionoutc, grx, xyz0);
                         chan[i].rho0 = rho;
                         // Initialize carrier phase
                         // r_xyz = rho.range;

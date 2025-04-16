@@ -1,6 +1,7 @@
 use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
+    utils::{ecef2neu, ltcmat, neu2azel, sub_vect, xyz2llh},
 };
 ///  Structure representing ephemeris of a single satellite
 #[allow(non_snake_case)]
@@ -156,5 +157,33 @@ impl Ephemeris {
         (pos, vel, clk)
         // clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic -
         // eph.tgd; clk[1] = eph.af1 + 2.0 * tk * eph.af2;
+    }
+
+    #[inline]
+    pub fn check_sat_visibility(
+        &self, time: &GpsTime, xyz_0: &[f64; 3], elv_mask: f64,
+    ) -> Option<([f64; 2], bool)> {
+        if !self.vflg {
+            return None; // Invalid
+        }
+        let mut llh: [f64; 3] = [0.; 3];
+        let mut neu: [f64; 3] = [0.; 3];
+        // let mut pos: [f64; 3] = [0.; 3];
+        // let mut vel: [f64; 3] = [0.; 3];
+        // modified from [f64;3] to [f64;2]
+        // let mut clk: [f64; 2] = [0.; 2];
+        let mut los: [f64; 3] = [0.; 3];
+        let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
+        xyz2llh(xyz_0, &mut llh);
+        ltcmat(&llh, &mut tmat);
+        let (pos, _vel, _clk) = self.satpos(time);
+        sub_vect(&mut los, &pos, xyz_0);
+        ecef2neu(&los, &tmat, &mut neu);
+        let mut azel: [f64; 2] = [0.0; 2];
+        neu2azel(&mut azel, &neu);
+        if azel[1] * R2D <= elv_mask {
+            return Some((azel, false)); // Invisible
+        }
+        Some((azel, true)) // Visible
     }
 }
