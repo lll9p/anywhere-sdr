@@ -162,93 +162,6 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
     }
 }
 
-/// \brief Compute Satellite position, velocity and clock at given time
-///
-/// Computing Satellite Velocity using the Broadcast Ephemeris
-/// <http://www.ngs.noaa.gov/gps-toolbox/bc_velo.htm>
-/// \param[in] eph Ephemeris data of the satellite
-/// \param[in] g GPS time at which position is to be computed
-/// \param[out] pos Computed position (vector)
-/// \param[out] vel Computed velocity (vector)
-/// \param[clk] clk Computed clock
-pub fn satpos(
-    eph: &Ephemeris,
-    g: &GpsTime, /* , pos: &mut [f64; 3], vel: &mut [f64; 3],
-                 * clk: &mut [f64; 2], */
-) -> ([f64; 3], [f64; 3], [f64; 2]) {
-    let mut tk = g.sec - eph.toe.sec;
-    if tk > SECONDS_IN_HALF_WEEK {
-        tk -= SECONDS_IN_WEEK;
-    } else if tk < -SECONDS_IN_HALF_WEEK {
-        tk += SECONDS_IN_WEEK;
-    }
-    let mk = eph.m0 + eph.n * tk;
-    let mut ek = mk;
-    let mut ekold = ek + 1.0;
-    let mut one_minusecos_e = 0.0; // Suppress the uninitialized warning.
-    while (ek - ekold).abs() > 1.0e-14 {
-        ekold = ek;
-        one_minusecos_e = 1.0 - eph.ecc * ekold.cos();
-        ek += (mk - ekold + eph.ecc * (ekold.sin())) / one_minusecos_e;
-    }
-    let sek = ek.sin();
-    let cek = ek.cos();
-    let ekdot = eph.n / one_minusecos_e;
-    let relativistic = -4.442_807_633E-10 * eph.ecc * eph.sqrta * sek;
-    let pk = (eph.sq1e2 * sek).atan2(cek - eph.ecc) + eph.aop;
-    let pkdot = eph.sq1e2 * ekdot / one_minusecos_e;
-    let s2pk = (2.0 * pk).sin();
-    let c2pk = (2.0 * pk).cos();
-    let uk = pk + eph.cus * s2pk + eph.cuc * c2pk;
-    let suk = uk.sin();
-    let cuk = uk.cos();
-    let ukdot = pkdot * (1.0 + 2.0 * (eph.cus * c2pk - eph.cuc * s2pk));
-    let rk = eph.A * one_minusecos_e + eph.crc * c2pk + eph.crs * s2pk;
-    let rkdot = eph.A * eph.ecc * sek * ekdot
-        + 2.0 * pkdot * (eph.crs * c2pk - eph.crc * s2pk);
-    let ik = eph.inc0 + eph.idot * tk + eph.cic * c2pk + eph.cis * s2pk;
-    let sik = ik.sin();
-    let cik = ik.cos();
-    let ikdot = eph.idot + 2.0 * pkdot * (eph.cis * c2pk - eph.cic * s2pk);
-    let xpk = rk * cuk;
-    let ypk = rk * suk;
-    let xpkdot = rkdot * cuk - ypk * ukdot;
-    let ypkdot = rkdot * suk + xpk * ukdot;
-    let ok = eph.omg0 + tk * eph.omgkdot - OMEGA_EARTH * eph.toe.sec;
-    let sok = ok.sin();
-    let cok = ok.cos();
-    let pos = [
-        xpk * cok - ypk * cik * sok,
-        xpk * sok + ypk * cik * cok,
-        ypk * sik,
-    ];
-    // pos[0] = xpk * cok - ypk * cik * sok;
-    // pos[1] = xpk * sok + ypk * cik * cok;
-    // pos[2] = ypk * sik;
-    let tmp = ypkdot * cik - ypk * sik * ikdot;
-    let vel = [
-        -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok,
-        eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok,
-        ypk * cik * ikdot + ypkdot * sik,
-    ];
-    // vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
-    // vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
-    // vel[2] = ypk * cik * ikdot + ypkdot * sik;
-    let mut tk = g.sec - eph.toc.sec;
-    if tk > SECONDS_IN_HALF_WEEK {
-        tk -= SECONDS_IN_WEEK;
-    } else if tk < -SECONDS_IN_HALF_WEEK {
-        tk += SECONDS_IN_WEEK;
-    }
-    let clk = [
-        eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic - eph.tgd,
-        eph.af1 + 2.0 * tk * eph.af2,
-    ];
-    (pos, vel, clk)
-    // clk[0] = eph.af0 + tk * (eph.af1 + tk * eph.af2) + relativistic -
-    // eph.tgd; clk[1] = eph.af1 + 2.0 * tk * eph.af2;
-}
-
 /// \brief Compute Subframe from Ephemeris
 /// \param[in] eph Ephemeris of given SV
 /// \param[out] sbf Array of five sub-frames, 10 long words each
@@ -431,7 +344,7 @@ pub fn compute_range(
     let mut neu: [f64; 3] = [0.; 3];
     let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
     // SV position at time of the pseudorange observation.
-    let (mut pos, vel, clk) = satpos(eph, g);
+    let (mut pos, vel, clk) = eph.satpos(g);
     // Receiver to satellite vector and light-time.
     sub_vect(&mut los, &pos, xyz_0);
     let tau = norm_vect(&los) / SPEED_OF_LIGHT;
@@ -482,7 +395,7 @@ pub fn check_sat_visibility(
     }
     xyz2llh(xyz_0, &mut llh);
     ltcmat(&llh, &mut tmat);
-    let (pos, _vel, _clk) = satpos(eph, g);
+    let (pos, _vel, _clk) = eph.satpos(g);
     sub_vect(&mut los, &pos, xyz_0);
     ecef2neu(&los, &tmat, &mut neu);
     neu2azel(azel, &neu);
@@ -493,8 +406,8 @@ pub fn check_sat_visibility(
 }
 
 pub fn allocate_channel(
-    chan: &mut [Channel; 16], eph: &mut [Ephemeris; 32], ionoutc: &mut IonoUtc,
-    grx: &GpsTime, xyz_0: &[f64; 3], _elv_mask: f64,
+    chan: &mut [Channel; MAX_CHAN], eph: &mut [Ephemeris; MAX_SAT],
+    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz_0: &[f64; 3], _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0;
