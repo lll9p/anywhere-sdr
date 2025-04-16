@@ -74,4 +74,166 @@ impl Channel {
         // Save current pseudorange
         self.rho0 = rho1;
     }
+
+    pub fn generate_nav_msg(&mut self, time: &GpsTime, init: bool) {
+        let mut time_init: GpsTime = GpsTime { week: 0, sec: 0. };
+        let mut sbfwrd: u32;
+        let mut prevwrd: u32 = 0;
+        let mut nib: i32;
+        time_init.week = time.week;
+        time_init.sec =
+            f64::from(((time.sec + 0.5) as u32).wrapping_div(30)) * 30.0; // Align with the full frame length = 30 sec
+        self.g0 = time_init; // Data bit reference time
+
+        let wn = (time_init.week % 1024) as u32;
+        let mut tow = (time_init.sec as u32).wrapping_div(6);
+        if init {
+            // Initialize subframe 5
+            prevwrd = 0;
+            for iwrd in 0..N_DWRD_SBF {
+                sbfwrd = self.sbf[4][iwrd];
+                // Add TOW-count message into HOW
+                if iwrd == 1 {
+                    sbfwrd |= (tow & 0x1ffff) << 13;
+                }
+                // Compute checksum
+                sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
+                nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
+                self.dwrd[iwrd] = Self::compute_checksum(sbfwrd, nib);
+                prevwrd = self.dwrd[iwrd];
+            }
+        } else {
+            // Save subframe 5
+            for iwrd in 0..N_DWRD_SBF {
+                self.dwrd[iwrd] = self.dwrd[N_DWRD_SBF * N_SBF + iwrd];
+                prevwrd = self.dwrd[iwrd];
+            }
+            /*
+            // Sanity check
+            if (((chan->dwrd[1])&(0x1FFFFUL<<13)) != ((tow&0x1FFFFUL)<<13))
+            {
+                fprintf(stderr, "\nWARNING: Invalid TOW in subframe 5.\n");
+                return(0);
+            }
+            */
+        }
+        for isbf in 0..N_SBF {
+            tow = tow.wrapping_add(1);
+
+            for iwrd in 0..N_DWRD_SBF {
+                sbfwrd = self.sbf[isbf][iwrd];
+                // Add transmission week number to Subframe 1
+                if isbf == 0 && iwrd == 2 {
+                    sbfwrd |= (wn & 0x3ff) << 20;
+                }
+                // Add TOW-count message into HOW
+                if iwrd == 1 {
+                    sbfwrd |= (tow & 0x1ffff) << 13;
+                }
+                // Compute checksum
+                sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
+                nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
+                self.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] =
+                    Self::compute_checksum(sbfwrd, nib);
+                prevwrd = self.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd];
+            }
+        }
+    }
+
+    ///  \brief Compute the Checksum for one given word of a subframe
+    ///  \param[in] source The input data
+    ///  \param[in] nib Does this word contain non-information-bearing bits?
+    ///  \returns Computed Checksum
+    #[allow(non_snake_case)]
+    #[inline]
+    pub fn compute_checksum(source: u32, nib: i32) -> u32 {
+        /*
+        Bits 31 to 30 = 2 LSBs of the previous transmitted word, D29* and D30*
+        Bits 29 to  6 = Source data bits, d1, d2, ..., d24
+        Bits  5 to  0 = Empty parity bits
+        */
+
+        /*
+        Bits 31 to 30 = 2 LSBs of the previous transmitted word, D29* and D30*
+        Bits 29 to  6 = Data bits transmitted by the SV, D1, D2, ..., D24
+        Bits  5 to  0 = Computed parity bits, D25, D26, ..., D30
+        */
+
+        /*
+                          1            2           3
+        bit    12 3456 7890 1234 5678 9012 3456 7890
+        ---    -------------------------------------
+        D25    11 1011 0001 1111 0011 0100 1000 0000
+        D26    01 1101 1000 1111 1001 1010 0100 0000
+        D27    10 1110 1100 0111 1100 1101 0000 0000
+        D28    01 0111 0110 0011 1110 0110 1000 0000
+        D29    10 1011 1011 0001 1111 0011 0100 0000
+        D30    00 1011 0111 1010 1000 1001 1100 0000
+        */
+        let bmask: [u32; 6] = [
+            0x3b1f_3480,
+            0x1d8f_9a40,
+            0x2ec7_cd00,
+            0x1763_e680,
+            0x2bb1_f340,
+            0x0b7a_89c0,
+        ];
+        let mut D: u32;
+        let mut d: u32 = source & 0x3fff_ffc0;
+        let D29: u32 = source >> 31 & 0x1;
+        let D30: u32 = source >> 30 & 0x1;
+        if nib != 0 {
+            // Non-information bearing bits for word 2 and 10
+            /*
+            Solve bits 23 and 24 to preserve parity check
+            with zeros in bits 29 and 30.
+            */
+            if D30
+                .wrapping_add((bmask[4] & d).count_ones())
+                .wrapping_rem(2)
+                != 0
+            {
+                d ^= 0x1 << 6;
+            }
+            if D29
+                .wrapping_add((bmask[5] & d).count_ones())
+                .wrapping_rem(2)
+                != 0
+            {
+                d ^= 0x1 << 7;
+            }
+        }
+        D = d;
+        if D30 != 0 {
+            D ^= 0x3fff_ffc0;
+        }
+        D |= D29
+            .wrapping_add((bmask[0] & d).count_ones())
+            .wrapping_rem(2)
+            << 5;
+        D |= D30
+            .wrapping_add((bmask[1] & d).count_ones())
+            .wrapping_rem(2)
+            << 4;
+        D |= D29
+            .wrapping_add((bmask[2] & d).count_ones())
+            .wrapping_rem(2)
+            << 3;
+        D |= D30
+            .wrapping_add((bmask[3] & d).count_ones())
+            .wrapping_rem(2)
+            << 2;
+        D |= D30
+            .wrapping_add((bmask[4] & d).count_ones())
+            .wrapping_rem(2)
+            << 1;
+        D |= D29
+            .wrapping_add((bmask[5] & d).count_ones())
+            .wrapping_rem(2);
+        D &= 0x3fff_ffff;
+
+        //D |= (source & 0xC0000000UL); // Add D29* and D30* from source data
+        // bits
+        D
+    }
 }

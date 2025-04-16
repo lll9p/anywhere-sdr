@@ -11,10 +11,7 @@ use crate::{
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_llh},
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
-    utils::{
-        allocate_channel, compute_range, eph2sbf, generate_nav_msg, llh2xyz,
-        xyz2llh,
-    },
+    utils::{allocate_channel, compute_range, eph2sbf, llh2xyz, xyz2llh},
 };
 
 #[allow(clippy::too_many_lines)]
@@ -579,7 +576,7 @@ pub fn process(params: Params) -> i32 {
             // Every 30 seconds
             for ichan in chan.iter_mut().take(MAX_CHAN) {
                 if ichan.prn > 0 {
-                    generate_nav_msg(&grx, ichan, false);
+                    ichan.generate_nav_msg(&grx, false);
                 }
             }
             // Refresh ephemeris and subframes
