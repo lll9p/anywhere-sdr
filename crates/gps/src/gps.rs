@@ -10,4 +10,4 @@ mod read_user_motion;
 mod table;
 
 pub use constants::R2D;
-pub use process::{Params, date2gps, llh2xyz, process};
+pub use process::{Params, llh2xyz, process};

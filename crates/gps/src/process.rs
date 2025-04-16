@@ -212,7 +212,7 @@ impl Params {
                 params.t0.hh = i32::from(now.hour());
                 params.t0.mm = i32::from(now.minute());
                 params.t0.sec = f64::from(now.second());
-                date2gps(&params.t0, &mut params.g0);
+                params.g0 = GpsTime::from(&params.t0);
             } else {
                 let time = Self::parse_datetime(time).unwrap();
                 params.t0.y = i32::from(time.year());
@@ -221,7 +221,7 @@ impl Params {
                 params.t0.hh = i32::from(time.hour());
                 params.t0.mm = i32::from(time.minute());
                 params.t0.sec = f64::from(time.second());
-                date2gps(&params.t0, &mut params.g0);
+                params.g0 = GpsTime::from(&params.t0);
             }
         }
         if let Some(time) = time {
@@ -233,8 +233,7 @@ impl Params {
             params.t0.hh = i32::from(time.hour());
             params.t0.mm = i32::from(time.minute());
             params.t0.sec = f64::from(time.second());
-
-            date2gps(&params.t0, &mut params.g0);
+            params.g0 = GpsTime::from(&params.t0);
         }
         if let Some(duration) = duration {
             params.duration = *duration as f64;
@@ -306,46 +305,6 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
         ca[i] = (1 - g1[i] * g2[j % CA_SEQ_LEN]) / 2;
         j += 1;
     }
-}
-
-//  Convert a UTC date into a GPS date
-pub fn date2gps(t: &DateTime, g: &mut GpsTime) {
-    let doy: [i32; 12] =
-        [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-    let ye = (t).y - 1980;
-
-    // Compute the number of leap days since Jan 5/Jan 6, 1980.
-    let mut lpdays = ye / 4 + 1;
-    if ye % 4 == 0 && (t).m <= 2 {
-        lpdays -= 1;
-    }
-
-    // Compute the number of days elapsed since Jan 5/Jan 6, 1980.
-    let de = ye * 365 + doy[((t).m - 1) as usize] + (t).d + lpdays - 6;
-
-    // Convert time to GPS weeks and seconds.
-    (g).week = de / 7;
-    (g).sec = f64::from(de % 7) * SECONDS_IN_DAY
-        + f64::from((t).hh) * SECONDS_IN_HOUR
-        + f64::from((t).mm) * SECONDS_IN_MINUTE
-        + (t).sec;
-}
-
-// Convert Julian day number to calendar date
-pub fn gps2date(g: &GpsTime, t: &mut DateTime) {
-    let c = (f64::from(7 * (g).week)
-        + ((g).sec / 86400.0).floor()
-        + 2_444_245.0) as i32
-        + 1537;
-    let d = ((f64::from(c) - 122.1f64) / 365.25f64) as i32;
-    let e = 365 * d + d / 4;
-    let f = (f64::from(c - e) / 30.6001) as i32;
-    (t).d = c - e - (30.6001 * f64::from(f)) as i32;
-    (t).m = f - 1 - 12 * (f / 14);
-    (t).y = d - 4715 - (7 + (t).m) / 10;
-    (t).hh = ((g).sec / 3600.0) as i32 % 24;
-    (t).mm = ((g).sec / 60.0) as i32 % 60;
-    (t).sec = g.sec - 60.0 * ((g).sec / 60.0).floor();
 }
 ///  Convert Earth-centered Earth-fixed (ECEF) into Lat/Long/Height
 ///  \param[in] xyz Input Array of X, Y and Z ECEF coordinates
@@ -783,28 +742,6 @@ pub fn compute_checksum(source: u32, nib: i32) -> u32 {
     D
 }
 
-pub fn sub_gps_time(g1: GpsTime, g0: GpsTime) -> f64 {
-    let mut dt = g1.sec - g0.sec;
-    dt += f64::from(g1.week - g0.week) * SECONDS_IN_WEEK;
-    dt
-}
-
-pub fn inc_gps_time(g0: GpsTime, dt: f64) -> GpsTime {
-    let mut g1: GpsTime = GpsTime { week: 0, sec: 0. };
-    g1.week = g0.week;
-    g1.sec = g0.sec + dt;
-    g1.sec = (g1.sec * 1000.0).round() / 1000.0; // Avoid rounding error
-    while g1.sec >= SECONDS_IN_WEEK {
-        g1.sec -= SECONDS_IN_WEEK;
-        g1.week += 1;
-    }
-    while g1.sec < 0.0 {
-        g1.sec += SECONDS_IN_WEEK;
-        g1.week -= 1;
-    }
-    g1
-}
-
 #[allow(non_snake_case)]
 pub fn ionospheric_delay(
     ionoutc: &IonoUtc, g: &GpsTime, llh: &[f64; 3], azel: &[f64; 2],
@@ -940,7 +877,7 @@ pub fn compute_code_phase(chan: &mut Channel, rho1: Range, dt: f64) {
     chan.f_carr = -rhorate / LAMBDA_L1;
     chan.f_code = CODE_FREQ + chan.f_carr * CARR_TO_CODE;
     // Initial code phase and data bit counters.
-    let ms = (sub_gps_time(chan.rho0.g, chan.g0) + 6.0
+    let ms = (chan.rho0.g.diff_secs(&chan.g0) + 6.0
         - chan.rho0.range / SPEED_OF_LIGHT)
         * 1000.0;
     let mut ims = ms as i32;
@@ -1302,12 +1239,15 @@ pub fn process(params: Params) -> i32 {
     if g0.week >= 0 {
         // Scenario start time has been set.
         if timeoverwrite {
-            let mut gtmp: GpsTime = GpsTime::default();
-            let mut ttmp: DateTime = DateTime::default();
-            gtmp.week = g0.week;
-            gtmp.sec = f64::from(g0.sec as i32 / 7200) * 7200.0;
+            let mut gtmp = GpsTime {
+                week: g0.week,
+                sec: f64::from(g0.sec as i32 / 7200) * 7200.0,
+            };
+            // let mut gtmp: GpsTime = GpsTime::default();
+            // gtmp.week = g0.week;
+            // gtmp.sec = f64::from(g0.sec as i32 / 7200) * 7200.0;
             // Overwrite the UTC reference week number
-            let dsec = sub_gps_time(gtmp, gmin);
+            let dsec = gtmp.diff_secs(&gmin);
             ionoutc.wnt = gtmp.week;
             ionoutc.tot = gtmp.sec as i32;
             // Iono/UTC parameters may no longer valid
@@ -1315,18 +1255,16 @@ pub fn process(params: Params) -> i32 {
             for sv in 0..MAX_SAT {
                 for i_eph in eph.iter_mut().take(neph) {
                     if i_eph[sv].vflg {
-                        gtmp = inc_gps_time(i_eph[sv].toc, dsec);
-                        gps2date(&gtmp, &mut ttmp);
+                        gtmp = i_eph[sv].toc.add_secs(dsec);
+                        let ttmp = DateTime::from(&gtmp);
                         i_eph[sv].toc = gtmp;
                         i_eph[sv].t = ttmp;
-                        gtmp = inc_gps_time(i_eph[sv].toe, dsec);
+                        gtmp = i_eph[sv].toe.add_secs(dsec);
                         i_eph[sv].toe = gtmp;
                     }
                 }
             }
-        } else if sub_gps_time(g0, gmin) < 0.0
-            || sub_gps_time(gmax, g0) < 0.0f64
-        {
+        } else if g0.diff_secs(&gmin) < 0.0 || gmax.diff_secs(&g0) < 0.0f64 {
             eprintln!("ERROR: Invalid start time.");
             eprintln!(
                 "tmin = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
@@ -1369,7 +1307,7 @@ pub fn process(params: Params) -> i32 {
     for (i, eph_item) in eph.iter().enumerate().take(neph) {
         for e in eph_item.iter().take(MAX_SAT) {
             if e.vflg {
-                let dt = sub_gps_time(g0, e.toc);
+                let dt = g0.diff_secs(&e.toc);
                 if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
                     ieph = i;
                     break;
@@ -1442,7 +1380,7 @@ pub fn process(params: Params) -> i32 {
     // Clear satellite allocation flag
     allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
     // Initial reception time
-    let mut grx = inc_gps_time(g0, 0.0);
+    let mut grx = g0.add_secs(0.0);
     // Allocate visible satellites
     allocate_channel(
         &mut chan,
@@ -1478,7 +1416,7 @@ pub fn process(params: Params) -> i32 {
     // Generate baseband signals
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
-    grx = inc_gps_time(grx, 0.1);
+    grx = grx.add_secs(0.1);
     for iumd in 1..numd {
         for i in 0..MAX_CHAN {
             if chan[i].prn > 0 {
@@ -1670,7 +1608,7 @@ pub fn process(params: Params) -> i32 {
             // Quick and dirty fix. Need more elegant way.
             for sv in 0..MAX_SAT {
                 if eph[ieph + 1][sv].vflg {
-                    let dt = sub_gps_time(eph[ieph + 1][sv].toc, grx);
+                    let dt = eph[ieph + 1][sv].toc.diff_secs(&grx);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;
                         // for i in 0..MAX_CHAN {
@@ -1729,10 +1667,10 @@ pub fn process(params: Params) -> i32 {
             }
         }
         // Update receiver time
-        grx = inc_gps_time(grx, 0.1);
+        grx = grx.add_secs(0.1);
 
         // Update time counter
-        eprint!("\rTime into run = {:4.1}\0", sub_gps_time(grx, g0));
+        eprint!("\rTime into run = {:4.1}\0", grx.diff_secs(&g0));
         // todo: temporarily disable
         // fflush(stdout);
         // iumd += 1;

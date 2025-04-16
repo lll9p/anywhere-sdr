@@ -5,7 +5,6 @@ use crate::{
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     ionoutc::IonoUtc,
-    process::{date2gps, sub_gps_time},
 };
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.replace('D', "E").parse()
@@ -27,7 +26,6 @@ pub fn read_rinex_nav_all(
     // read header
     let lines = content.lines();
     let mut processing_header = true;
-    let mut g = GpsTime::default();
     let mut g0 = GpsTime::default();
     let mut t = DateTime::default();
     let mut lines_of_headers: usize = 0;
@@ -88,7 +86,8 @@ pub fn read_rinex_nav_all(
             t.hh = strncpy(12, 2).trim().parse::<i32>()?;
             t.mm = strncpy(15, 2).trim().parse::<i32>()?;
             t.sec = strncpy(18, 2).trim().parse::<f64>()?;
-            date2gps(&t, &mut g);
+            let g = GpsTime::from(&t);
+            // date2gps(&t, &mut g);
             // let g = GpsTime::from(&t);
 
             // if first line of block
@@ -96,7 +95,7 @@ pub fn read_rinex_nav_all(
                 g0 = g;
             }
             // Check current time of clock
-            let dt = sub_gps_time(g, g0);
+            let dt = g.diff_secs(&g0);
             if dt > SECONDS_IN_HOUR {
                 g0 = g;
                 ieph += 1; // a new set of ephemerides
