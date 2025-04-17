@@ -92,19 +92,19 @@ pub fn read_rinex_nav_all(
 
             // if first line of block
             if iline == 0 {
-                g0 = g;
+                g0 = g.clone();
             }
             // Check current time of clock
             let dt = g.diff_secs(&g0);
             if dt > SECONDS_IN_HOUR {
-                g0 = g;
+                g0 = g.clone();
                 ieph += 1; // a new set of ephemerides
                 if ieph >= EPHEM_ARRAY_SIZE {
                     break;
                 }
             }
             // Date and time
-            data[ieph][sv].t = t;
+            data[ieph][sv].t = t.clone();
             // SV CLK
             data[ieph][sv].toc = g;
             data[ieph][sv].af0 = parse_f64(strncpy(22, 19).trim())?;

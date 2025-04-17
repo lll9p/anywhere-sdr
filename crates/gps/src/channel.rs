@@ -71,7 +71,7 @@ impl Channel {
     ///  \param[in] rho1 Current range, after \a dt has expired
     ///  \param[in dt delta-t (time difference) in seconds
     #[inline]
-    pub fn compute_code_phase(&mut self, rho1: TimeRange, dt: f64) {
+    pub fn compute_code_phase(&mut self, rho1: &TimeRange, dt: f64) {
         // Pseudorange rate.
         let rhorate = (rho1.range - self.rho0.range) / dt;
         // Carrier and code frequency.
@@ -94,21 +94,22 @@ impl Channel {
             * 2
             - 1;
         // Save current pseudorange
-        self.rho0 = rho1;
+        self.rho0 = rho1.clone();
     }
 
     pub fn generate_nav_msg(&mut self, time: &GpsTime, init: bool) {
-        let mut time_init: GpsTime = GpsTime { week: 0, sec: 0. };
+        let mut time_init = GpsTime::default();
         let mut sbfwrd: u32;
         let mut prevwrd: u32 = 0;
         let mut nib: i32;
         time_init.week = time.week;
         time_init.sec =
             f64::from(((time.sec + 0.5) as u32).wrapping_div(30)) * 30.0; // Align with the full frame length = 30 sec
-        self.g0 = time_init; // Data bit reference time
 
         let wn = (time_init.week % 1024) as u32;
         let mut tow = (time_init.sec as u32).wrapping_div(6);
+        self.g0 = time_init; // Data bit reference time
+
         if init {
             // Initialize subframe 5
             prevwrd = 0;

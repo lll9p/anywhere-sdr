@@ -364,7 +364,7 @@ pub fn compute_range(
     // Pseudorange rate.
     rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];
     // Time of application.
-    rho.time = *time;
+    rho.time = time.clone();
 
     // Azimuth and elevation angles.
     let mut llh: [f64; 3] = [0.; 3];

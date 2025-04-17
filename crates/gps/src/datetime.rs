@@ -1,6 +1,6 @@
 use crate::constants::*;
 // Structure representing GPS time
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 // #[repr(C)]
 pub struct GpsTime {
     // GPS week number (since January 1980)
@@ -59,7 +59,7 @@ impl From<&DateTime> for GpsTime {
 }
 
 //  Structure repreenting UTC time
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 // #[repr(C)]
 pub struct DateTime {
     // < Calendar year
@@ -103,7 +103,7 @@ impl From<&GpsTime> for DateTime {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TimeRange {
     pub time: GpsTime,
     // pseudorange

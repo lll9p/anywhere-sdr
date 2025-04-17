@@ -6,7 +6,7 @@ use crate::{
 ///  Structure representing ephemeris of a single satellite
 #[allow(non_snake_case)]
 // #[repr(C)]
-#[derive(Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Ephemeris {
     /// Valid Flag
     pub vflg: bool,

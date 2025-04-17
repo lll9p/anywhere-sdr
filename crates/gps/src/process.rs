@@ -20,7 +20,8 @@ pub fn process(params: Params) -> i32 {
 
     let mut fp_out: Option<std::fs::File>;
     let mut ephemerides: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
-        [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
+        std::array::from_fn(|_| std::array::from_fn(|_| Ephemeris::default()));
+    // [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
     let mut chan: [Channel; MAX_CHAN] =
         std::array::from_fn(|_| Channel::default());
     let elvmask: f64 = 0.0;
@@ -148,8 +149,8 @@ pub fn process(params: Params) -> i32 {
     }
     for sv in 0..MAX_SAT {
         if ephemerides[0][sv].vflg {
-            gmin = ephemerides[0][sv].toc;
-            tmin = ephemerides[0][sv].t;
+            gmin = ephemerides[0][sv].toc.clone();
+            tmin = ephemerides[0][sv].t.clone();
             break;
         }
     }
@@ -164,8 +165,8 @@ pub fn process(params: Params) -> i32 {
 
     for sv in 0..MAX_SAT {
         if ephemerides[ephemeris_count - 1][sv].vflg {
-            gmax = ephemerides[ephemeris_count - 1][sv].toc;
-            tmax = ephemerides[ephemeris_count - 1][sv].t;
+            gmax = ephemerides[ephemeris_count - 1][sv].toc.clone();
+            tmax = ephemerides[ephemeris_count - 1][sv].t.clone();
             break;
         }
     }
@@ -381,7 +382,7 @@ pub fn process(params: Params) -> i32 {
                 // Update code phase and data bit counters
                 chan[i].azel.copy_from_slice(&rho.azel);
                 // 计算码相位（C/A码偏移）
-                chan[i].compute_code_phase(rho, INTERVAL);
+                chan[i].compute_code_phase(&rho, INTERVAL);
                 chan[i].carr_phasestep =
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
@@ -560,6 +561,7 @@ pub fn process(params: Params) -> i32 {
                         .toc
                         .diff_secs(&receiver_gps_time);
                     if dt < SECONDS_IN_HOUR {
+                        // move next set of ephemeris
                         ieph += 1;
                         for ichan in chan.iter_mut().take(MAX_CHAN) {
                             // Generate new subframes if allocated

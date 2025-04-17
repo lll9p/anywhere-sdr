@@ -179,7 +179,7 @@ impl std::fmt::Display for Location {
     }
 }
 /// ECEF format
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Ecef {
     pub x: f64,
     pub y: f64,
@@ -323,7 +323,7 @@ impl LocationMath for Neu {
 // north, east, up }     }
 // }
 /// bearing + Elevation
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Azel {
     pub az: f64,
     pub el: f64,
