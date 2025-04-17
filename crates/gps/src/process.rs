@@ -4,7 +4,7 @@ use std::{io::Write, time::Instant};
 use crate::{
     channel::Channel,
     constants::*,
-    datetime::{DateTime, GpsTime, TimeRange},
+    datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     params::Params,
     read_nmea_gga::read_nmea_gga,
@@ -21,25 +21,8 @@ pub fn process(params: Params) -> i32 {
     let mut fp_out: Option<std::fs::File>;
     let mut ephemerides: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
         [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
-    let mut chan: [Channel; MAX_CHAN] = [Channel {
-        prn: 0,
-        ca: [0; CA_SEQ_LEN],
-        f_carr: 0.,
-        f_code: 0.,
-        carr_phase: 0,
-        carr_phasestep: 0,
-        code_phase: 0.,
-        g0: GpsTime::default(),
-        sbf: [[0; N_DWRD_SBF]; N_SBF],
-        dwrd: [0; N_DWRD],
-        iword: 0,
-        ibit: 0,
-        icode: 0,
-        dataBit: 0,
-        codeCA: 0,
-        azel: [0.; 2],
-        rho0: TimeRange::default(),
-    }; MAX_CHAN];
+    let mut chan: [Channel; MAX_CHAN] =
+        std::array::from_fn(|_| Channel::default());
     let elvmask: f64 = 0.0;
 
     // Default options

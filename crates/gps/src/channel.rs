@@ -5,7 +5,6 @@ use crate::{
 
 ///  Structure representing a Channel
 #[allow(non_snake_case)]
-#[derive(Copy, Clone)]
 pub struct Channel {
     /// PRN Number(Pseudorandom Noise)
     pub prn: i32,
@@ -42,6 +41,29 @@ pub struct Channel {
     pub codeCA: i32,
     pub azel: [f64; 2],
     pub rho0: TimeRange,
+}
+impl Default for Channel {
+    fn default() -> Self {
+        Self {
+            prn: 0,
+            ca: [0; CA_SEQ_LEN],
+            f_carr: 0.0,
+            f_code: 0.0,
+            carr_phase: 0,
+            carr_phasestep: 0,
+            code_phase: 0.0,
+            g0: GpsTime { week: 0, sec: 0. },
+            sbf: [[0; N_DWRD_SBF]; 5],
+            dwrd: [0; N_DWRD],
+            iword: 0,
+            ibit: 0,
+            icode: 0,
+            dataBit: 0,
+            codeCA: 0,
+            azel: [0.0; 2],
+            rho0: TimeRange::default(),
+        }
+    }
 }
 impl Channel {
     ///  \brief Compute the code phase for a given channel (satellite)
