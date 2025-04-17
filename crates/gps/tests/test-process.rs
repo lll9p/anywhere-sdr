@@ -1,3 +1,4 @@
+#![cfg(not(debug_assertions))]
 use std::{path::PathBuf, process::Command, sync::LazyLock};
 
 use anyhow::Result;

@@ -19,7 +19,7 @@ pub fn process(params: Params) -> i32 {
     let mut allocated_sat: [i32; MAX_SAT] = [0; MAX_SAT];
 
     let mut fp_out: Option<std::fs::File>;
-    let mut eph: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
+    let mut ephemerides: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
         [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
     let mut chan: [Channel; MAX_CHAN] = [Channel {
         prn: 0,
@@ -46,16 +46,16 @@ pub fn process(params: Params) -> i32 {
     // let mut umfile: [libc::c_char; 100] = [0; 100];
     // let mut navfile: [libc::c_char; 100] = [0; 100];
     // let mut outfile: [libc::c_char; 100] = [0; 100];
-    let mut gain: [i32; MAX_CHAN] = [0; MAX_CHAN];
-    let mut ant_pat: [f64; 37] = [0.; 37];
+    let mut antenna_gains: [i32; MAX_CHAN] = [0; MAX_CHAN];
+    let mut antenna_pattern: [f64; 37] = [0.; 37];
     let mut tmin = DateTime::default();
     let mut tmax = DateTime::default();
     let mut gmin = GpsTime::default();
     let mut gmax = GpsTime::default();
     let navfile = params.navfile;
-    let umfile = params.umfile;
-    let nmea_gga = params.nmea_gga;
-    let um_llh = params.um_llh;
+    let user_motion_file = params.umfile;
+    let use_nmea_gga = params.nmea_gga;
+    let use_um_llh = params.um_llh;
     let mut static_location_mode = params.static_location_mode;
     let mut xyz = params.xyz;
     let mut llh = params.llh;
@@ -71,7 +71,7 @@ pub fn process(params: Params) -> i32 {
     let path_loss_enable = params.path_loss_enable;
     let verb = params.verb;
 
-    if umfile.is_none() && !static_location_mode {
+    if user_motion_file.is_none() && !static_location_mode {
         // Default static location; Tokyo
         static_location_mode = true;
         llh[0] = 35.681_298 / R2D;
@@ -95,7 +95,7 @@ pub fn process(params: Params) -> i32 {
     ////////////////////////////////////////////////////////////
     // Receiver position
     ////////////////////////////////////////////////////////////
-    let numd = if static_location_mode {
+    let user_motion_count = if static_location_mode {
         // Static geodetic coordinates input mode: "-l"
         // Added by scateu@gmail.com
         eprintln!("Using static location mode.");
@@ -104,10 +104,10 @@ pub fn process(params: Params) -> i32 {
         // Set simulation duration
         iduration
     } else {
-        let umfilex = umfile.clone().unwrap();
-        let numd = if nmea_gga {
+        let umfilex = user_motion_file.clone().unwrap();
+        let numd = if use_nmea_gga {
             read_nmea_gga(&mut xyz, &umfilex)
-        } else if um_llh {
+        } else if use_um_llh {
             read_user_motion_llh(&mut xyz, &umfilex)
         } else {
             read_user_motion(&mut xyz, &umfilex)
@@ -139,10 +139,12 @@ pub fn process(params: Params) -> i32 {
     // let c_string = CString::new(navfile).unwrap();
     // let navff = c_string.into_raw();
     // let neph = readRinexNavAll(&mut eph, &mut ionoutc, navff);
-    let Ok(neph) = read_rinex_nav_all(&mut eph, &mut ionoutc, &navfile) else {
+    let Ok(ephemeris_count) =
+        read_rinex_nav_all(&mut ephemerides, &mut ionoutc, &navfile)
+    else {
         panic!("ERROR: ephemeris file not found or error.");
     };
-    assert_ne!(neph, 0, "ERROR: No ephemeris available.");
+    assert_ne!(ephemeris_count, 0, "ERROR: No ephemeris available.");
     if verb && ionoutc.vflg {
         eprintln!(
             "  {:12.3e} {:12.3e} {:12.3e} {:12.3e}",
@@ -162,9 +164,9 @@ pub fn process(params: Params) -> i32 {
         eprintln!("{:6}", ionoutc.dtls,);
     }
     for sv in 0..MAX_SAT {
-        if eph[0][sv].vflg {
-            gmin = eph[0][sv].toc;
-            tmin = eph[0][sv].t;
+        if ephemerides[0][sv].vflg {
+            gmin = ephemerides[0][sv].toc;
+            tmin = ephemerides[0][sv].t;
             break;
         }
     }
@@ -178,9 +180,9 @@ pub fn process(params: Params) -> i32 {
     // tmax.y = 0;
 
     for sv in 0..MAX_SAT {
-        if eph[neph - 1][sv].vflg {
-            gmax = eph[neph - 1][sv].toc;
-            tmax = eph[neph - 1][sv].t;
+        if ephemerides[ephemeris_count - 1][sv].vflg {
+            gmax = ephemerides[ephemeris_count - 1][sv].toc;
+            tmax = ephemerides[ephemeris_count - 1][sv].t;
             break;
         }
     }
@@ -203,7 +205,7 @@ pub fn process(params: Params) -> i32 {
             // Iono/UTC parameters may no longer valid
             //ionoutc.vflg = FALSE;
             for sv in 0..MAX_SAT {
-                for i_eph in eph.iter_mut().take(neph) {
+                for i_eph in ephemerides.iter_mut().take(ephemeris_count) {
                     if i_eph[sv].vflg {
                         gtmp = i_eph[sv].toc.add_secs(dsec);
                         let ttmp = DateTime::from(&gtmp);
@@ -250,11 +252,11 @@ pub fn process(params: Params) -> i32 {
         t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
     );
 
-    eprintln!("Duration = {:.1} [sec]", numd as f64 / 10.0);
+    eprintln!("Duration = {:.1} [sec]", user_motion_count as f64 / 10.0);
 
     // Select the current set of ephemerides
     let mut ieph = usize::MAX;
-    for (i, eph_item) in eph.iter().enumerate().take(neph) {
+    for (i, eph_item) in ephemerides.iter().enumerate().take(ephemeris_count) {
         for e in eph_item.iter().take(MAX_SAT) {
             if e.vflg {
                 let dt = g0.diff_secs(&e.toc);
@@ -330,13 +332,13 @@ pub fn process(params: Params) -> i32 {
     // Clear satellite allocation flag
     allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
     // Initial reception time
-    let mut grx = g0.add_secs(0.0);
+    let mut receiver_gps_time = g0.add_secs(0.0);
     // Allocate visible satellites
     allocate_channel(
         &mut chan,
-        &mut eph[ieph],
+        &mut ephemerides[ieph],
         &mut ionoutc,
-        &grx,
+        &receiver_gps_time,
         &xyz[0],
         elvmask,
         &mut allocated_sat,
@@ -358,7 +360,7 @@ pub fn process(params: Params) -> i32 {
     // Receiver antenna gain pattern
     ////////////////////////////////////////////////////////////
     for i in 0..37 {
-        ant_pat[i] = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0);
+        antenna_pattern[i] = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0);
     }
 
     ////////////////////////////////////////////////////////////
@@ -366,14 +368,14 @@ pub fn process(params: Params) -> i32 {
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
     const INTERVAL: f64 = 0.1;
-    grx = grx.add_secs(INTERVAL);
+    receiver_gps_time = receiver_gps_time.add_secs(INTERVAL);
     // 主循环：遍历每个时间间隔（0.1秒）
-    for iumd in 1..numd {
+    for user_motion_index in 1..user_motion_count {
         // 根据静态/动态模式选择接收机位置
         let current_location = if static_location_mode {
             &xyz[0]
         } else {
-            &xyz[iumd]
+            &xyz[user_motion_index]
         };
         // 第一步：更新所有通道的伪距、相位和增益参数
         for i in 0..MAX_CHAN {
@@ -386,9 +388,9 @@ pub fn process(params: Params) -> i32 {
 
                 // Current pseudorange
                 let rho = compute_range(
-                    &eph[ieph][sv],
+                    &ephemerides[ieph][sv],
                     &ionoutc,
-                    &grx,
+                    &receiver_gps_time,
                     current_location,
                 );
 
@@ -404,16 +406,16 @@ pub fn process(params: Params) -> i32 {
                 let path_loss = 20_200_000.0 / rho.distance;
                 // Receiver antenna gain
                 let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
-                let ant_gain = ant_pat[ibs];
+                let ant_gain = antenna_pattern[ibs];
                 // 计算信号增益（考虑路径损耗和天线方向图）
                 // Signal gain
                 // 应用增益模式选择
                 if path_loss_enable {
                     // 带路径损耗补偿
-                    gain[i] = (path_loss * ant_gain * 128.0) as i32; // scaled by 2^7
+                    antenna_gains[i] = (path_loss * ant_gain * 128.0) as i32; // scaled by 2^7
                 } else {
                     // 固定增益模式
-                    gain[i] = fixed_gain; // hold the power level constant
+                    antenna_gains[i] = fixed_gain; // hold the power level constant
                 }
             }
         }
@@ -435,11 +437,11 @@ pub fn process(params: Params) -> i32 {
                     let ip = chan[i].dataBit
                         * chan[i].codeCA
                         * COS_TABLE512[i_table]
-                        * gain[i];
+                        * antenna_gains[i];
                     let qp = chan[i].dataBit
                         * chan[i].codeCA
                         * SIN_TABLE512[i_table]
-                        * gain[i];
+                        * antenna_gains[i];
                     // Accumulate for all visible satellites
                     // 累加到总信号
                     i_acc += ip;
@@ -559,26 +561,29 @@ pub fn process(params: Params) -> i32 {
         // Update navigation message and channel allocation every 30 seconds
         //
         // 第八步：定期更新导航信息（每30秒）
-        let igrx = (grx.sec * 10.0 + 0.5) as i32;
+        let igrx = (receiver_gps_time.sec * 10.0 + 0.5) as i32;
         if igrx % 300 == 0 {
             // Every 30 seconds
             for ichan in chan.iter_mut().take(MAX_CHAN) {
                 if ichan.prn > 0 {
-                    ichan.generate_nav_msg(&grx, false);
+                    ichan.generate_nav_msg(&receiver_gps_time, false);
                 }
             }
             // Refresh ephemeris and subframes
             // Quick and dirty fix. Need more elegant way.
             for sv in 0..MAX_SAT {
-                if eph[ieph + 1][sv].vflg {
-                    let dt = eph[ieph + 1][sv].toc.diff_secs(&grx);
+                if ephemerides[ieph + 1][sv].vflg {
+                    let dt = ephemerides[ieph + 1][sv]
+                        .toc
+                        .diff_secs(&receiver_gps_time);
                     if dt < SECONDS_IN_HOUR {
                         ieph += 1;
                         for ichan in chan.iter_mut().take(MAX_CHAN) {
                             // Generate new subframes if allocated
                             if ichan.prn != 0_i32 {
                                 eph2sbf(
-                                    &eph[ieph][(ichan.prn - 1) as usize],
+                                    &ephemerides[ieph]
+                                        [(ichan.prn - 1) as usize],
                                     &ionoutc,
                                     &mut ichan.sbf,
                                 );
@@ -591,9 +596,9 @@ pub fn process(params: Params) -> i32 {
             // Update channel allocation
             allocate_channel(
                 &mut chan,
-                &mut eph[ieph],
+                &mut ephemerides[ieph],
                 &mut ionoutc,
-                &grx,
+                &receiver_gps_time,
                 current_location,
                 elvmask,
                 &mut allocated_sat,
@@ -618,10 +623,13 @@ pub fn process(params: Params) -> i32 {
         }
         // 第九步：更新时间并显示进度
         // Update receiver time
-        grx = grx.add_secs(INTERVAL);
+        receiver_gps_time = receiver_gps_time.add_secs(INTERVAL);
 
         // Update time counter
-        eprint!("\rTime into run = {:4.1}\0", grx.diff_secs(&g0));
+        eprint!(
+            "\rTime into run = {:4.1}\0",
+            receiver_gps_time.diff_secs(&g0)
+        );
         // todo: temporarily disable
         // fflush(stdout);
         // iumd += 1;
