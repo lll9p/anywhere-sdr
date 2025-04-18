@@ -8,7 +8,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Channel {
     /// PRN Number(Pseudorandom Noise)
-    pub prn: i32,
+    pub prn: usize,
     /// C/A Sequence
     pub ca: [i32; CA_SEQ_LEN],
     /// Carrier frequency

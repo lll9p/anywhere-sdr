@@ -124,7 +124,7 @@ pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
 /// !generate the C/A code sequence for a given Satellite Vehicle PRN
 ///  \param[in] prn PRN number of the Satellite Vehicle
 ///  \param[out] ca Caller-allocated integer array of 1023 bytes
-pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
+pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: usize) {
     let delay: [usize; 32] = [
         5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257, 258,
         469, 470, 471, 472, 473, 474, 509, 512, 513, 514, 515, 516, 859, 860,
@@ -155,7 +155,7 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
         r1[0] = c1;
         r2[0] = c2;
     }
-    let mut j = CA_SEQ_LEN - delay[(prn - 1) as usize];
+    let mut j = CA_SEQ_LEN - delay[prn - 1];
     for i in 0..CA_SEQ_LEN {
         ca[i] = (1 - g1[i] * g2[j % CA_SEQ_LEN]) / 2;
         j += 1;
@@ -236,7 +236,7 @@ pub fn allocate_channel(
                 for (i, ichan) in chan.iter_mut().take(MAX_CHAN).enumerate() {
                     if ichan.prn == 0 {
                         // Initialize channel
-                        ichan.prn = sv as i32 + 1;
+                        ichan.prn = sv + 1;
                         ichan.azel[0] = azel[0];
                         ichan.azel[1] = azel[1];
                         // C/A code generation

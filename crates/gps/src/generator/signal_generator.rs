@@ -169,7 +169,7 @@ impl SignalGenerator {
                 // 仅处理已分配卫星的通道
                 if channels[i].prn > 0 {
                     // 卫星PRN号转索引
-                    let sv = (channels[i].prn - 1) as usize;
+                    let sv = channels[i].prn - 1;
                     // 计算当前时刻的伪距（传播时延）
                     // Refresh code phase and data bit counters
 
@@ -380,9 +380,8 @@ impl SignalGenerator {
                             *ieph += 1;
                             for ichan in channels.iter_mut().take(MAX_CHAN) {
                                 // Generate new subframes if allocated
-                                if ichan.prn != 0_i32 {
-                                    ephemerides[*ieph]
-                                        [(ichan.prn - 1) as usize]
+                                if ichan.prn != 0 {
+                                    ephemerides[*ieph][ichan.prn - 1]
                                         .generate_navigation_subframes(
                                             ionoutc,
                                             &mut ichan.sbf,
