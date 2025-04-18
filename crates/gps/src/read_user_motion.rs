@@ -104,8 +104,9 @@ pub fn read_user_motion_llh_any_size(
         }
         llh[0] /= R2D; // convert to RAD
         llh[1] /= R2D; // convert to RAD
-        xyz.push(llh);
-        llh2xyz(&llh, &mut xyz[0]);
+        let mut xyz_item = [0.0; 3];
+        llh2xyz(&llh, &mut xyz_item);
+        xyz.push(xyz_item);
     }
     Ok(xyz)
 }
