@@ -11,10 +11,10 @@ use crate::{
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     ionoutc::IonoUtc,
-    llh2xyz,
     read_nmea_gga::read_nmea_gga,
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_llh},
+    utils::llh2xyz,
 };
 type EphemerisRelatedData = (
     usize,

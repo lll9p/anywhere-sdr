@@ -2,7 +2,7 @@
 use std::{path::PathBuf, println, process::Command};
 
 use anyhow::Result;
-use gps::generator::SignalGeneratorBuilder;
+use gps::SignalGeneratorBuilder;
 use test_case::test_case;
 mod prepare;
 use prepare::{OUTPUT_DIR, PATH, prepare_c_bin};
