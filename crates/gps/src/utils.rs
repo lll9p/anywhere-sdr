@@ -239,96 +239,93 @@ pub fn eph2sbf(
         dtlsf = 18;
     }
     // Subframe 1
-    (sbf[0])[0] = 0x008b_0000 << 6;
-    (sbf[0])[1] = 0x1 << 8;
-    (sbf[0])[2] = (wn & 0x3ff) << 20
+    sbf[0][0] = 0x008b_0000 << 6;
+    sbf[0][1] = 0x1 << 8;
+    sbf[0][2] = (wn & 0x3ff) << 20
         | (codeL2 as u32 & 0x3) << 18
         | (ura & 0xf) << 14
         | (svhlth as u32 & 0x3f) << 8
         | (iodc >> 8 & 0x3) << 6;
-    (sbf[0])[3] = 0;
-    (sbf[0])[4] = 0;
-    (sbf[0])[5] = 0;
-    (sbf[0])[6] = (tgd as u32 & 0xff) << 6;
-    (sbf[0])[7] = (iodc & 0xff) << 22 | (toc & 0xffff) << 6;
-    (sbf[0])[8] = (af2 as u32 & 0xff) << 22 | (af1 as u32 & 0xffff) << 6;
-    (sbf[0])[9] = (af0 as u32 & 0x003f_ffff) << 8;
+    sbf[0][3] = 0;
+    sbf[0][4] = 0;
+    sbf[0][5] = 0;
+    sbf[0][6] = (tgd as u32 & 0xff) << 6;
+    sbf[0][7] = (iodc & 0xff) << 22 | (toc & 0xffff) << 6;
+    sbf[0][8] = (af2 as u32 & 0xff) << 22 | (af1 as u32 & 0xffff) << 6;
+    sbf[0][9] = (af0 as u32 & 0x003f_ffff) << 8;
     // Subframe 2
-    (sbf[1])[0] = 0x008b_0000 << 6;
-    (sbf[1])[1] = 0x2 << 8;
-    (sbf[1])[2] = (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6;
-    (sbf[1])[3] =
+    sbf[1][0] = 0x008b_0000 << 6;
+    sbf[1][1] = 0x2 << 8;
+    sbf[1][2] = (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6;
+    sbf[1][3] =
         (deltan as u32 & 0xffff) << 14 | ((m0 >> 24) as u32 & 0xff) << 6;
-    (sbf[1])[4] = (m0 as u32 & 0x00ff_ffff) << 6;
-    (sbf[1])[5] = (cuc as u32 & 0xffff) << 14 | (ecc >> 24 & 0xff) << 6;
-    (sbf[1])[6] = (ecc & 0x00ff_ffff) << 6;
-    (sbf[1])[7] = (cus as u32 & 0xffff) << 14 | (sqrta >> 24 & 0xff) << 6;
-    (sbf[1])[8] = (sqrta & 0x00ff_ffff) << 6;
-    (sbf[1])[9] = (toe & 0xffff) << 14;
+    sbf[1][4] = (m0 as u32 & 0x00ff_ffff) << 6;
+    sbf[1][5] = (cuc as u32 & 0xffff) << 14 | (ecc >> 24 & 0xff) << 6;
+    sbf[1][6] = (ecc & 0x00ff_ffff) << 6;
+    sbf[1][7] = (cus as u32 & 0xffff) << 14 | (sqrta >> 24 & 0xff) << 6;
+    sbf[1][8] = (sqrta & 0x00ff_ffff) << 6;
+    sbf[1][9] = (toe & 0xffff) << 14;
     // Subframe 3
-    (sbf[2])[0] = 0x008b_0000 << 6;
-    (sbf[2])[1] = 0x3 << 8;
-    (sbf[2])[2] =
-        (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[3] = (omg0 as u32 & 0x00ff_ffff) << 6;
-    (sbf[2])[4] =
-        (cis as u32 & 0xffff) << 14 | ((inc0 >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[5] = (inc0 as u32 & 0x00ff_ffff) << 6;
-    (sbf[2])[6] =
-        (crc as u32 & 0xffff) << 14 | ((aop >> 24) as u32 & 0xff) << 6;
-    (sbf[2])[7] = (aop as u32 & 0x00ff_ffff) << 6;
-    (sbf[2])[8] = (omgdot as u32 & 0x00ff_ffff) << 6;
-    (sbf[2])[9] = (iode & 0xff) << 22 | (idot as u32 & 0x3fff) << 8;
+    sbf[2][0] = 0x008b_0000 << 6;
+    sbf[2][1] = 0x3 << 8;
+    sbf[2][2] = (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6;
+    sbf[2][3] = (omg0 as u32 & 0x00ff_ffff) << 6;
+    sbf[2][4] = (cis as u32 & 0xffff) << 14 | ((inc0 >> 24) as u32 & 0xff) << 6;
+    sbf[2][5] = (inc0 as u32 & 0x00ff_ffff) << 6;
+    sbf[2][6] = (crc as u32 & 0xffff) << 14 | ((aop >> 24) as u32 & 0xff) << 6;
+    sbf[2][7] = (aop as u32 & 0x00ff_ffff) << 6;
+    sbf[2][8] = (omgdot as u32 & 0x00ff_ffff) << 6;
+    sbf[2][9] = (iode & 0xff) << 22 | (idot as u32 & 0x3fff) << 8;
     if ionoutc.vflg {
         // Subframe 4, page 18
-        (sbf[3])[0] = 0x008b_0000 << 6;
-        (sbf[3])[1] = 0x4 << 8;
-        (sbf[3])[2] = data_id << 28
+        sbf[3][0] = 0x008b_0000 << 6;
+        sbf[3][1] = 0x4 << 8;
+        sbf[3][2] = data_id << 28
             | sbf4_page18_sv_id << 22
             | (alpha0 as u32 & 0xff) << 14
             | (alpha1 as u32 & 0xff) << 6;
-        (sbf[3])[3] = (alpha2 as u32 & 0xff) << 22
+        sbf[3][3] = (alpha2 as u32 & 0xff) << 22
             | (alpha3 as u32 & 0xff) << 14
             | (beta0 as u32 & 0xff) << 6;
-        (sbf[3])[4] = (beta1 as u32 & 0xff) << 22
+        sbf[3][4] = (beta1 as u32 & 0xff) << 22
             | (beta2 as u32 & 0xff) << 14
             | (beta3 as u32 & 0xff) << 6;
-        (sbf[3])[5] = (A1 as u32 & 0x00ff_ffff) << 6;
-        (sbf[3])[6] = ((A0 >> 8) as u32 & 0x00ff_ffff) << 6;
-        (sbf[3])[7] = (A0 as u32 & 0xff) << 22
+        sbf[3][5] = (A1 as u32 & 0x00ff_ffff) << 6;
+        sbf[3][6] = ((A0 >> 8) as u32 & 0x00ff_ffff) << 6;
+        sbf[3][7] = (A0 as u32 & 0xff) << 22
             | (tot & 0xff) << 14
             | (week_number & 0xff) << 6;
-        (sbf[3])[8] = (dtls as u32 & 0xff) << 22
+        sbf[3][8] = (dtls as u32 & 0xff) << 22
             | (wnlsf & 0xff) << 14
             | (dn & 0xff) << 6;
-        (sbf[3])[9] = (dtlsf & 0xff) << 22;
+        sbf[3][9] = (dtlsf & 0xff) << 22;
     } else {
         // Subframe 4, page 25
-        (sbf[3])[0] = 0x008b_0000 << 6;
-        (sbf[3])[1] = 0x4 << 8;
-        (sbf[3])[2] = data_id << 28 | sbf4_page25_sv_id << 22;
-        (sbf[3])[3] = 0;
-        (sbf[3])[4] = 0;
-        (sbf[3])[5] = 0;
-        (sbf[3])[6] = 0;
-        (sbf[3])[7] = 0;
-        (sbf[3])[8] = 0;
-        (sbf[3])[9] = 0;
+        sbf[3][0] = 0x008b_0000 << 6;
+        sbf[3][1] = 0x4 << 8;
+        sbf[3][2] = data_id << 28 | sbf4_page25_sv_id << 22;
+        sbf[3][3] = 0;
+        sbf[3][4] = 0;
+        sbf[3][5] = 0;
+        sbf[3][6] = 0;
+        sbf[3][7] = 0;
+        sbf[3][8] = 0;
+        sbf[3][9] = 0;
     }
     // Subframe 5, page 25
-    (sbf[4])[0] = 0x008b_0000 << 6;
-    (sbf[4])[1] = 0x5 << 8;
-    (sbf[4])[2] = data_id << 28
+    sbf[4][0] = 0x008b_0000 << 6;
+    sbf[4][1] = 0x5 << 8;
+    sbf[4][2] = data_id << 28
         | sbf5_page25_sv_id << 22
         | (toa & 0xff) << 14
         | (wna & 0xff) << 6;
-    (sbf[4])[3] = 0;
-    (sbf[4])[4] = 0;
-    (sbf[4])[5] = 0;
-    (sbf[4])[6] = 0;
-    (sbf[4])[7] = 0;
-    (sbf[4])[8] = 0;
-    (sbf[4])[9] = 0;
+    sbf[4][3] = 0;
+    sbf[4][4] = 0;
+    sbf[4][5] = 0;
+    sbf[4][6] = 0;
+    sbf[4][7] = 0;
+    sbf[4][8] = 0;
+    sbf[4][9] = 0;
 }
 
 ///  \brief Compute range between a satellite and the receiver
