@@ -14,7 +14,7 @@ use crate::{
     eph::Ephemeris,
     ionoutc::IonoUtc,
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
-    utils::{allocate_channel, compute_range, eph2sbf},
+    utils::{allocate_channel, compute_range, generate_navigation_subframes},
 };
 #[derive(Debug)]
 pub struct SignalGenerator {
@@ -381,7 +381,7 @@ impl SignalGenerator {
                             for ichan in channels.iter_mut().take(MAX_CHAN) {
                                 // Generate new subframes if allocated
                                 if ichan.prn != 0_i32 {
-                                    eph2sbf(
+                                    generate_navigation_subframes(
                                         &ephemerides[*ieph]
                                             [(ichan.prn - 1) as usize],
                                         ionoutc,

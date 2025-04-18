@@ -162,11 +162,30 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: i32) {
     }
 }
 
-/// \brief Compute Subframe from Ephemeris
-/// \param[in] eph Ephemeris of given SV
-/// \param[out] sbf Array of five sub-frames, 10 long words each
+/// Converts ephemeris and UTC parameters into GPS navigation message subframes
+///
+/// Implements the construction of 5 subframes (each containing 10 30-bit words)
+/// according to IS-GPS-200L specifications. Handles page 18 (ionospheric/UTC
+/// parameters) in subframe 4 and page 25 (reserved) in subframe 5.
+///
+/// # Arguments
+/// * `eph` - Satellite ephemeris containing orbital parameters and clock
+///   corrections
+/// * `ionoutc` - Ionospheric delay model and UTC time conversion parameters
+/// * `sbf` - Output buffer for 5 subframes, each represented as [u32;
+///   `N_DWRD_SBF`]
+///
+/// # Notes
+/// - Subframes 1-3 contain fundamental ephemeris and clock correction data
+/// - Subframe 4 page 18 includes:
+///   - Ionospheric α/β coefficients (Klochar model parameters)
+///   - UTC parameters (A0, A1, `ΔtLS`)
+///   - Leap second transition parameters
+/// - Subframe 5 page 25 is reserved (zero-filled in this implementation)
+/// - All value conversions follow GPS-ICD-defined scaling factors and bit-field
+///   layouts
 #[allow(clippy::too_many_lines)]
-pub fn eph2sbf(
+pub fn generate_navigation_subframes(
     eph: &Ephemeris, ionoutc: &IonoUtc, sbf: &mut [[u32; N_DWRD_SBF]; 5],
 ) {
     let ura = 0;
@@ -408,7 +427,11 @@ pub fn allocate_channel(
                         // C/A code generation
                         codegen(&mut ichan.ca, ichan.prn);
                         // Generate subframe
-                        eph2sbf(&eph[sv], ionoutc, &mut ichan.sbf);
+                        generate_navigation_subframes(
+                            &eph[sv],
+                            ionoutc,
+                            &mut ichan.sbf,
+                        );
                         // Generate navigation message
                         ichan.generate_nav_msg(grx, true);
                         // Initialize pseudorange
