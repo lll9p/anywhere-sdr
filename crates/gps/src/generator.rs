@@ -151,9 +151,11 @@ impl SignalGenerator {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn generate(&mut self) {
-        let mut file =
-            std::fs::File::create(self.out_file.as_ref().unwrap()).unwrap();
+    pub fn generate(&mut self) -> Result<()> {
+        if !self.initialized {
+            anyhow::bail!("Not initialized!");
+        }
+        let mut file = std::fs::File::create(self.out_file.as_ref().unwrap())?;
         // Generate baseband signals
         const INTERVAL: f64 = 0.1;
         self.receiver_gps_time = self.receiver_gps_time.add_secs(INTERVAL);
@@ -444,6 +446,7 @@ impl SignalGenerator {
             "Process time = {:.1} [sec]",
             time_start.elapsed().as_secs_f32()
         );
+        Ok(())
     }
 }
 
@@ -505,7 +508,7 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn time(mut self, time: Option<&String>) -> Result<Self> {
+    pub fn time(mut self, time: Option<String>) -> Result<Self> {
         if let Some(time) = time {
             let time_parsed = match time.to_lowercase().as_str() {
                 "now" => jiff::Timestamp::now().in_tz("UTC"),

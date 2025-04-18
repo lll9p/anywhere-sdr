@@ -51,7 +51,7 @@ fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder> {
             [t, value] if t == "-t" => {
                 // convert YYYY/MM/DD,hh:mm:ss to YYYY-MM-DD hh:mm:ss
                 let value = value.replace('/', "-").replace(',', " ") + "-00";
-                builder = builder.time(Some(&value))?;
+                builder = builder.time(Some(value))?;
             }
             [T, ..] if T == "-T" => {
                 builder = builder.time_override(Some(true));

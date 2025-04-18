@@ -15,6 +15,9 @@ mod table;
 mod utils;
 
 pub use constants::R2D;
+pub use generator::{
+    DataFormat, MotionMode, SignalGenerator, SignalGeneratorBuilder,
+};
 pub use params::Params;
 pub use process::process;
 pub use utils::llh2xyz;

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser};
-use gps::Params;
+use gps::SignalGeneratorBuilder;
 
 /*
 
@@ -22,7 +22,6 @@ Options:
   -i               Disable ionospheric delay for spacecraft scenario
   -p [fixed_gain]  Disable path loss and hold power level constant
   -v               Show details about simulated channels
-"#,
 */
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -65,11 +64,11 @@ pub struct Args {
 
     /// Overwrite TOC and TOE to scenario start time
     #[arg(short = 'T', long)]
-    time_override: Option<String>,
+    time_override: Option<bool>,
 
     /// Duration [sec] (dynamic mode max: {}, static mode max: {})
     #[arg(short = 'd', long)]
-    duration: Option<usize>,
+    duration: Option<f64>,
 
     /// I/Q sampling data file (default: gpssim.bin)
     #[arg(short = 'o', long)]
@@ -97,24 +96,27 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn get_params(&self) -> Params {
-        Params::new(
-            &self.ephemerides,
-            &self.user_motion_ecef,
-            &self.user_motion_llh,
-            &self.nmea_gga,
-            self.location_ecef.clone(),
-            self.location.clone(),
-            &self.leap,
-            &self.time,
-            &self.time_override,
-            &self.duration,
-            &self.output,
-            self.frequency,
-            self.bits,
-            self.ionospheric_disable,
-            &self.path_loss,
-            self.verbose,
-        )
+    pub fn run(&self) -> anyhow::Result<()> {
+        let builder = SignalGeneratorBuilder::default()
+            .navigation_file(Some(self.ephemerides.clone()))?
+            .user_mothon_file(self.user_motion_ecef.clone())?
+            .user_mothon_llh_file(self.user_motion_llh.clone())?
+            .user_mothon_nmea_gga_file(self.nmea_gga.clone())?
+            .location_ecef(self.location_ecef.clone())?
+            .location(self.location.clone())?
+            .leap(self.leap.clone())
+            .time(self.time.clone())?
+            .time_override(self.time_override)
+            .duration(self.duration)
+            .output_file(self.output.clone())
+            .frequency(Some(self.frequency))?
+            .data_format(Some(self.bits))?
+            .ionospheric_disable(Some(self.ionospheric_disable))
+            .path_loss(self.path_loss)
+            .verbose(Some(self.verbose));
+        let mut generator = builder.build()?;
+        generator.initiallize();
+        generator.generate()?;
+        Ok(())
     }
 }
