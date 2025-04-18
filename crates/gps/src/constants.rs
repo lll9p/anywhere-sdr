@@ -68,3 +68,5 @@ pub const SC08: i32 = 8;
 pub const SC16: i32 = 16;
 
 pub const EPHEM_ARRAY_SIZE: usize = 15; // for daily GPS broadcast ephemers file (brdc)
+
+pub const SAMPLE_RATE: f64 = 0.1;

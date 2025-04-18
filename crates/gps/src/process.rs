@@ -19,8 +19,9 @@ pub fn process(params: Params) -> i32 {
     let mut allocated_sat: [i32; MAX_SAT] = [0; MAX_SAT];
 
     let mut fp_out: Option<std::fs::File>;
-    let mut ephemerides: [[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE] =
-        std::array::from_fn(|_| std::array::from_fn(|_| Ephemeris::default()));
+    let mut ephemerides: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]> =
+        std::array::from_fn(|_| std::array::from_fn(|_| Ephemeris::default()))
+            .into();
     // [[Ephemeris::default(); MAX_SAT]; EPHEM_ARRAY_SIZE];
     let mut chan: [Channel; MAX_CHAN] =
         std::array::from_fn(|_| Channel::default());
@@ -351,8 +352,7 @@ pub fn process(params: Params) -> i32 {
     // Generate baseband signals
     ////////////////////////////////////////////////////////////
     let time_start = Instant::now();
-    const INTERVAL: f64 = 0.1;
-    receiver_gps_time = receiver_gps_time.add_secs(INTERVAL);
+    receiver_gps_time = receiver_gps_time.add_secs(SAMPLE_RATE);
     // 主循环：遍历每个时间间隔（0.1秒）
     for user_motion_index in 1..user_motion_count {
         // 根据静态/动态模式选择接收机位置
@@ -382,7 +382,7 @@ pub fn process(params: Params) -> i32 {
                 // Update code phase and data bit counters
                 chan[i].azel.copy_from_slice(&rho.azel);
                 // 计算码相位（C/A码偏移）
-                chan[i].compute_code_phase(&rho, INTERVAL);
+                chan[i].compute_code_phase(&rho, SAMPLE_RATE);
                 chan[i].carr_phasestep =
                     (512.0 * 65536.0 * chan[i].f_carr * delt).round() as i32;
 
@@ -608,7 +608,7 @@ pub fn process(params: Params) -> i32 {
         }
         // 第九步：更新时间并显示进度
         // Update receiver time
-        receiver_gps_time = receiver_gps_time.add_secs(INTERVAL);
+        receiver_gps_time = receiver_gps_time.add_secs(SAMPLE_RATE);
 
         // Update time counter
         eprint!(
