@@ -1,3 +1,4 @@
+#![allow(unused)]
 pub const USER_MOTION_SIZE: usize = 3000;
 #[allow(clippy::approx_constant)]
 pub const PI: f64 = 3.141_592_653_589_8;

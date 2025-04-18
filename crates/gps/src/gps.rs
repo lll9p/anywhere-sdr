@@ -6,8 +6,6 @@ mod eph;
 pub mod generator;
 pub mod geometry;
 mod ionoutc;
-mod params;
-mod process;
 mod read_nmea_gga;
 mod read_rinex;
 mod read_user_motion;
@@ -18,6 +16,4 @@ pub use constants::R2D;
 pub use generator::{
     DataFormat, MotionMode, SignalGenerator, SignalGeneratorBuilder,
 };
-pub use params::Params;
-pub use process::process;
 pub use utils::llh2xyz;
