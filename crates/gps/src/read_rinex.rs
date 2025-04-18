@@ -26,7 +26,7 @@ pub fn read_rinex_nav_all(
     // read header
     let lines = content.lines();
     let mut processing_header = true;
-    let mut g0 = GpsTime::default();
+    let mut gps_time_start = GpsTime::default();
     let mut t = DateTime::default();
     let mut lines_of_headers: usize = 0;
     for (iline, line) in lines.enumerate() {
@@ -71,7 +71,7 @@ pub fn read_rinex_nav_all(
             if flags == 0xF {
                 iono_utc.vflg = true;
             }
-            g0.week = -1;
+            gps_time_start.week = -1;
             ieph = 0;
         }
     }
@@ -92,12 +92,12 @@ pub fn read_rinex_nav_all(
 
             // if first line of block
             if iline == 0 {
-                g0 = g.clone();
+                gps_time_start = g.clone();
             }
             // Check current time of clock
-            let dt = g.diff_secs(&g0);
+            let dt = g.diff_secs(&gps_time_start);
             if dt > SECONDS_IN_HOUR {
-                g0 = g.clone();
+                gps_time_start = g.clone();
                 ieph += 1; // a new set of ephemerides
                 if ieph >= EPHEM_ARRAY_SIZE {
                     break;
@@ -163,7 +163,7 @@ pub fn read_rinex_nav_all(
             data[ieph][sv].omgkdot = data[ieph][sv].omgdot - OMEGA_EARTH;
         }
     }
-    if g0.week >= 0 {
+    if gps_time_start.week >= 0 {
         ieph += 1;
     }
     Ok(ieph)

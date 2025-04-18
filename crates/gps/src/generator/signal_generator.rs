@@ -86,11 +86,18 @@ impl SignalGenerator {
             "xyz = {}, {}, {}",
             self.positions[0][0], self.positions[0][1], self.positions[0][2],
         );
-        let g0 = self.receiver_gps_time.clone();
-        let t0 = DateTime::from(&g0);
+        let gps_time_start = self.receiver_gps_time.clone();
+        let date_time_start = DateTime::from(&gps_time_start);
         eprintln!(
             "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
-            t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, g0.week, g0.sec,
+            date_time_start.y,
+            date_time_start.m,
+            date_time_start.d,
+            date_time_start.hh,
+            date_time_start.mm,
+            date_time_start.sec,
+            gps_time_start.week,
+            gps_time_start.sec,
         );
         // Clear all channels
         chan.iter_mut().take(MAX_CHAN).for_each(|ch| ch.prn = 0);
@@ -144,8 +151,9 @@ impl SignalGenerator {
         let file = File::create(self.out_file.as_ref().unwrap())?;
         let mut file = BufWriter::new(file);
         // Generate baseband signals
-        const INTERVAL: f64 = 0.1;
-        self.receiver_gps_time = self.receiver_gps_time.add_secs(INTERVAL);
+        // const INTERVAL: f64 = 0.1;
+        self.receiver_gps_time =
+            self.receiver_gps_time.add_secs(self.sample_rate);
         let channels = &mut self.channels;
         let ephemerides = &mut self.ephemerides;
         let ieph = &mut self.valid_ephemerides_index;
@@ -185,7 +193,7 @@ impl SignalGenerator {
                     // Update code phase and data bit counters
                     channels[i].azel.copy_from_slice(&rho.azel);
                     // 计算码相位（C/A码偏移）
-                    channels[i].compute_code_phase(&rho, INTERVAL);
+                    channels[i].compute_code_phase(&rho, self.sample_rate);
                     channels[i].carr_phasestep = (512.0
                         * 65536.0
                         * channels[i].f_carr
@@ -422,7 +430,7 @@ impl SignalGenerator {
             }
             // 第九步：更新时间并显示进度
             // Update receiver time
-            *receiver_gps_time = receiver_gps_time.add_secs(INTERVAL);
+            *receiver_gps_time = receiver_gps_time.add_secs(self.sample_rate);
             eprint!(
                 "\rTime into run = {:4.1}\0",
                 (user_motion_index + 1) as f64 / 10.0

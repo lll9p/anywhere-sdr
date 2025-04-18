@@ -25,7 +25,7 @@ pub struct Channel {
     /// Code phase
     pub code_phase: f64,
     /// GPS time at start
-    pub g0: GpsTime,
+    pub time_start: GpsTime,
     /// current subframe
     pub sbf: [[u32; N_DWRD_SBF]; 5],
     /// Data words of sub-frame
@@ -53,7 +53,7 @@ impl Default for Channel {
             carr_phase: 0,
             carr_phasestep: 0,
             code_phase: 0.0,
-            g0: GpsTime { week: 0, sec: 0. },
+            time_start: GpsTime { week: 0, sec: 0. },
             sbf: [[0; N_DWRD_SBF]; 5],
             dwrd: [0; N_DWRD],
             iword: 0,
@@ -79,7 +79,7 @@ impl Channel {
         self.f_carr = -rhorate / LAMBDA_L1;
         self.f_code = CODE_FREQ + self.f_carr * CARR_TO_CODE;
         // Initial code phase and data bit counters.
-        let ms = (self.rho0.time.diff_secs(&self.g0) + 6.0
+        let ms = (self.rho0.time.diff_secs(&self.time_start) + 6.0
             - self.rho0.range / SPEED_OF_LIGHT)
             * 1000.0;
         let mut ims = ms as i32;
@@ -109,7 +109,7 @@ impl Channel {
 
         let wn = (time_init.week % 1024) as u32;
         let mut tow = (time_init.sec as u32).wrapping_div(6);
-        self.g0 = time_init; // Data bit reference time
+        self.time_start = time_init; // Data bit reference time
 
         if init {
             // Initialize subframe 5
