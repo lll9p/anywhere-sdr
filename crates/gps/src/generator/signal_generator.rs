@@ -1,4 +1,8 @@
-use std::{io::Write, path::PathBuf};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 use anyhow::Result;
 
@@ -137,7 +141,8 @@ impl SignalGenerator {
         if !self.initialized {
             anyhow::bail!("Not initialized!");
         }
-        let mut file = std::fs::File::create(self.out_file.as_ref().unwrap())?;
+        let file = File::create(self.out_file.as_ref().unwrap())?;
+        let mut file = BufWriter::new(file);
         // Generate baseband signals
         const INTERVAL: f64 = 0.1;
         self.receiver_gps_time = self.receiver_gps_time.add_secs(INTERVAL);
@@ -149,7 +154,7 @@ impl SignalGenerator {
         let antenna_gains = &mut self.antenna_gains;
 
         let iq_buff_size = self.iq_buffer_size;
-        let delt = self.sample_frequency.recip();
+        let sampling_period = self.sample_frequency.recip();
 
         let time_start = std::time::Instant::now();
         // 主循环：遍历每个时间间隔（0.1秒）
@@ -181,9 +186,12 @@ impl SignalGenerator {
                     channels[i].azel.copy_from_slice(&rho.azel);
                     // 计算码相位（C/A码偏移）
                     channels[i].compute_code_phase(&rho, INTERVAL);
-                    channels[i].carr_phasestep =
-                        (512.0 * 65536.0 * channels[i].f_carr * delt).round()
-                            as i32;
+                    channels[i].carr_phasestep = (512.0
+                        * 65536.0
+                        * channels[i].f_carr
+                        * sampling_period)
+                        .round()
+                        as i32;
 
                     // Path loss
                     let path_loss = 20_200_000.0 / rho.distance;
@@ -233,7 +241,8 @@ impl SignalGenerator {
                         q_acc += qp;
                         // Update code phase
                         // 第四步：更新码相位（C/A码序列控制）
-                        channels[i].code_phase += channels[i].f_code * delt;
+                        channels[i].code_phase +=
+                            channels[i].f_code * sampling_period;
                         if channels[i].code_phase >= CA_SEQ_LEN as f64 {
                             channels[i].code_phase -= CA_SEQ_LEN as f64;
                             channels[i].icode += 1;
@@ -274,7 +283,7 @@ impl SignalGenerator {
                         // #ifdef FLOAT_CARR_PHASE
                         //                     chan[i].carr_phase +=
                         // chan[i].f_carr
-                        // * delt;
+                        // * sampling_period;
                         //
                         //                     if (chan[i].carr_phase >= 1.0)
                         //                         chan[i].carr_phase -= 1.0;
@@ -316,8 +325,7 @@ impl SignalGenerator {
                         file.write_all(std::slice::from_raw_parts(
                             iq8_buff.as_ptr().cast::<u8>(),
                             iq_buff_size / 4,
-                        ))
-                        .ok();
+                        ))?;
                     }
                 }
                 DataFormat::Bits8 => {
@@ -333,8 +341,7 @@ impl SignalGenerator {
                         file.write_all(std::slice::from_raw_parts(
                             iq8_buff.as_ptr().cast::<u8>(),
                             2 * iq_buff_size,
-                        ))
-                        .ok();
+                        ))?;
                     }
                 }
                 DataFormat::Bits16 => {
@@ -345,7 +352,7 @@ impl SignalGenerator {
                             2 * iq_buff_size * 2, // 2 bytes per sample
                         )
                     };
-                    file.write_all(byte_slice).ok();
+                    file.write_all(byte_slice)?;
                 }
             }
 

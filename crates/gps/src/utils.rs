@@ -226,12 +226,12 @@ pub fn eph2sbf(
     let A1 = (ionoutc.A1 / POW2_M50).round() as i32;
     let dtls = ionoutc.dtls;
     let tot = (ionoutc.tot / 4096) as u32;
-    let wnt = (ionoutc.wnt % 256) as u32;
+    let week_number = (ionoutc.week_number % 256) as u32;
     // 2016/12/31 (Sat) -> WNlsf = 1929, DN = 7 (http://navigationservices.agi.com/GNSSWeb/)
     // Days are counted from 1 to 7 (Sunday is 1).
     if ionoutc.leapen == 1 {
         wnlsf = (ionoutc.wnlsf % 256) as u32;
-        dn = ionoutc.dn as u32;
+        dn = ionoutc.day_number as u32;
         dtlsf = ionoutc.dtlsf as u32;
     } else {
         wnlsf = (1929 % 256) as u32;
@@ -295,8 +295,9 @@ pub fn eph2sbf(
             | (beta3 as u32 & 0xff) << 6;
         (sbf[3])[5] = (A1 as u32 & 0x00ff_ffff) << 6;
         (sbf[3])[6] = ((A0 >> 8) as u32 & 0x00ff_ffff) << 6;
-        (sbf[3])[7] =
-            (A0 as u32 & 0xff) << 22 | (tot & 0xff) << 14 | (wnt & 0xff) << 6;
+        (sbf[3])[7] = (A0 as u32 & 0xff) << 22
+            | (tot & 0xff) << 14
+            | (week_number & 0xff) << 6;
         (sbf[3])[8] = (dtls as u32 & 0xff) << 22
             | (wnlsf & 0xff) << 14
             | (dn & 0xff) << 6;

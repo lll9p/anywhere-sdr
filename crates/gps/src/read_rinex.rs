@@ -55,7 +55,7 @@ pub fn read_rinex_nav_all(
                 iono_utc.A0 = parse_f64(strncpy(3, 19).trim())?;
                 iono_utc.A1 = parse_f64(strncpy(22, 19).trim())?;
                 iono_utc.tot = parse_i32(strncpy(41, 9).trim())?;
-                iono_utc.wnt = parse_i32(strncpy(50, 9).trim())?;
+                iono_utc.week_number = parse_i32(strncpy(50, 9).trim())?;
                 if iono_utc.tot % 4096 == 0 {
                     flags |= 0x1 << 2;
                 }

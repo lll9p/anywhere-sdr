@@ -229,10 +229,10 @@ impl SignalGeneratorBuilder {
         if let Some(leap) = self.leap {
             ionoutc.leapen = 1;
             ionoutc.wnlsf = leap[0];
-            ionoutc.dn = leap[1];
+            ionoutc.day_number = leap[1];
             ionoutc.dtlsf = leap[2];
             #[allow(clippy::impossible_comparisons)]
-            if ionoutc.dn < 1 && ionoutc.dn > 7 {
+            if ionoutc.day_number < 1 && ionoutc.day_number > 7 {
                 bail!("ERROR: Invalid GPS day number");
             }
             if ionoutc.wnlsf < 0 {
@@ -321,7 +321,7 @@ impl SignalGeneratorBuilder {
                 // gtmp.sec = f64::from(g0.sec as i32 / 7200) * 7200.0;
                 // Overwrite the UTC reference week number
                 let dsec = gtmp.diff_secs(&gpstime_min);
-                ionoutc.wnt = gtmp.week;
+                ionoutc.week_number = gtmp.week;
                 ionoutc.tot = gtmp.sec as i32;
                 // Iono/UTC parameters may no longer valid
                 //ionoutc.vflg = FALSE;

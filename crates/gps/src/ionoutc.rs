@@ -41,13 +41,13 @@ pub struct IonoUtc {
     pub tot: i32,
 
     /// UTC reference week number
-    pub wnt: i32,
+    pub week_number: i32,
 
     /// Future delta time due to leap seconds
     pub dtlsf: i32,
 
     /// Day number (the range is 1 to 7 where Sunday = 1 and Saturday = 7)
-    pub dn: i32,
+    pub day_number: i32,
 
     /// Future week number
     pub wnlsf: i32,
