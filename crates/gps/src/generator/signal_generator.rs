@@ -143,6 +143,10 @@ impl SignalGenerator {
         self.initialized = true;
     }
 
+    /// Generate baseband signals
+    /// # Errors
+    /// Returns `anyhow::Error`
+    /// TODO: unroll `for i in 0..MAX_CHAN`, to make it faster around 12%
     #[allow(clippy::too_many_lines)]
     pub fn generate(&mut self) -> Result<()> {
         if !self.initialized {
