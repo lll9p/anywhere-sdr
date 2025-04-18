@@ -470,10 +470,8 @@ pub struct SignalGeneratorBuilder {
     verbose: Option<bool>,
 }
 impl SignalGeneratorBuilder {
-    fn parse_datetime(
-        value: &str,
-    ) -> Result<jiff::civil::DateTime, jiff::Error> {
-        let time: jiff::civil::DateTime = value.parse()?;
+    fn parse_datetime(value: &str) -> Result<jiff::Timestamp, jiff::Error> {
+        let time: jiff::Timestamp = value.parse()?;
         Ok(time)
     }
 
@@ -561,7 +559,7 @@ impl SignalGeneratorBuilder {
 
     pub fn frequency(mut self, frequency: Option<usize>) -> Result<Self> {
         match frequency {
-            Some(freq) if freq < 1_000_000 => {
+            Some(freq) if freq >= 1_000_000 => {
                 self.frequency = Some(freq as f64);
             }
             None => {}

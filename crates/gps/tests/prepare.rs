@@ -36,9 +36,7 @@ pub fn check_gpssim() -> Result<PathBuf> {
     );
     Ok(gps_sim_executable)
 }
-pub fn prepare_c_bin_single(
-    params: &[Vec<String>], c_bin_file: &str,
-) -> Result<()> {
+pub fn prepare_c_bin(params: &[Vec<String>], c_bin_file: &str) -> Result<()> {
     let gps_sim_executable = check_gpssim()?;
     let c_bin_file_path_buf = PathBuf::from(OUTPUT_DIR).join(c_bin_file);
     if c_bin_file_path_buf.exists() {

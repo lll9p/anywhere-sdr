@@ -30,6 +30,7 @@ dist-ssr
 
 # Other files
 output/
+*.bin
 
 
 /Cargo.lock
