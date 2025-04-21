@@ -100,6 +100,43 @@ impl Channel {
         self.rho0 = rho1.clone();
     }
 
+    /// !generate the C/A code sequence for a given Satellite Vehicle PRN
+    ///  \param[in] prn PRN number of the Satellite Vehicle
+    ///  \param[out] ca Caller-allocated integer array of 1023 bytes
+    #[inline]
+    pub fn codegen(&mut self) {
+        let delay: [usize; 32] = [
+            5, 6, 7, 8, 17, 18, 139, 140, 141, 251, 252, 254, 255, 256, 257,
+            258, 469, 470, 471, 472, 473, 474, 509, 512, 513, 514, 515, 516,
+            859, 860, 861, 862,
+        ];
+        let mut g1: [i32; CA_SEQ_LEN] = [0; CA_SEQ_LEN];
+        let mut g2: [i32; CA_SEQ_LEN] = [0; CA_SEQ_LEN];
+        let mut r1: [i32; N_DWRD_SBF] = [-1; N_DWRD_SBF];
+        let mut r2: [i32; N_DWRD_SBF] = [-1; N_DWRD_SBF];
+        if !(1..=32).contains(&self.prn) {
+            return;
+        }
+        for i in 0..CA_SEQ_LEN {
+            g1[i] = r1[9];
+            g2[i] = r2[9];
+            let c1 = r1[2] * r1[9];
+            let c2 = r2[1] * r2[2] * r2[5] * r2[7] * r2[8] * r2[9];
+            for j in (1..N_DWRD_SBF).rev() {
+                r1[j] = r1[j - 1];
+                r2[j] = r2[j - 1];
+            }
+            r1[0] = c1;
+            r2[0] = c2;
+        }
+
+        let mut j = CA_SEQ_LEN - delay[self.prn - 1];
+        for (ica, ig1) in self.ca.iter_mut().zip(g1) {
+            *ica = (1 - ig1 * g2[j % CA_SEQ_LEN]) / 2;
+            j += 1;
+        }
+    }
+
     pub fn generate_nav_msg(&mut self, time: &GpsTime, init: bool) {
         let mut time_init = GpsTime::default();
         let mut sbfwrd: u32;

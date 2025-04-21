@@ -15,7 +15,7 @@ use crate::{
     geometry::Ecef,
     ionoutc::IonoUtc,
     table::ANT_PAT_DB,
-    utils::{allocate_channel, compute_range},
+    utils::compute_range,
 };
 #[derive(Debug)]
 pub struct SignalGenerator {
@@ -73,11 +73,6 @@ impl Default for SignalGenerator {
 impl SignalGenerator {
     pub fn initiallize(&mut self) {
         // Initialize channels
-        let chan = &mut self.channels;
-        let allocated_sat = &mut self.allocated_satellite;
-        let ephemerides = &mut self.ephemerides;
-        let ieph = self.valid_ephemerides_index;
-        let ionoutc = &mut self.ionoutc;
         match self.mode {
             MotionMode::Static => eprintln!("Using static location mode."),
             MotionMode::Dynamic => eprintln!("Using dynamic location mode."),
@@ -101,23 +96,30 @@ impl SignalGenerator {
             gps_time_start.sec,
         );
         // Clear all channels
-        chan.iter_mut().take(MAX_CHAN).for_each(|ch| ch.prn = 0);
+        self.channels
+            .iter_mut()
+            .take(MAX_CHAN)
+            .for_each(|ch| ch.prn = 0);
         // Clear satellite allocation flag
-        allocated_sat.iter_mut().take(MAX_SAT).for_each(|s| *s = -1);
+        self.allocated_satellite
+            .iter_mut()
+            .take(MAX_SAT)
+            .for_each(|s| *s = -1);
         // Initial reception time
         self.receiver_gps_time = self.receiver_gps_time.add_secs(0.0);
         // Allocate visible satellites
-        allocate_channel(
-            chan,
-            &mut ephemerides[ieph],
-            ionoutc,
-            &self.receiver_gps_time,
-            &self.positions[0],
-            self.elvmask,
-            allocated_sat,
-        );
+        self.allocate_channel(self.positions[0]);
+        // allocate_channel(
+        //     chan,
+        //     &mut ephemerides[ieph],
+        //     ionoutc,
+        //     &self.receiver_gps_time,
+        //     &self.positions[0],
+        //     self.elvmask,
+        //     allocated_sat,
+        // );
 
-        for ichan in chan.iter().take(MAX_CHAN) {
+        for ichan in self.channels.iter().take(MAX_CHAN) {
             if ichan.prn > 0 {
                 eprintln!(
                     "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
@@ -142,6 +144,92 @@ impl SignalGenerator {
             (self.sample_frequency * self.sample_rate).floor() as usize;
         self.iq_buffer = vec![0; 2 * self.iq_buffer_size];
         self.initialized = true;
+    }
+
+    pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
+        let mut nsat: i32 = 0;
+        // let ref_0: [f64; 3] = [0., 0., 0.];
+        // #[allow(unused_variables)]
+        // let mut r_ref: f64 = 0.;
+        // #[allow(unused_variables)]
+        // let mut r_xyz: f64;
+        let mut phase_ini: f64;
+        // for sv in 0..MAX_SAT {
+        for (sv, eph) in self.ephemerides[self.valid_ephemerides_index]
+            .iter()
+            .enumerate()
+            .take(MAX_SAT)
+        {
+            if let Some((azel, true)) =
+                eph.check_visibility(&self.receiver_gps_time, &xyz, 0.0)
+            {
+                nsat += 1; // Number of visible satellites
+                if self.allocated_satellite[sv] == -1 {
+                    // Visible but not allocated
+                    //
+                    // Allocated new satellite
+                    let mut channel_index = 0;
+                    for (i, ichan) in
+                        self.channels.iter_mut().take(MAX_CHAN).enumerate()
+                    {
+                        if ichan.prn == 0 {
+                            // Initialize channel
+                            ichan.prn = sv + 1;
+                            ichan.azel = azel;
+                            // C/A code generation
+                            ichan.codegen();
+                            // Generate subframe
+                            eph.generate_navigation_subframes(
+                                &self.ionoutc,
+                                &mut ichan.sbf,
+                            );
+                            // Generate navigation message
+                            ichan.generate_nav_msg(
+                                &self.receiver_gps_time,
+                                true,
+                            );
+                            // Initialize pseudorange
+                            let rho = compute_range(
+                                eph,
+                                &self.ionoutc,
+                                &self.receiver_gps_time,
+                                &xyz,
+                            );
+                            ichan.rho0 = rho;
+                            // Initialize carrier phase
+                            // r_xyz = rho.range;
+                            // below line does nothing
+                            // let _rho =
+                            //     compute_range(&eph[sv], ionoutc, grx,
+                            // &ref_0); r_ref = rho.
+                            // range;
+                            phase_ini = 0.0; // TODO: Must initialize properly
+                            //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
+                            // #ifdef FLOAT_CARR_PHASE
+                            //                         ichan.carr_phase =
+                            // phase_ini - floor(phase_ini);
+                            // #else
+                            phase_ini -= phase_ini.floor();
+                            ichan.carr_phase =
+                                (512.0 * 65536.0 * phase_ini) as u32;
+                            break;
+                        }
+                        channel_index = i + 1;
+                    }
+                    // Set satellite allocation channel
+                    if channel_index < MAX_CHAN {
+                        self.allocated_satellite[sv] = channel_index as i32;
+                    }
+                }
+            } else if self.allocated_satellite[sv] >= 0 {
+                // Not visible but allocated
+                // Clear channel
+                self.channels[self.allocated_satellite[sv] as usize].prn = 0;
+                // Clear satellite allocation flag
+                self.allocated_satellite[sv] = -1;
+            }
+        }
+        nsat
     }
 
     fn write_iq_data(
@@ -215,12 +303,7 @@ impl SignalGenerator {
         // const INTERVAL: f64 = 0.1;
         self.receiver_gps_time =
             self.receiver_gps_time.add_secs(self.sample_rate);
-        let channels = &mut self.channels;
-        let ephemerides = &mut self.ephemerides;
-        let ieph = &mut self.valid_ephemerides_index;
-        let receiver_gps_time = &mut self.receiver_gps_time;
-        let ionoutc = &mut self.ionoutc;
-        let antenna_gains = &mut self.antenna_gains;
+        let mut ieph = self.valid_ephemerides_index;
 
         let iq_buff_size = self.iq_buffer_size;
         let sampling_period = self.sample_frequency.recip();
@@ -230,34 +313,34 @@ impl SignalGenerator {
         for user_motion_index in 1..self.user_motion_count {
             // 根据静态/动态模式选择接收机位置
             let current_location = match self.mode {
-                MotionMode::Static => &self.positions[0],
-                MotionMode::Dynamic => &self.positions[user_motion_index],
+                MotionMode::Static => self.positions[0],
+                MotionMode::Dynamic => self.positions[user_motion_index],
             };
             // 第一步：更新所有通道的伪距、相位和增益参数
             for i in 0..MAX_CHAN {
                 // 仅处理已分配卫星的通道
-                if channels[i].prn > 0 {
+                if self.channels[i].prn > 0 {
                     // 卫星PRN号转索引
-                    let sv = channels[i].prn - 1;
+                    let sv = self.channels[i].prn - 1;
                     // 计算当前时刻的伪距（传播时延）
                     // Refresh code phase and data bit counters
 
                     // Current pseudorange
                     let rho = compute_range(
-                        &ephemerides[*ieph][sv],
-                        ionoutc,
-                        receiver_gps_time,
-                        current_location,
+                        &self.ephemerides[ieph][sv],
+                        &self.ionoutc,
+                        &self.receiver_gps_time,
+                        &current_location,
                     );
 
                     // 更新方位角/仰角信息
                     // Update code phase and data bit counters
-                    channels[i].azel = rho.azel;
+                    self.channels[i].azel = rho.azel;
                     // 计算码相位（C/A码偏移）
-                    channels[i].compute_code_phase(&rho, self.sample_rate);
-                    channels[i].carr_phasestep = (512.0
+                    self.channels[i].compute_code_phase(&rho, self.sample_rate);
+                    self.channels[i].carr_phasestep = (512.0
                         * 65536.0
-                        * channels[i].f_carr
+                        * self.channels[i].f_carr
                         * sampling_period)
                         .round()
                         as i32;
@@ -272,10 +355,10 @@ impl SignalGenerator {
                     // 应用增益模式选择
                     if let Some(fixed_gain) = self.fixed_gain {
                         // 固定增益模式
-                        antenna_gains[i] = fixed_gain; // hold the power level constant
+                        self.antenna_gains[i] = fixed_gain; // hold the power level constant
                     } else {
                         // 带路径损耗补偿
-                        antenna_gains[i] =
+                        self.antenna_gains[i] =
                             (path_loss * ant_gain * 128.0) as i32; // scaled by 2^7
                     }
                 }
@@ -286,16 +369,17 @@ impl SignalGenerator {
                 let mut q_acc: i32 = 0;
                 // 第三步：累加所有通道的信号分量
                 for i in 0..MAX_CHAN {
-                    if channels[i].prn > 0 {
-                        let (ip, qp) = channels[i]
-                            .generate_iq_contribution(antenna_gains[i]);
+                    if self.channels[i].prn > 0 {
+                        let (ip, qp) = self.channels[i]
+                            .generate_iq_contribution(self.antenna_gains[i]);
                         // Accumulate for all visible satellites
                         // 累加到总信号
                         i_acc += ip;
                         q_acc += qp;
                         // Update code phase
                         // 第四步：更新码相位（C/A码序列控制）
-                        channels[i].update_navigation_bits(sampling_period);
+                        self.channels[i]
+                            .update_navigation_bits(sampling_period);
                     }
                 }
                 // 第六步：量化并存储I/Q采样
@@ -319,30 +403,32 @@ impl SignalGenerator {
             // Update navigation message and channel allocation every 30 seconds
             //
             // 第八步：定期更新导航信息（每30秒）
-            let igrx = (receiver_gps_time.sec * 10.0 + 0.5) as i32;
+            let igrx = (self.receiver_gps_time.sec * 10.0 + 0.5) as i32;
             if igrx % 300 == 0 {
                 // Every 30 seconds
-                for ichan in channels.iter_mut().take(MAX_CHAN) {
+                for ichan in self.channels.iter_mut().take(MAX_CHAN) {
                     if ichan.prn > 0 {
-                        ichan.generate_nav_msg(receiver_gps_time, false);
+                        ichan.generate_nav_msg(&self.receiver_gps_time, false);
                     }
                 }
                 // Refresh ephemeris and subframes
                 // Quick and dirty fix. Need more elegant way.
                 for sv in 0..MAX_SAT {
-                    if ephemerides[*ieph + 1][sv].vflg {
-                        let dt = ephemerides[*ieph + 1][sv]
+                    if self.ephemerides[ieph + 1][sv].vflg {
+                        let dt = self.ephemerides[ieph + 1][sv]
                             .toc
-                            .diff_secs(receiver_gps_time);
+                            .diff_secs(&self.receiver_gps_time);
                         if dt < SECONDS_IN_HOUR {
                             // move next set of ephemeris
-                            *ieph += 1;
-                            for ichan in channels.iter_mut().take(MAX_CHAN) {
+                            ieph += 1;
+                            self.valid_ephemerides_index = ieph;
+                            for ichan in self.channels.iter_mut().take(MAX_CHAN)
+                            {
                                 // Generate new subframes if allocated
                                 if ichan.prn != 0 {
-                                    ephemerides[*ieph][ichan.prn - 1]
+                                    self.ephemerides[ieph][ichan.prn - 1]
                                         .generate_navigation_subframes(
-                                            ionoutc,
+                                            &self.ionoutc,
                                             &mut ichan.sbf,
                                         );
                                 }
@@ -352,20 +438,12 @@ impl SignalGenerator {
                     }
                 }
                 // Update channel allocation
-                allocate_channel(
-                    channels,
-                    &mut ephemerides[*ieph],
-                    ionoutc,
-                    receiver_gps_time,
-                    current_location,
-                    self.elvmask,
-                    &mut self.allocated_satellite,
-                );
+                self.allocate_channel(current_location);
 
                 // Show details about simulated channels
                 if self.verbose {
                     eprintln!();
-                    for ichan in channels.iter().take(MAX_CHAN) {
+                    for ichan in self.channels.iter().take(MAX_CHAN) {
                         if ichan.prn > 0 {
                             eprintln!(
                                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
@@ -381,7 +459,8 @@ impl SignalGenerator {
             }
             // 第九步：更新时间并显示进度
             // Update receiver time
-            *receiver_gps_time = receiver_gps_time.add_secs(self.sample_rate);
+            self.receiver_gps_time =
+                self.receiver_gps_time.add_secs(self.sample_rate);
             eprint!(
                 "\rTime into run = {:4.1}\0",
                 (user_motion_index + 1) as f64 / 10.0
