@@ -2,6 +2,7 @@ use crate::{
     constants::*,
     datetime::{GpsTime, TimeRange},
     geometry::Azel,
+    table::*,
 };
 
 ///  Structure representing a Channel
@@ -260,5 +261,75 @@ impl Channel {
         //D |= (source & 0xC0000000UL); // Add D29* and D30* from source data
         // bits
         D
+    }
+
+    #[inline]
+    pub fn update_navigation_bits(&mut self, sampling_period: f64) {
+        // Update code phase
+        // 第四步：更新码相位（C/A码序列控制）
+        self.code_phase += self.f_code * sampling_period;
+        if self.code_phase >= CA_SEQ_LEN as f64 {
+            self.code_phase -= CA_SEQ_LEN as f64;
+            self.icode += 1;
+            if self.icode >= 20 {
+                // 20 C/A codes = 1 navigation data bit
+                // 处理导航数据位（每20个C/A码周期）
+                self.icode = 0;
+                self.ibit += 1;
+                // 处理导航字（每30个数据位）
+                if self.ibit >= 30 {
+                    // 30 navigation data bits = 1 word
+                    self.ibit = 0;
+                    self.iword += 1;
+
+                    /*
+                                                        if (chan[i].iword>=N_DWRD)
+                                                            fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
+                    */
+                }
+                // 提取当前导航数据位
+                // Set new navigation data bit
+                self.dataBit = (self.dwrd[self.iword as usize]
+                    >> (29 - self.ibit)
+                    & 0x1) as i32
+                    * 2
+                    - 1;
+            }
+        }
+        // 更新当前C/A码片
+        // Set current code chip
+        self.codeCA = self.ca[self.code_phase as i32 as usize] * 2_i32 - 1_i32;
+        // Update carrier phase
+        // #ifdef FLOAT_CARR_PHASE
+        //                     chan[i].carr_phase +=
+        // chan[i].f_carr
+        // * sampling_period;
+        //
+        //                     if (chan[i].carr_phase >= 1.0)
+        //                         chan[i].carr_phase -= 1.0;
+        //                     else if (chan[i].carr_phase<0.0)
+        //                         chan[i].carr_phase += 1.0;
+        // #else
+        // 第五步：更新载波相位（使用相位累加器）
+        self.carr_phase =
+            (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
+    }
+
+    #[inline]
+    pub fn generate_iq_contribution(
+        &mut self, antenna_gain: i32,
+    ) -> (i32, i32) {
+        // #ifdef FLOAT_CARR_PHASE
+        //                     iTable =
+        // (int)floor(chan[i].carr_phase*512.0);
+        // #else
+        // 使用预计算的正弦/余弦表生成载波
+        let i_table = (self.carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
+        // 生成I/Q分量（考虑导航数据位和C/A码）
+        let ip =
+            self.dataBit * self.codeCA * COS_TABLE512[i_table] * antenna_gain;
+        let qp =
+            self.dataBit * self.codeCA * SIN_TABLE512[i_table] * antenna_gain;
+        (ip, qp)
     }
 }

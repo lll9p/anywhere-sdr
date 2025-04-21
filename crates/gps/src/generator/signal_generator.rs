@@ -14,7 +14,7 @@ use crate::{
     eph::Ephemeris,
     geometry::Ecef,
     ionoutc::IonoUtc,
-    table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
+    table::ANT_PAT_DB,
     utils::{allocate_channel, compute_range},
 };
 #[derive(Debug)]
@@ -144,6 +144,62 @@ impl SignalGenerator {
         self.initialized = true;
     }
 
+    fn write_iq_data(
+        data_format: &DataFormat, iq_buffer: &[i16], iq_buff_size: usize,
+        file: &mut BufWriter<File>,
+    ) -> Result<()> {
+        match data_format {
+            DataFormat::Bits1 => {
+                let mut iq8_buff = vec![0; iq_buff_size / 4];
+                for isamp in 0..2 * iq_buff_size {
+                    if isamp % 8 == 0 {
+                        iq8_buff[isamp / 8] = 0;
+                    }
+                    let curr_bit = &mut iq8_buff[isamp / 8];
+
+                    *curr_bit = (i32::from(*curr_bit)
+                        | i32::from(i32::from(iq_buffer[isamp]) > 0)
+                            << (7 - isamp as i32 % 8))
+                        as i8;
+                }
+
+                unsafe {
+                    file.write_all(std::slice::from_raw_parts(
+                        iq8_buff.as_ptr().cast::<u8>(),
+                        iq_buff_size / 4,
+                    ))?;
+                }
+            }
+            DataFormat::Bits8 => {
+                let mut iq8_buff = vec![0; 2 * iq_buff_size];
+                for (isamp, buff) in iq8_buff.iter_mut().enumerate() {
+                    *buff = (i32::from(iq_buffer[isamp]) >> 4) as i8;
+                    // 12-bit bladeRF -> 8-bit HackRF
+                    //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for
+                    // PocketSDR
+                }
+
+                unsafe {
+                    file.write_all(std::slice::from_raw_parts(
+                        iq8_buff.as_ptr().cast::<u8>(),
+                        2 * iq_buff_size,
+                    ))?;
+                }
+            }
+            DataFormat::Bits16 => {
+                // data_format==SC16
+                let byte_slice = unsafe {
+                    std::slice::from_raw_parts(
+                        iq_buffer.as_ptr().cast::<u8>(),
+                        2 * iq_buff_size * 2, // 2 bytes per sample
+                    )
+                };
+                file.write_all(byte_slice)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Generate baseband signals
     /// # Errors
     /// Returns `anyhow::Error`
@@ -231,81 +287,15 @@ impl SignalGenerator {
                 // 第三步：累加所有通道的信号分量
                 for i in 0..MAX_CHAN {
                     if channels[i].prn > 0 {
-                        // 仅处理有效通道
-                        // #ifdef FLOAT_CARR_PHASE
-                        //                     iTable =
-                        // (int)floor(chan[i].carr_phase*512.0);
-                        // #else
-                        // 使用预计算的正弦/余弦表生成载波
-                        let i_table =
-                            (channels[i].carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
-                        // 生成I/Q分量（考虑导航数据位和C/A码）
-                        let ip = channels[i].dataBit
-                            * channels[i].codeCA
-                            * COS_TABLE512[i_table]
-                            * antenna_gains[i];
-                        let qp = channels[i].dataBit
-                            * channels[i].codeCA
-                            * SIN_TABLE512[i_table]
-                            * antenna_gains[i];
+                        let (ip, qp) = channels[i]
+                            .generate_iq_contribution(antenna_gains[i]);
                         // Accumulate for all visible satellites
                         // 累加到总信号
                         i_acc += ip;
                         q_acc += qp;
                         // Update code phase
                         // 第四步：更新码相位（C/A码序列控制）
-                        channels[i].code_phase +=
-                            channels[i].f_code * sampling_period;
-                        if channels[i].code_phase >= CA_SEQ_LEN as f64 {
-                            channels[i].code_phase -= CA_SEQ_LEN as f64;
-                            channels[i].icode += 1;
-                            if channels[i].icode >= 20 {
-                                // 20 C/A codes = 1 navigation data bit
-                                // 处理导航数据位（每20个C/A码周期）
-                                channels[i].icode = 0;
-                                channels[i].ibit += 1;
-                                // 处理导航字（每30个数据位）
-                                if channels[i].ibit >= 30 {
-                                    // 30 navigation data bits = 1 word
-                                    channels[i].ibit = 0;
-                                    channels[i].iword += 1;
-
-                                    /*
-                                                                        if (chan[i].iword>=N_DWRD)
-                                                                            fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
-                                    */
-                                }
-                                // 提取当前导航数据位
-                                // Set new navigation data bit
-                                channels[i].dataBit = (channels[i].dwrd
-                                    [channels[i].iword as usize]
-                                    >> (29 - channels[i].ibit)
-                                    & 0x1)
-                                    as i32
-                                    * 2
-                                    - 1;
-                            }
-                        }
-                        // 更新当前C/A码片
-                        // Set current code chip
-                        channels[i].codeCA = channels[i].ca
-                            [channels[i].code_phase as i32 as usize]
-                            * 2_i32
-                            - 1_i32;
-                        // Update carrier phase
-                        // #ifdef FLOAT_CARR_PHASE
-                        //                     chan[i].carr_phase +=
-                        // chan[i].f_carr
-                        // * sampling_period;
-                        //
-                        //                     if (chan[i].carr_phase >= 1.0)
-                        //                         chan[i].carr_phase -= 1.0;
-                        //                     else if (chan[i].carr_phase<0.0)
-                        //                         chan[i].carr_phase += 1.0;
-                        // #else
-                        // 第五步：更新载波相位（使用相位累加器）
-                        channels[i].carr_phase = (channels[i].carr_phase)
-                            .wrapping_add(channels[i].carr_phasestep as u32);
+                        channels[i].update_navigation_bits(sampling_period);
                     }
                 }
                 // 第六步：量化并存储I/Q采样
@@ -318,56 +308,12 @@ impl SignalGenerator {
             }
 
             // 第七步：将I/Q数据写入输出文件（不同格式处理）
-
-            match self.data_format {
-                DataFormat::Bits1 => {
-                    let mut iq8_buff = vec![0; iq_buff_size / 4];
-                    for isamp in 0..2 * iq_buff_size {
-                        if isamp % 8 == 0 {
-                            iq8_buff[isamp / 8] = 0;
-                        }
-                        let curr_bit = &mut iq8_buff[isamp / 8];
-
-                        *curr_bit = (i32::from(*curr_bit)
-                            | i32::from(i32::from(self.iq_buffer[isamp]) > 0)
-                                << (7 - isamp as i32 % 8))
-                            as i8;
-                    }
-
-                    unsafe {
-                        file.write_all(std::slice::from_raw_parts(
-                            iq8_buff.as_ptr().cast::<u8>(),
-                            iq_buff_size / 4,
-                        ))?;
-                    }
-                }
-                DataFormat::Bits8 => {
-                    let mut iq8_buff = vec![0; 2 * iq_buff_size];
-                    for (isamp, buff) in iq8_buff.iter_mut().enumerate() {
-                        *buff = (i32::from(self.iq_buffer[isamp]) >> 4) as i8;
-                        // 12-bit bladeRF -> 8-bit HackRF
-                        //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for
-                        // PocketSDR
-                    }
-
-                    unsafe {
-                        file.write_all(std::slice::from_raw_parts(
-                            iq8_buff.as_ptr().cast::<u8>(),
-                            2 * iq_buff_size,
-                        ))?;
-                    }
-                }
-                DataFormat::Bits16 => {
-                    // data_format==SC16
-                    let byte_slice = unsafe {
-                        std::slice::from_raw_parts(
-                            self.iq_buffer.as_ptr().cast::<u8>(),
-                            2 * iq_buff_size * 2, // 2 bytes per sample
-                        )
-                    };
-                    file.write_all(byte_slice)?;
-                }
-            }
+            Self::write_iq_data(
+                &self.data_format,
+                &self.iq_buffer,
+                self.iq_buffer_size,
+                &mut file,
+            )?;
 
             //
             // Update navigation message and channel allocation every 30 seconds
