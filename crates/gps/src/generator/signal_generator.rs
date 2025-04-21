@@ -153,8 +153,6 @@ impl SignalGenerator {
         // let mut r_ref: f64 = 0.;
         // #[allow(unused_variables)]
         // let mut r_xyz: f64;
-        let mut phase_ini: f64;
-        // for sv in 0..MAX_SAT {
         for (sv, eph) in self.ephemerides[self.valid_ephemerides_index]
             .iter()
             .enumerate()
@@ -203,7 +201,7 @@ impl SignalGenerator {
                             //     compute_range(&eph[sv], ionoutc, grx,
                             // &ref_0); r_ref = rho.
                             // range;
-                            phase_ini = 0.0; // TODO: Must initialize properly
+                            let mut phase_ini: f64 = 0.0; // TODO: Must initialize properly
                             //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
                             // #ifdef FLOAT_CARR_PHASE
                             //                         ichan.carr_phase =
