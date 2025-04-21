@@ -142,7 +142,7 @@ impl SignalGeneratorBuilder {
         }
         if let Some(location) = location {
             self.mode = Some(MotionMode::Static);
-            let location = Ecef::from([location[0], location[1], location[2]]);
+            let location = Ecef::from(&[location[0], location[1], location[2]]);
             self.positions = Some(vec![location]);
         }
         Ok(self)
@@ -157,7 +157,7 @@ impl SignalGeneratorBuilder {
             let mut location = [location[0], location[1], location[2]];
             location[0] /= R2D;
             location[1] /= R2D;
-            let xyz = Ecef::from(&Location::from(location));
+            let xyz = Ecef::from(&Location::from(&location));
             // let mut xyz = [0.0, 0.0, 0.0];
             // llh2xyz(&location, &mut xyz);
             self.positions = Some(vec![xyz]);
@@ -256,7 +256,7 @@ impl SignalGeneratorBuilder {
             // Default static location; Tokyo
             self.mode = Some(MotionMode::Static);
             let llh = [35.681_298 / R2D, 139.766_247 / R2D, 10.0];
-            let xyz = Ecef::from(&Location::from(llh));
+            let xyz = Ecef::from(&Location::from(&llh));
             // let mut xyz = [0.0, 0.0, 0.0];
             // llh2xyz(&llh, &mut xyz);
             vec![xyz]

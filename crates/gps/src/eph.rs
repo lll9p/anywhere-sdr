@@ -165,7 +165,7 @@ impl Ephemeris {
         }
         let (pos, _vel, _clk) = self.compute_satellite_state(time);
         let llh = Location::from(xyz);
-        let los = Ecef::from(pos) - xyz;
+        let los = Ecef::from(&pos) - xyz;
         let neu = Neu::from_ecef(&los, llh.ltcmat());
         let azel = Azel::from(&neu);
         if azel.el * R2D <= elv_mask {

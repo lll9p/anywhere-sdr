@@ -14,7 +14,7 @@ pub fn read_user_motion(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
     let lines = content.lines();
     for line in lines {
         let line_vec = line.split(',').collect::<Vec<&str>>();
-        xyz.push(Ecef::from([
+        xyz.push(Ecef::from(&[
             line_vec[1].trim().parse()?,
             line_vec[2].trim().parse()?,
             line_vec[3].trim().parse()?,
@@ -34,7 +34,7 @@ pub fn read_user_motion_llh(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
     let lines = content.lines();
     for line in lines {
         let line_vec = line.split(',').collect::<Vec<&str>>();
-        let mut llh = Location::from([
+        let mut llh = Location::from(&[
             line_vec[1].trim().parse()?,
             line_vec[2].trim().parse()?,
             line_vec[3].trim().parse()?,

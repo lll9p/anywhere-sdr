@@ -61,7 +61,7 @@ pub fn compute_range(
     // SV position at time of the pseudorange observation.
     let (mut pos, vel, clk) = eph.compute_satellite_state(time);
     // Receiver to satellite vector and light-time.
-    let los = Ecef::from(pos) - xyz;
+    let los = Ecef::from(&pos) - xyz;
 
     let tau = los.norm() / SPEED_OF_LIGHT;
     // Extrapolate the satellite position backwards to the transmission time.
@@ -73,14 +73,14 @@ pub fn compute_range(
     pos[0] = xrot;
     pos[1] = yrot;
     // New observer to satellite vector and satellite range.
-    let los = Ecef::from(pos) - xyz;
+    let los = Ecef::from(&pos) - xyz;
     // sub_vect(&mut los, &pos, xyz);
     let range = los.norm();
     rho.distance = range;
     // Pseudorange.
     rho.range = range - SPEED_OF_LIGHT * clk[0];
     // Relative velocity of SV and receiver.
-    let vel = Ecef::from(vel);
+    let vel = Ecef::from(&vel);
     let rate = vel.dot_prod(&los) / range;
     // Pseudorange rate.
     rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];

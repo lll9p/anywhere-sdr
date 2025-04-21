@@ -45,7 +45,7 @@ pub fn read_nmea_gga(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
         }
         llh[1] /= R2D;
         llh[2] = parse_f64(alt)? + parse_f64(undulation)?;
-        let pos = Ecef::from(&Location::from(llh));
+        let pos = Ecef::from(&Location::from(&llh));
         // llh2xyz(&llh, &mut pos);
 
         xyz.push(pos);

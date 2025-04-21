@@ -14,18 +14,6 @@ pub struct Location {
     pub height: f64,
 }
 impl Location {
-    pub fn latitude(&self) -> &f64 {
-        &self.latitude
-    }
-
-    pub fn longitude(&self) -> &f64 {
-        &self.longitude
-    }
-
-    pub fn height(&self) -> &f64 {
-        &self.height
-    }
-
     pub fn new(latitude: f64, longitude: f64, height: f64) -> Self {
         Self {
             latitude,
@@ -149,8 +137,8 @@ impl From<&Ecef> for Location {
         }
     }
 }
-impl From<[f64; 3]> for Location {
-    fn from(value: [f64; 3]) -> Self {
+impl From<&[f64; 3]> for Location {
+    fn from(value: &[f64; 3]) -> Self {
         Self {
             latitude: value[0],
             longitude: value[1],
@@ -227,8 +215,8 @@ impl From<&Location> for Ecef {
         Self { x, y, z }
     }
 }
-impl From<[f64; 3]> for Ecef {
-    fn from(value: [f64; 3]) -> Self {
+impl From<&[f64; 3]> for Ecef {
+    fn from(value: &[f64; 3]) -> Self {
         Self {
             x: value[0],
             y: value[1],
@@ -287,8 +275,14 @@ impl Neu {
         Self { north, east, up }
     }
 }
-impl From<[f64; 3]> for Neu {
-    fn from(value: [f64; 3]) -> Self {
+impl From<&Ecef> for Neu {
+    fn from(value: &Ecef) -> Self {
+        let ltcmat = Location::from(value).ltcmat();
+        Self::from_ecef(value, ltcmat)
+    }
+}
+impl From<&[f64; 3]> for Neu {
+    fn from(value: &[f64; 3]) -> Self {
         Self {
             north: value[0],
             east: value[1],
@@ -311,25 +305,15 @@ impl LocationMath for Neu {
             && (self.up - rhs.up).abs() <= eps
     }
 }
-// impl From<&Ecef> for Neu {
-//     fn from(ecef: &Ecef) -> Self {
-//         // ecef to location
-//         let llh = Location::from(ecef);
-//         let ltcmat = llh.ltcmat();
-//         let north = ltcmat[0][0] * ecef.x + ltcmat[0][1] * ecef.y +
-// ltcmat[0][2] * ecef.z;         let east = ltcmat[1][0] * ecef.x +
-// ltcmat[1][1] * ecef.y + ltcmat[1][2] * ecef.z;         let up = ltcmat[2][0]
-// * ecef.x + ltcmat[2][1] * ecef.y + ltcmat[2][2] * ecef.z;         Self {
-// north, east, up }     }
-// }
+
 /// bearing + Elevation
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Azel {
     pub az: f64,
     pub el: f64,
 }
-impl From<[f64; 2]> for Azel {
-    fn from(value: [f64; 2]) -> Self {
+impl From<&[f64; 2]> for Azel {
+    fn from(value: &[f64; 2]) -> Self {
         Self {
             az: value[0],
             el: value[1],
@@ -391,8 +375,8 @@ impl Target {
     pub fn bearing(&self, location: &Location) -> f64 {
         let lat1 = self.location.latitude.to_radians();
         let lon1 = self.location.longitude.to_radians();
-        let lat2 = location.latitude().to_radians();
-        let lon2 = location.longitude().to_radians();
+        let lat2 = location.latitude.to_radians();
+        let lon2 = location.longitude.to_radians();
         let y = (lat2 - lat1) * (lat2 + lat1).cos();
         let x = (lon2 - lon1) * (lon2 + lon1).cos();
         y.atan2(x).to_degrees()
@@ -400,8 +384,8 @@ impl Target {
 
     pub fn go(&mut self, distance: f64) -> Location {
         let location_rad = self.location.to_rad();
-        let lat1 = location_rad.latitude();
-        let lon1 = location_rad.longitude();
+        let lat1 = location_rad.latitude;
+        let lon1 = location_rad.longitude;
         let bearing = self.bearing.to_radians();
         let distance = distance / WGS84_RADIUS;
         let lat2 = (lat1.sin() * distance.cos()
@@ -434,9 +418,9 @@ mod test {
             f64::from_bits(13_929_576_035_448_519_812),
         ];
         // xyz = [-1676694.4690794293, 4515052.0724484855, -4167476.3179927487]
-        let location = Location::from(LLH);
+        let location = Location::from(&LLH);
         let ecef = Ecef::from(&location);
-        let ecef_from_xyz = Ecef::from(xyz);
+        let ecef_from_xyz = Ecef::from(&xyz);
         println!("Ecef fro old: {ecef_from_xyz:?}");
         println!("Ecef from new: {ecef:?}");
         assert!(
@@ -453,9 +437,9 @@ mod test {
             f64::from_bits(4_636_737_350_692_634_624),
         ];
         // xyz = [0.6156477194111782, 2.391360502574699, 100.00084324367344]
-        let ecef = Ecef::from(XYZ);
+        let ecef = Ecef::from(&XYZ);
         let location = Location::from(&ecef);
-        let location_from_llh = Location::from(llh);
+        let location_from_llh = Location::from(&llh);
         println!("Location from old: {location_from_llh:?}");
         println!("Location from new: {location:?}");
         assert!(
@@ -484,7 +468,7 @@ mod test {
             ],
         ];
 
-        let location = Location::from(LLH);
+        let location = Location::from(&LLH);
         let tmat_from_location = location.ltcmat();
         for (vec0, vec1) in tmat.iter().zip(&tmat_from_location) {
             for (i0, i1) in vec0.iter().zip(vec1) {
@@ -494,14 +478,14 @@ mod test {
     }
     #[test]
     fn test_geometry_ecef2neu() {
-        let tmat = Location::from(LLH).ltcmat();
+        let tmat = Location::from(&LLH).ltcmat();
         let neu = [
             f64::from_bits(13_931_381_818_169_503_716),
             f64::from_bits(13_925_646_393_143_350_753),
             f64::from_bits(4_697_507_633_163_841_812),
         ];
-        let ecef = Ecef::from(XYZ);
-        let neu = Neu::from(neu);
+        let ecef = Ecef::from(&XYZ);
+        let neu = Neu::from(&neu);
         let neu_from_ecef = Neu::from_ecef(&ecef, tmat);
         println!("Neu from old: {neu:?}");
         println!("Neu from new: {neu_from_ecef:?}");
@@ -509,7 +493,7 @@ mod test {
     }
     #[test]
     fn test_geometry_neu2azel() {
-        let tmat = Location::from(LLH).ltcmat();
+        let tmat = Location::from(&LLH).ltcmat();
         let neu = [
             f64::from_bits(13_931_381_818_169_503_716),
             f64::from_bits(13_925_646_393_143_350_753),
@@ -519,8 +503,8 @@ mod test {
             f64::from_bits(4_615_116_355_893_774_375),
             f64::from_bits(4_595_463_099_674_307_653),
         ];
-        let neu = Neu::from(neu);
-        let azel = Azel::from(azel);
+        let neu = Neu::from(&neu);
+        let azel = Azel::from(&azel);
         let azel_new = Azel::from(&neu);
         println!("Azel from old: {azel:?}");
         println!("Azel from new: {azel_new:?}");
