@@ -31,10 +31,8 @@ impl Location {
     }
 
     pub fn ltcmat(&self) -> [[f64; 3]; 3] {
-        let slat: f64 = self.latitude.sin();
-        let clat: f64 = self.latitude.cos();
-        let slon: f64 = self.longitude.sin();
-        let clon: f64 = self.longitude.cos();
+        let (slat, clat) = self.latitude.sin_cos();
+        let (slon, clon) = self.longitude.sin_cos();
         [[-slat * clon, -slat * slon, clat], [-slon, clon, 0.0], [
             clat * clon,
             clat * slon,
@@ -334,12 +332,12 @@ impl From<&Neu> for Azel {
     }
 }
 #[derive(Debug)]
-pub struct Target {
+pub struct NavigationTarget {
     bearing_step: f64,
     bearing: f64,       // 0~360°
     location: Location, // current location
 }
-impl Default for Target {
+impl Default for NavigationTarget {
     fn default() -> Self {
         Self {
             bearing_step: 1.0,
@@ -348,7 +346,7 @@ impl Default for Target {
         }
     }
 }
-impl Target {
+impl NavigationTarget {
     pub fn new() -> Self {
         Self::default()
     }
