@@ -2,15 +2,13 @@ use std::path::PathBuf;
 
 use anyhow::{Error, Result, bail};
 
-use super::{
-    signal_generator::SignalGenerator,
-    utils::{DataFormat, MotionMode},
-};
+use super::{signal_generator::SignalGenerator, utils::MotionMode};
 use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     geometry::{Ecef, Location},
+    io::DataFormat,
     ionoutc::IonoUtc,
     read_nmea_gga::read_nmea_gga,
     read_rinex::read_rinex_nav_all,

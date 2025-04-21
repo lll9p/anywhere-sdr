@@ -208,7 +208,7 @@ impl Channel {
     ///  \param[in] nib Does this word contain non-information-bearing bits?
     ///  \returns Computed Checksum
     #[allow(non_snake_case)]
-    #[inline]
+    // #[inline]
     pub fn compute_checksum(source: u32, nib: i32) -> u32 {
         /*
         Bits 31 to 30 = 2 LSBs of the previous transmitted word, D29* and D30*
@@ -300,7 +300,7 @@ impl Channel {
         D
     }
 
-    #[inline]
+    // #[inline]
     pub fn update_navigation_bits(&mut self, sampling_period: f64) {
         // Update code phase
         // 第四步：更新码相位（C/A码序列控制）
@@ -335,8 +335,10 @@ impl Channel {
         }
         // 更新当前C/A码片
         // Set current code chip
+        // this is slower self.codeCA = self.ca[self.code_phase as usize] * 2 -
+        // 1;
         self.codeCA = self.ca[self.code_phase as i32 as usize] * 2_i32 - 1_i32;
-        // Update carrier phase
+        //Update carrier phase
         // #ifdef FLOAT_CARR_PHASE
         //                     chan[i].carr_phase +=
         // chan[i].f_carr
@@ -348,11 +350,13 @@ impl Channel {
         //                         chan[i].carr_phase += 1.0;
         // #else
         // 第五步：更新载波相位（使用相位累加器）
-        self.carr_phase =
-            (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
+
+        // self.carr_phase =
+        //     (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
+        self.carr_phase += self.carr_phasestep as u32;
     }
 
-    #[inline]
+    // #[inline]
     pub fn generate_iq_contribution(
         &mut self, antenna_gain: i32,
     ) -> (i32, i32) {

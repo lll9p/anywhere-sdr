@@ -4,4 +4,4 @@ mod utils;
 
 pub use builder::SignalGeneratorBuilder;
 pub use signal_generator::SignalGenerator;
-pub use utils::{DataFormat, MotionMode};
+pub use utils::MotionMode;

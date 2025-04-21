@@ -1,21 +1,18 @@
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use anyhow::Result;
 
-pub use super::utils::{DataFormat, MotionMode};
+pub use super::utils::MotionMode;
 use crate::{
     channel::Channel,
     constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     geometry::Ecef,
+    io::{DataFormat, IQWriter},
     ionoutc::IonoUtc,
+    propagation::compute_range,
     table::ANT_PAT_DB,
-    utils::compute_range,
 };
 #[derive(Debug)]
 pub struct SignalGenerator {
@@ -38,8 +35,9 @@ pub struct SignalGenerator {
     // when is some , disable path loss
     pub fixed_gain: Option<i32>,
     pub iq_buffer_size: usize,
-    pub iq_buffer: Vec<i16>,
+    // pub iq_buffer: Vec<i16>,
     pub out_file: Option<PathBuf>,
+    pub writer: Option<IQWriter>,
     pub initialized: bool,
     pub verbose: bool,
 }
@@ -63,15 +61,16 @@ impl Default for SignalGenerator {
             data_format: DataFormat::Bits8,
             fixed_gain: None,
             iq_buffer_size: 0,
-            iq_buffer: Vec::new(),
+            // iq_buffer: Vec::new(),
             out_file: None,
+            writer: None,
             initialized: false,
             verbose: true,
         }
     }
 }
 impl SignalGenerator {
-    pub fn initiallize(&mut self) {
+    pub fn initiallize(&mut self) -> Result<()> {
         // Initialize channels
         match self.mode {
             MotionMode::Static => eprintln!("Using static location mode."),
@@ -109,15 +108,6 @@ impl SignalGenerator {
         self.receiver_gps_time = self.receiver_gps_time.add_secs(0.0);
         // Allocate visible satellites
         self.allocate_channel(self.positions[0]);
-        // allocate_channel(
-        //     chan,
-        //     &mut ephemerides[ieph],
-        //     ionoutc,
-        //     &self.receiver_gps_time,
-        //     &self.positions[0],
-        //     self.elvmask,
-        //     allocated_sat,
-        // );
 
         for ichan in self.channels.iter().take(MAX_CHAN) {
             if ichan.prn > 0 {
@@ -142,8 +132,15 @@ impl SignalGenerator {
 
         self.iq_buffer_size =
             (self.sample_frequency * self.sample_rate).floor() as usize;
-        self.iq_buffer = vec![0; 2 * self.iq_buffer_size];
+        // self.iq_buffer = vec![0; 2 * self.iq_buffer_size];
+        let writer = IQWriter::new(
+            self.out_file.as_ref().unwrap(),
+            self.data_format,
+            self.iq_buffer_size,
+        )?;
+        self.writer = Some(writer);
         self.initialized = true;
+        Ok(())
     }
 
     pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
@@ -230,62 +227,6 @@ impl SignalGenerator {
         nsat
     }
 
-    fn write_iq_data(
-        data_format: &DataFormat, iq_buffer: &[i16], iq_buff_size: usize,
-        file: &mut BufWriter<File>,
-    ) -> Result<()> {
-        match data_format {
-            DataFormat::Bits1 => {
-                let mut iq8_buff = vec![0; iq_buff_size / 4];
-                for isamp in 0..2 * iq_buff_size {
-                    if isamp % 8 == 0 {
-                        iq8_buff[isamp / 8] = 0;
-                    }
-                    let curr_bit = &mut iq8_buff[isamp / 8];
-
-                    *curr_bit = (i32::from(*curr_bit)
-                        | i32::from(i32::from(iq_buffer[isamp]) > 0)
-                            << (7 - isamp as i32 % 8))
-                        as i8;
-                }
-
-                unsafe {
-                    file.write_all(std::slice::from_raw_parts(
-                        iq8_buff.as_ptr().cast::<u8>(),
-                        iq_buff_size / 4,
-                    ))?;
-                }
-            }
-            DataFormat::Bits8 => {
-                let mut iq8_buff = vec![0; 2 * iq_buff_size];
-                for (isamp, buff) in iq8_buff.iter_mut().enumerate() {
-                    *buff = (i32::from(iq_buffer[isamp]) >> 4) as i8;
-                    // 12-bit bladeRF -> 8-bit HackRF
-                    //iq8_buff[isamp] = iq_buff[isamp] >> 8; // for
-                    // PocketSDR
-                }
-
-                unsafe {
-                    file.write_all(std::slice::from_raw_parts(
-                        iq8_buff.as_ptr().cast::<u8>(),
-                        2 * iq_buff_size,
-                    ))?;
-                }
-            }
-            DataFormat::Bits16 => {
-                // data_format==SC16
-                let byte_slice = unsafe {
-                    std::slice::from_raw_parts(
-                        iq_buffer.as_ptr().cast::<u8>(),
-                        2 * iq_buff_size * 2, // 2 bytes per sample
-                    )
-                };
-                file.write_all(byte_slice)?;
-            }
-        }
-        Ok(())
-    }
-
     /// Generate baseband signals
     /// # Errors
     /// Returns `anyhow::Error`
@@ -295,15 +236,16 @@ impl SignalGenerator {
         if !self.initialized {
             anyhow::bail!("Not initialized!");
         }
-        let file = File::create(self.out_file.as_ref().unwrap())?;
-        let mut file = BufWriter::new(file);
+        // let mut writer = self.writer.as_mut().unwrap();
+        // let file = File::create(self.out_file.as_ref().unwrap())?;
+        // let mut file = BufWriter::new(file);
         // Generate baseband signals
         // const INTERVAL: f64 = 0.1;
         self.receiver_gps_time =
             self.receiver_gps_time.add_secs(self.sample_rate);
         let mut ieph = self.valid_ephemerides_index;
 
-        let iq_buff_size = self.iq_buffer_size;
+        // let iq_buff_size = self.iq_buffer_size;
         let sampling_period = self.sample_frequency.recip();
 
         let time_start = std::time::Instant::now();
@@ -362,42 +304,58 @@ impl SignalGenerator {
                 }
             }
             // 第二步：生成基带I/Q采样数据
-            for isamp in 0..iq_buff_size {
-                let mut i_acc: i32 = 0;
-                let mut q_acc: i32 = 0;
-                // 第三步：累加所有通道的信号分量
-                for i in 0..MAX_CHAN {
-                    if self.channels[i].prn > 0 {
-                        let (ip, qp) = self.channels[i]
-                            .generate_iq_contribution(self.antenna_gains[i]);
-                        // Accumulate for all visible satellites
-                        // 累加到总信号
-                        i_acc += ip;
-                        q_acc += qp;
-                        // Update code phase
-                        // 第四步：更新码相位（C/A码序列控制）
-                        self.channels[i]
-                            .update_navigation_bits(sampling_period);
+
+            if let Some(w) = self.writer.as_mut() {
+                for isamp in 0..w.buffer_size {
+                    let mut i_acc: i32 = 0;
+                    let mut q_acc: i32 = 0;
+                    // 第三步：累加所有通道的信号分量
+                    // let (i_acc, q_acc) = self
+                    //     .channels
+                    //     .iter_mut()
+                    //     .zip(self.antenna_gains.iter())
+                    //     .filter(|(ch, _)| ch.prn > 0)
+                    //     .fold((0, 0), |(i_acc, q_acc), (ch, gain)| {
+                    //         let (ip, qp) =
+                    // ch.generate_iq_contribution(*gain);
+                    //         // Update code phase
+                    //         // 第四步：更新码相位（C/A码序列控制）
+                    //         ch.update_navigation_bits(sampling_period);
+                    //
+                    //         // Accumulate for all visible satellites
+                    //         // 累加到总信号
+                    //         (i_acc + ip, q_acc + qp)
+                    //     });
+                    for i in 0..MAX_CHAN {
+                        if self.channels[i].prn > 0 {
+                            let (ip, qp) = self.channels[i]
+                                .generate_iq_contribution(
+                                    self.antenna_gains[i],
+                                );
+                            // Accumulate for all visible satellites
+                            // 累加到总信号
+                            i_acc += ip;
+                            q_acc += qp;
+                            // Update code phase
+                            // 第四步：更新码相位（C/A码序列控制）
+                            self.channels[i]
+                                .update_navigation_bits(sampling_period);
+                        }
                     }
+
+                    // 第六步：量化并存储I/Q采样
+                    // Scaled by 2^7
+                    // i_acc = (i_acc + 64) >> 7;
+                    // q_acc = (q_acc + 64) >> 7;
+                    // Store I/Q samples into buffer
+                    w.buffer[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8位量化（带舍入）
+                    w.buffer[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
                 }
-                // 第六步：量化并存储I/Q采样
-                // Scaled by 2^7
-                // i_acc = (i_acc + 64) >> 7;
-                // q_acc = (q_acc + 64) >> 7;
-                // Store I/Q samples into buffer
-                self.iq_buffer[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8位量化（带舍入）
-                self.iq_buffer[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
+
+                // 第七步：将I/Q数据写入输出文件（不同格式处理）
+                w.write_samples()?;
             }
 
-            // 第七步：将I/Q数据写入输出文件（不同格式处理）
-            Self::write_iq_data(
-                &self.data_format,
-                &self.iq_buffer,
-                self.iq_buffer_size,
-                &mut file,
-            )?;
-
-            //
             // Update navigation message and channel allocation every 30 seconds
             //
             // 第八步：定期更新导航信息（每30秒）

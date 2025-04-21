@@ -1,7 +1,7 @@
 {
   "name": "GPS Signal Generator",
   "version": "0.0.1",
-  "system_prompt": "你正在协助开发GPS信号生成软件。",
+  "system_prompt": "你正在协助开发GPS信号生成软件，Rust写的用于GNSS信号生成的软件，可用于SDR发送，目前仅实现GPS，后续将添加beidou等",
   "vars": {},
   "groups": [
     {
@@ -20,19 +20,19 @@
         "gps-geometry",
         "gps-gps",
         "gps-ionoutc",
-        "gps-params",
-        "gps-process",
+        "gps-generator-utils",
+        "gps-signal-builder",
+        "gps-generator",
         "gps-read_nmea_gga",
         "gps-read_rinex",
         "gps-read_user_motion",
-        "gps-table",
-        "gps-utils"
+        "gps-table"
       ]
     },
     {
       "name": "核心模块",
       "system_prompt": "处理GPS信号生成的核心算法和卫星数据计算",
-      "data": ["main", "eph", "ionoutc"]
+      "data": ["gps-main", "gps-eph", "gps-ionoutc"]
     },
     {
       "name": "数据处理",
@@ -116,14 +116,29 @@
       "path": "crates/gps/src/ionoutc.rs",
       "description": ""
     },
-    "gps-params": {
+    "gps-io": {
       "type": "symbols",
-      "path": "crates/gps/src/params.rs",
+      "path": "crates/gps/src/io.rs",
       "description": ""
     },
-    "gps-process": {
+    "gps-propagation": {
       "type": "symbols",
-      "path": "crates/gps/src/process.rs",
+      "path": "crates/gps/src/propagation.rs",
+      "description": ""
+    },
+    "gps-signal-builder": {
+      "type": "symbols",
+      "path": "crates/gps/src/generator/builder.rs",
+      "description": ""
+    },
+    "gps-generator": {
+      "type": "symbols",
+      "path": "crates/gps/src/generator/signal_generator.rs",
+      "description": ""
+    },
+    "gps-generator-utils": {
+      "type": "symbols",
+      "path": "crates/gps/src/generator/utils.rs",
       "description": ""
     },
     "gps-read_nmea_gga": {
@@ -144,11 +159,6 @@
     "gps-table": {
       "type": "symbols",
       "path": "crates/gps/src/table.rs",
-      "description": ""
-    },
-    "gps-utils": {
-      "type": "symbols",
-      "path": "crates/gps/src/utils.rs",
       "description": ""
     }
   }
