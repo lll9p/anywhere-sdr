@@ -1,12 +1,22 @@
-//! <http://www.movable-type.co.uk/scripts/latlong.html>
+//! Geodetic coordinate transformations and navigation calculations
+//! Implements formulas from <http://www.movable-type.co.uk/scripts/latlong.html>
 use crate::constants::*;
+
+/// Common mathematical operations for geodetic types
 pub trait LocationMath {
+    /// Vector magnitude (Euclidean norm)
     fn norm(&self) -> f64;
+    /// Dot product between two vectors
     fn dot_prod(&self, _rhs: &Self) -> f64;
+    #[cfg(test)]
+    /// Approximate equality check with epsilon tolerance
     fn precise(&self, rhs: &Self, eps: f64) -> bool;
 }
 
-/// LLH format
+/// Geodetic coordinates in Latitude-Longitude-Height (LLH) system
+/// - Latitude: Degrees north/south (-90° to 90°)
+/// - Longitude: Degrees east/west (-180° to 180°)
+/// - Height: Meters above WGS84 ellipsoid
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Location {
     pub latitude: f64,
@@ -14,6 +24,7 @@ pub struct Location {
     pub height: f64,
 }
 impl Location {
+    /// Constructs new LLH coordinates with angular degrees
     pub fn new(latitude: f64, longitude: f64, height: f64) -> Self {
         Self {
             latitude,
@@ -22,6 +33,7 @@ impl Location {
         }
     }
 
+    /// Converts angular degrees to radians for calculations
     pub fn to_rad(&self) -> Self {
         Self {
             latitude: self.latitude.to_radians(),
@@ -30,16 +42,25 @@ impl Location {
         }
     }
 
+    /// Computes Local Tangent Plane (ENU) rotation matrix
+    /// Returns 3x3 rotation matrix `[[e_x, n_x, u_x], ...]`
+    /// where:
+    /// - e: East-axis components
+    /// - n: North-axis components
+    /// - u: Up-axis components
     pub fn ltcmat(&self) -> [[f64; 3]; 3] {
         let (slat, clat) = self.latitude.sin_cos();
         let (slon, clon) = self.longitude.sin_cos();
-        [[-slat * clon, -slat * slon, clat], [-slon, clon, 0.0], [
-            clat * clon,
-            clat * slon,
-            slat,
-        ]]
+        [
+            [-slat * clon, -slat * slon, clat], // East components
+            [-slon, clon, 0.0],                 // North components
+            [clat * clon, clat * slon, slat],   // Up components
+        ]
     }
 
+    /// Calculates initial bearing between two points using:
+    /// θ = atan2(sinΔλ·cosφ2, cosφ1·sinφ2 − sinφ1·cosφ2·cosΔλ)
+    /// Returns bearing in degrees (0°-360°)
     pub fn bearing(&self, other: &Self) -> f64 {
         let lat1 = self.latitude.to_radians();
         let lon1 = self.longitude.to_radians();
@@ -52,6 +73,11 @@ impl Location {
         (brng + 360.0) % 360.0
     }
 
+    /// Calculates great-circle distance using Haversine formula:
+    /// a = sin²(Δφ/2) + cosφ1·cosφ2·sin²(Δλ/2)
+    /// c = 2·atan2(√a, √(1−a))
+    /// d = R·c
+    /// Returns distance in meters
     pub fn measure(&self, other: &Self) -> f64 {
         const R: f64 = 6378.137; // 地球半径，单位为千米
         let d_lat = (other.latitude - self.latitude).to_radians();
@@ -80,6 +106,7 @@ impl LocationMath for Location {
             + self.height * rhs.height
     }
 
+    #[cfg(test)]
     fn precise(&self, rhs: &Self, eps: f64) -> bool {
         (self.latitude - rhs.latitude).abs() <= eps
             && (self.longitude - rhs.longitude).abs() <= eps
@@ -164,7 +191,10 @@ impl std::fmt::Display for Location {
         )
     }
 }
-/// ECEF format
+/// Earth-Centered Earth-Fixed (ECEF) Cartesian coordinates
+/// - X: Through equator at 0° longitude
+/// - Y: Through equator at 90° east
+/// - Z: Through north pole
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Ecef {
     pub x: f64,
@@ -185,6 +215,7 @@ impl LocationMath for Ecef {
         self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
     }
 
+    #[cfg(test)]
     fn precise(&self, rhs: &Self, eps: f64) -> bool {
         (self.x - rhs.x).abs() <= eps
             && (self.y - rhs.y).abs() <= eps
@@ -192,6 +223,11 @@ impl LocationMath for Ecef {
     }
 }
 impl From<&Location> for Ecef {
+    /// Converts LLH to ECEF using WGS84 ellipsoid parameters:
+    /// N = a / √(1 - e²·sin²φ)
+    /// x = (N + h)cosφ·cosλ
+    /// y = (N + h)cosφ·sinλ
+    /// z = ((1 - e²)N + h)sinφ
     fn from(loc: &Location) -> Self {
         let a: f64 = WGS84_RADIUS;
         let e: f64 = WGS84_ECCENTRICITY;
@@ -252,7 +288,10 @@ impl std::ops::Mul<f64> for Ecef {
     }
 }
 
-/// North-East-Up format
+/// North-East-Up (NEU) local tangent plane coordinates
+/// - North: Local north direction
+/// - East: Local east direction
+/// - Up: Local vertical direction
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Neu {
     pub north: f64,
@@ -274,6 +313,9 @@ impl Neu {
     }
 }
 impl From<&Ecef> for Neu {
+    /// Transforms ECEF to NEU using rotation matrix:
+    /// `neu = R·(ecef - reference_ecef)`
+    /// where R is the local tangent plane rotation matrix
     fn from(value: &Ecef) -> Self {
         let ltcmat = Location::from(value).ltcmat();
         Self::from_ecef(value, ltcmat)
@@ -297,6 +339,7 @@ impl LocationMath for Neu {
         self.north * rhs.north + self.east * rhs.east + self.up * rhs.up
     }
 
+    #[cfg(test)]
     fn precise(&self, rhs: &Self, eps: f64) -> bool {
         (self.north - rhs.north).abs() <= eps
             && (self.east - rhs.east).abs() <= eps
@@ -304,7 +347,9 @@ impl LocationMath for Neu {
     }
 }
 
-/// bearing + Elevation
+/// Azimuth-Elevation pair for directional calculations
+/// - Azimuth: Clockwise angle from north (0°-360°)
+/// - Elevation: Angle above horizon (0°-90°)
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Azel {
     pub az: f64,
@@ -320,13 +365,16 @@ impl From<&[f64; 2]> for Azel {
 }
 
 impl From<&Neu> for Azel {
+    /// Converts NEU to Azimuth/Elevation:
+    /// azimuth = atan2(east, north) [adjusted to 0-2π]
+    /// elevation = atan2(up, √(north² + east²))
     fn from(neu: &Neu) -> Self {
         let mut az = neu.east.atan2(neu.north);
         if az < 0.0 {
             az += 2.0 * PI;
         }
 
-        let ne: f64 = (neu.north * neu.north + neu.east * neu.east).sqrt();
+        let ne = (neu.north * neu.north + neu.east * neu.east).sqrt();
         let el = neu.up.atan2(ne);
         Self { az, el }
     }
