@@ -67,10 +67,8 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let a = WGS84_RADIUS;
     let e = WGS84_ECCENTRICITY;
     let e2 = e * e;
-    let clat = llh[0].cos();
-    let slat = llh[0].sin();
-    let clon = llh[1].cos();
-    let slon = llh[1].sin();
+    let (slat, clat) = llh[0].sin_cos();
+    let (slon, clon) = llh[1].sin_cos();
     let d = e * slat;
     let n = a / (1.0 - d * d).sqrt();
     let nph = n + llh[2];

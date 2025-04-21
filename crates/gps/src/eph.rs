@@ -81,75 +81,71 @@ impl Ephemeris {
     /// \param[clk] clk Computed clock
     #[inline]
     pub fn compute_satellite_state(
-        &self,
-        time: &GpsTime, /* , pos: &mut [f64; 3], vel: &mut [f64; 3],
-                        * clk: &mut [f64; 2], */
+        &self, time: &GpsTime,
     ) -> ([f64; 3], [f64; 3], [f64; 2]) {
-        let mut tk = time.sec - self.toe.sec;
-        if tk > SECONDS_IN_HALF_WEEK {
-            tk -= SECONDS_IN_WEEK;
-        } else if tk < -SECONDS_IN_HALF_WEEK {
-            tk += SECONDS_IN_WEEK;
-        }
+        // 时间归一化处理（处理周秒翻转）
+        let normalize_time = |current_time: f64, reference_time: f64| {
+            let mut time_diff = current_time - reference_time;
+            if time_diff > SECONDS_IN_HALF_WEEK {
+                time_diff -= SECONDS_IN_WEEK;
+            } else if time_diff < -SECONDS_IN_HALF_WEEK {
+                time_diff += SECONDS_IN_WEEK;
+            }
+            time_diff
+        };
+        // 计算相对于星历参考时间的归一化时间
+        let tk = normalize_time(time.sec, self.toe.sec);
+
+        // 1. 计算偏近点角Ek（开普勒方程迭代求解）
         let mk = self.m0 + self.n * tk;
-        let mut ek = mk;
-        let mut ekold = ek + 1.0;
+        let (mut ek, mut ek_prev) = (mk, mk + 1.0);
         let mut one_minusecos_e = 0.0; // Suppress the uninitialized warning.
-        while (ek - ekold).abs() > 1.0e-14 {
-            ekold = ek;
-            one_minusecos_e = 1.0 - self.ecc * ekold.cos();
-            ek += (mk - ekold + self.ecc * (ekold.sin())) / one_minusecos_e;
+        while (ek - ek_prev).abs() > 1.0e-14 {
+            ek_prev = ek;
+            one_minusecos_e = 1.0 - self.ecc * ek_prev.cos();
+            ek += (mk - ek_prev + self.ecc * (ek_prev.sin())) / one_minusecos_e;
         }
-        let sek = ek.sin();
-        let cek = ek.cos();
+
+        // 2. 计算轨道参数
+        let (sek, cek) = ek.sin_cos();
         let ekdot = self.n / one_minusecos_e;
         let relativistic = -4.442_807_633E-10 * self.ecc * self.sqrta * sek;
         let pk = (self.sq1e2 * sek).atan2(cek - self.ecc) + self.aop;
         let pkdot = self.sq1e2 * ekdot / one_minusecos_e;
-        let s2pk = (2.0 * pk).sin();
-        let c2pk = (2.0 * pk).cos();
+
+        // 3. 计算纬度参数
+        let (s2pk, c2pk) = (2.0 * pk).sin_cos();
         let uk = pk + self.cus * s2pk + self.cuc * c2pk;
-        let suk = uk.sin();
-        let cuk = uk.cos();
+        let (suk, cuk) = uk.sin_cos();
         let ukdot = pkdot * (1.0 + 2.0 * (self.cus * c2pk - self.cuc * s2pk));
         let rk = self.A * one_minusecos_e + self.crc * c2pk + self.crs * s2pk;
         let rkdot = self.A * self.ecc * sek * ekdot
             + 2.0 * pkdot * (self.crs * c2pk - self.crc * s2pk);
         let ik = self.inc0 + self.idot * tk + self.cic * c2pk + self.cis * s2pk;
-        let sik = ik.sin();
-        let cik = ik.cos();
+        let (sik, cik) = ik.sin_cos();
         let ikdot =
             self.idot + 2.0 * pkdot * (self.cis * c2pk - self.cic * s2pk);
+
+        // 4. 位置和速度计算
         let xpk = rk * cuk;
         let ypk = rk * suk;
         let xpkdot = rkdot * cuk - ypk * ukdot;
         let ypkdot = rkdot * suk + xpk * ukdot;
         let ok = self.omg0 + tk * self.omgkdot - OMEGA_EARTH * self.toe.sec;
-        let sok = ok.sin();
-        let cok = ok.cos();
+        let (sok, cok) = ok.sin_cos();
         let pos = [
             xpk * cok - ypk * cik * sok,
             xpk * sok + ypk * cik * cok,
             ypk * sik,
         ];
-        // pos[0] = xpk * cok - ypk * cik * sok;
-        // pos[1] = xpk * sok + ypk * cik * cok;
-        // pos[2] = ypk * sik;
         let tmp = ypkdot * cik - ypk * sik * ikdot;
         let vel = [
             -self.omgkdot * pos[1] + xpkdot * cok - tmp * sok,
             self.omgkdot * pos[0] + xpkdot * sok + tmp * cok,
             ypk * cik * ikdot + ypkdot * sik,
         ];
-        // vel[0] = -eph.omgkdot * pos[1] + xpkdot * cok - tmp * sok;
-        // vel[1] = eph.omgkdot * pos[0] + xpkdot * sok + tmp * cok;
-        // vel[2] = ypk * cik * ikdot + ypkdot * sik;
-        let mut tk = time.sec - self.toc.sec;
-        if tk > SECONDS_IN_HALF_WEEK {
-            tk -= SECONDS_IN_WEEK;
-        } else if tk < -SECONDS_IN_HALF_WEEK {
-            tk += SECONDS_IN_WEEK;
-        }
+        // 5. 时钟校正计算
+        let tk = normalize_time(time.sec, self.toc.sec);
         let clk = [
             self.af0 + tk * (self.af1 + tk * self.af2) + relativistic
                 - self.tgd,
@@ -169,10 +165,6 @@ impl Ephemeris {
         }
         let mut llh: [f64; 3] = [0.; 3];
         let mut neu: [f64; 3] = [0.; 3];
-        // let mut pos: [f64; 3] = [0.; 3];
-        // let mut vel: [f64; 3] = [0.; 3];
-        // modified from [f64;3] to [f64;2]
-        // let mut clk: [f64; 2] = [0.; 2];
         let mut los: [f64; 3] = [0.; 3];
         let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
         xyz2llh(xyz, &mut llh);
