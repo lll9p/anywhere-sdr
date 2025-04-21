@@ -7,7 +7,7 @@ pub trait LocationMath {
 }
 
 /// LLH format
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Location {
     pub latitude: f64,
     pub longitude: f64,
@@ -179,7 +179,7 @@ impl std::fmt::Display for Location {
     }
 }
 /// ECEF format
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Ecef {
     pub x: f64,
     pub y: f64,
@@ -267,7 +267,7 @@ impl std::ops::Mul<f64> for Ecef {
 }
 
 /// North-East-Up format
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Neu {
     pub north: f64,
     pub east: f64,
@@ -323,7 +323,7 @@ impl LocationMath for Neu {
 // north, east, up }     }
 // }
 /// bearing + Elevation
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Azel {
     pub az: f64,
     pub el: f64,
@@ -415,7 +415,7 @@ impl Target {
             lon2.to_degrees(),
             self.location.height,
         );
-        self.location = new_location.clone();
+        self.location = new_location;
         new_location
     }
 }

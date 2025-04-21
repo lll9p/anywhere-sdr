@@ -12,6 +12,7 @@ use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
+    geometry::Ecef,
     ionoutc::IonoUtc,
     table::{ANT_PAT_DB, COS_TABLE512, SIN_TABLE512},
     utils::{allocate_channel, compute_range},
@@ -24,7 +25,7 @@ pub struct SignalGenerator {
     pub ionoutc: IonoUtc,
     pub allocated_satellite: [i32; MAX_SAT],
     /// posisions of receiver, per 100ms
-    pub positions: Vec<[f64; 3]>,
+    pub positions: Vec<Ecef>,
     pub user_motion_count: usize,
     pub receiver_gps_time: GpsTime,
     pub antenna_gains: [i32; MAX_CHAN],
@@ -84,7 +85,7 @@ impl SignalGenerator {
 
         eprintln!(
             "xyz = {}, {}, {}",
-            self.positions[0][0], self.positions[0][1], self.positions[0][2],
+            self.positions[0].x, self.positions[0].y, self.positions[0].z,
         );
         let gps_time_start = self.receiver_gps_time.clone();
         let date_time_start = DateTime::from(&gps_time_start);
@@ -121,8 +122,8 @@ impl SignalGenerator {
                 eprintln!(
                     "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                     ichan.prn,
-                    ichan.azel[0] * R2D,
-                    ichan.azel[1] * R2D,
+                    ichan.azel.az * R2D,
+                    ichan.azel.el * R2D,
                     ichan.rho0.distance,
                     ichan.rho0.iono_delay,
                 );
@@ -195,7 +196,7 @@ impl SignalGenerator {
 
                     // 更新方位角/仰角信息
                     // Update code phase and data bit counters
-                    channels[i].azel.copy_from_slice(&rho.azel);
+                    channels[i].azel = rho.azel;
                     // 计算码相位（C/A码偏移）
                     channels[i].compute_code_phase(&rho, self.sample_rate);
                     channels[i].carr_phasestep = (512.0
@@ -208,7 +209,7 @@ impl SignalGenerator {
                     // Path loss
                     let path_loss = 20_200_000.0 / rho.distance;
                     // Receiver antenna gain
-                    let ibs = ((90.0 - rho.azel[1] * R2D) / 5.0) as usize; // covert elevation to boresight
+                    let ibs = ((90.0 - rho.azel.el * R2D) / 5.0) as usize; // covert elevation to boresight
                     let ant_gain = self.antenna_pattern[ibs];
                     // 计算信号增益（考虑路径损耗和天线方向图）
                     // Signal gain
@@ -423,8 +424,8 @@ impl SignalGenerator {
                             eprintln!(
                                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                                 ichan.prn,
-                                ichan.azel[0] * R2D,
-                                ichan.azel[1] * R2D,
+                                ichan.azel.az * R2D,
+                                ichan.azel.el * R2D,
                                 ichan.rho0.distance,
                                 ichan.rho0.iono_delay,
                             );

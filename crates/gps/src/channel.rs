@@ -1,6 +1,7 @@
 use crate::{
     constants::*,
     datetime::{GpsTime, TimeRange},
+    geometry::Azel,
 };
 
 ///  Structure representing a Channel
@@ -40,7 +41,7 @@ pub struct Channel {
     pub dataBit: i32,
     ///  current C/A code
     pub codeCA: i32,
-    pub azel: [f64; 2],
+    pub azel: Azel,
     pub rho0: TimeRange,
 }
 impl Default for Channel {
@@ -61,7 +62,7 @@ impl Default for Channel {
             icode: 0,
             dataBit: 0,
             codeCA: 0,
-            azel: [0.0; 2],
+            azel: Azel::default(),
             rho0: TimeRange::default(),
         }
     }

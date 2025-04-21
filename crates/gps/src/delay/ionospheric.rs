@@ -1,17 +1,22 @@
-use crate::{constants::*, datetime::GpsTime, ionoutc::IonoUtc};
+use crate::{
+    constants::*,
+    datetime::GpsTime,
+    geometry::{Azel, Location},
+    ionoutc::IonoUtc,
+};
 
 #[allow(non_snake_case)]
 pub fn ionospheric_delay(
-    ionoutc: &IonoUtc, time: &GpsTime, llh: &[f64; 3], azel: &[f64; 2],
+    ionoutc: &IonoUtc, time: &GpsTime, llh: &Location, azel: &Azel,
 ) -> f64 {
     let iono_delay: f64;
     if !ionoutc.enable {
         // No ionospheric delay
         return 0.0;
     }
-    let E = azel[1] / PI;
-    let phi_u = llh[0] / PI;
-    let lam_u = llh[1] / PI;
+    let E = azel.el / PI;
+    let phi_u = llh.latitude / PI;
+    let lam_u = llh.longitude / PI;
     let F = 1.0 + 16.0 * (0.53 - E).powf(3.0);
     if ionoutc.vflg {
         let mut PER: f64;
@@ -22,12 +27,12 @@ pub fn ionospheric_delay(
 
         // Geodetic latitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let phi_i = phi_u + psi * azel[0].cos();
+        let phi_i = phi_u + psi * azel.az.cos();
         let phi_i = phi_i.clamp(-0.416, 0.416);
 
         // Geodetic longitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let lam_i = lam_u + psi * azel[0].sin() / (phi_i * PI).cos();
+        let lam_i = lam_u + psi * azel.az.sin() / (phi_i * PI).cos();
         // Geomagnetic latitude of the earth projection of the ionospheric
         // intersection point (mean ionospheric height assumed 350 km)
         // (semi-circles)
@@ -51,13 +56,7 @@ pub fn ionospheric_delay(
         // Local time (sec)
         let t = (time.sec + 0.5 * SECONDS_IN_DAY * lam_i)
             .rem_euclid(SECONDS_IN_DAY);
-        // let mut t = SECONDS_IN_DAY / 2.0 * lam_i + time.sec;
-        // while t >= SECONDS_IN_DAY {
-        //     t -= SECONDS_IN_DAY;
-        // }
-        // while t < 0.0 {
-        //     t += SECONDS_IN_DAY;
-        // }
+
         // Phase (radians)
         let X = 2.0 * PI * (t - 50400.0) / PER;
         if X.abs() < 1.57 {

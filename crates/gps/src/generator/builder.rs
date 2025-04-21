@@ -10,11 +10,11 @@ use crate::{
     constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
+    geometry::{Ecef, Location},
     ionoutc::IonoUtc,
     read_nmea_gga::read_nmea_gga,
     read_rinex::read_rinex_nav_all,
     read_user_motion::{read_user_motion, read_user_motion_llh},
-    utils::llh2xyz,
 };
 type EphemerisRelatedData = (
     usize,
@@ -26,7 +26,7 @@ pub struct SignalGeneratorBuilder {
     output_file: Option<PathBuf>,
     ephemerides_data: Option<EphemerisRelatedData>,
     leap: Option<Vec<i32>>,
-    positions: Option<Vec<[f64; 3]>>,
+    positions: Option<Vec<Ecef>>,
     sample_rate: Option<f64>,
     mode: Option<MotionMode>,
     duration: Option<f64>,
@@ -142,7 +142,7 @@ impl SignalGeneratorBuilder {
         }
         if let Some(location) = location {
             self.mode = Some(MotionMode::Static);
-            let location = [location[0], location[1], location[2]];
+            let location = Ecef::from([location[0], location[1], location[2]]);
             self.positions = Some(vec![location]);
         }
         Ok(self)
@@ -157,8 +157,9 @@ impl SignalGeneratorBuilder {
             let mut location = [location[0], location[1], location[2]];
             location[0] /= R2D;
             location[1] /= R2D;
-            let mut xyz = [0.0, 0.0, 0.0];
-            llh2xyz(&location, &mut xyz);
+            let xyz = Ecef::from(&Location::from(location));
+            // let mut xyz = [0.0, 0.0, 0.0];
+            // llh2xyz(&location, &mut xyz);
             self.positions = Some(vec![xyz]);
         }
         Ok(self)
@@ -255,8 +256,9 @@ impl SignalGeneratorBuilder {
             // Default static location; Tokyo
             self.mode = Some(MotionMode::Static);
             let llh = [35.681_298 / R2D, 139.766_247 / R2D, 10.0];
-            let mut xyz = [0.0, 0.0, 0.0];
-            llh2xyz(&llh, &mut xyz);
+            let xyz = Ecef::from(&Location::from(llh));
+            // let mut xyz = [0.0, 0.0, 0.0];
+            // llh2xyz(&llh, &mut xyz);
             vec![xyz]
         };
         // sample_rate, default is 0.1/10HZ

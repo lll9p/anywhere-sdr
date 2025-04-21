@@ -4,24 +4,29 @@ use crate::{
     datetime::{GpsTime, TimeRange},
     delay::ionospheric_delay,
     eph::Ephemeris,
+    geometry::{Azel, Ecef, Location, LocationMath, Neu},
     ionoutc::IonoUtc,
 };
+#[allow(dead_code)]
 pub fn sub_vect(y: &mut [f64; 3], x1: &[f64; 3], x2: &[f64; 3]) {
     y[0] = x1[0] - x2[0];
     y[1] = x1[1] - x2[1];
     y[2] = x1[2] - x2[2];
 }
 
+#[allow(dead_code)]
 pub fn norm_vect(x: &[f64; 3]) -> f64 {
     (x[0] * x[0] + x[1] * x[1] + x[2] * x[2]).sqrt()
 }
 
+#[allow(dead_code)]
 pub fn dot_prod(x1: &[f64; 3], x2: &[f64; 3]) -> f64 {
     x1[0] * x2[0] + x1[1] * x2[1] + x1[2] * x2[2]
 }
 ///  Convert Earth-centered Earth-fixed (ECEF) into Lat/Long/Height
 ///  \param[in] xyz Input Array of X, Y and Z ECEF coordinates
 ///  \param[out] llh Output Array of Latitude, Longitude and Height
+#[allow(dead_code)]
 pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
     let mut zdz: f64;
     let mut nh: f64;
@@ -63,6 +68,7 @@ pub fn xyz2llh(xyz_0: &[f64; 3], llh: &mut [f64; 3]) {
 /// Convert Lat/Long/Height into Earth-centered Earth-fixed (ECEF)
 /// \param[in] llh Input Array of Latitude, Longitude and Height
 /// \param[out] xyz Output Array of X, Y and Z ECEF coordinates
+#[allow(dead_code)]
 pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
     let a = WGS84_RADIUS;
     let e = WGS84_ECCENTRICITY;
@@ -81,6 +87,7 @@ pub fn llh2xyz(llh: &[f64; 3], xyz_0: &mut [f64; 3]) {
 ///  \brief Compute the intermediate matrix for LLH to ECEF
 ///  \param[in] llh Input position in Latitude-Longitude-Height format
 ///  \param[out] t Three-by-Three output matrix
+#[allow(dead_code)]
 pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
     let slat = llh[0].sin();
     let clat = llh[0].cos();
@@ -101,6 +108,7 @@ pub fn ltcmat(llh: &[f64; 3], t: &mut [[f64; 3]; 3]) {
 /// \param[in] xyz Input position as vector in ECEF format
 /// \param[in] t Intermediate matrix computed by \ref ltcmat
 /// \param[out] neu Output position as North-East-Up format
+#[allow(dead_code)]
 pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
     neu[0] = t[0][0] * xyz_0[0] + t[0][1] * xyz_0[1] + t[0][2] * xyz_0[2];
     neu[1] = t[1][0] * xyz_0[0] + t[1][1] * xyz_0[1] + t[1][2] * xyz_0[2];
@@ -110,6 +118,7 @@ pub fn ecef2neu(xyz_0: &[f64; 3], t: &[[f64; 3]; 3], neu: &mut [f64; 3]) {
 ///  \brief Convert North-East-Up to Azimuth + Elevation
 /// \param[in] neu Input position in North-East-Up format
 /// \param[out] azel Output array of azimuth + elevation as double
+#[allow(dead_code)]
 pub fn neu2azel(azel: &mut [f64; 2], neu: &[f64; 3]) {
     azel[0] = neu[1].atan2(neu[0]);
     if azel[0] < 0.0 {
@@ -166,15 +175,15 @@ pub fn codegen(ca: &mut [i32; CA_SEQ_LEN], prn: usize) {
 ///  \param[in] g GPS time at time of receiving the signal
 ///  \param[in] xyz position of the receiver
 pub fn compute_range(
-    eph: &Ephemeris, ionoutc: &IonoUtc, time: &GpsTime, xyz: &[f64; 3],
+    eph: &Ephemeris, ionoutc: &IonoUtc, time: &GpsTime, xyz: &Ecef,
 ) -> TimeRange {
     let mut rho = TimeRange::default();
-    let mut los: [f64; 3] = [0.; 3];
     // SV position at time of the pseudorange observation.
     let (mut pos, vel, clk) = eph.compute_satellite_state(time);
     // Receiver to satellite vector and light-time.
-    sub_vect(&mut los, &pos, xyz);
-    let tau = norm_vect(&los) / SPEED_OF_LIGHT;
+    let los = Ecef::from(pos) - xyz;
+
+    let tau = los.norm() / SPEED_OF_LIGHT;
     // Extrapolate the satellite position backwards to the transmission time.
     pos[0] -= vel[0] * tau;
     pos[1] -= vel[1] * tau;
@@ -184,27 +193,24 @@ pub fn compute_range(
     pos[0] = xrot;
     pos[1] = yrot;
     // New observer to satellite vector and satellite range.
-    sub_vect(&mut los, &pos, xyz);
-    let range = norm_vect(&los);
+    let los = Ecef::from(pos) - xyz;
+    // sub_vect(&mut los, &pos, xyz);
+    let range = los.norm();
     rho.distance = range;
     // Pseudorange.
     rho.range = range - SPEED_OF_LIGHT * clk[0];
     // Relative velocity of SV and receiver.
-    let rate = dot_prod(&vel, &los) / range;
+    let vel = Ecef::from(vel);
+    let rate = vel.dot_prod(&los) / range;
     // Pseudorange rate.
     rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];
     // Time of application.
     rho.time = time.clone();
 
     // Azimuth and elevation angles.
-    let mut llh: [f64; 3] = [0.; 3];
-    let mut tmat: [[f64; 3]; 3] = [[0.; 3]; 3];
-    xyz2llh(xyz, &mut llh);
-    ltcmat(&llh, &mut tmat);
-
-    let mut neu: [f64; 3] = [0.; 3];
-    ecef2neu(&los, &tmat, &mut neu);
-    neu2azel(&mut rho.azel, &neu);
+    let llh = Location::from(xyz);
+    let neu = Neu::from_ecef(&los, llh.ltcmat());
+    rho.azel = Azel::from(&neu);
     // Add ionospheric delay
     rho.iono_delay = ionospheric_delay(ionoutc, time, &llh, &rho.azel);
     rho.range += rho.iono_delay;
@@ -213,7 +219,7 @@ pub fn compute_range(
 
 pub fn allocate_channel(
     chan: &mut [Channel; MAX_CHAN], eph: &mut [Ephemeris; MAX_SAT],
-    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz: &[f64; 3], _elv_mask: f64,
+    ionoutc: &mut IonoUtc, grx: &GpsTime, xyz: &Ecef, _elv_mask: f64,
     allocated_sat: &mut [i32; MAX_SAT],
 ) -> i32 {
     let mut nsat: i32 = 0;
@@ -235,8 +241,7 @@ pub fn allocate_channel(
                     if ichan.prn == 0 {
                         // Initialize channel
                         ichan.prn = sv + 1;
-                        ichan.azel[0] = azel[0];
-                        ichan.azel[1] = azel[1];
+                        ichan.azel = *azel;
                         // C/A code generation
                         codegen(&mut ichan.ca, ichan.prn);
                         // Generate subframe

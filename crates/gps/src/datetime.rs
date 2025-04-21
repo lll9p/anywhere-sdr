@@ -1,4 +1,4 @@
-use crate::constants::*;
+use crate::{constants::*, geometry::Azel};
 // Structure representing GPS time
 #[derive(Debug, Clone, Default)]
 // #[repr(C)]
@@ -111,6 +111,6 @@ pub struct TimeRange {
     pub rate: f64,
     // geometric distance
     pub distance: f64,
-    pub azel: [f64; 2],
+    pub azel: Azel,
     pub iono_delay: f64,
 }

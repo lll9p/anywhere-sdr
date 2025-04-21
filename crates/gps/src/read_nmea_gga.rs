@@ -1,13 +1,16 @@
 use std::{fs, path::PathBuf};
 
-use crate::{constants::*, utils::llh2xyz};
+use crate::{
+    constants::*,
+    geometry::{Ecef, Location},
+};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.parse()
 }
 
 #[allow(dead_code)]
-pub fn read_nmea_gga(filename: &PathBuf) -> anyhow::Result<Vec<[f64; 3]>> {
-    let mut xyz = Vec::<[f64; 3]>::new();
+pub fn read_nmea_gga(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
+    let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
 
     let lines = content.lines();
@@ -30,7 +33,6 @@ pub fn read_nmea_gga(filename: &PathBuf) -> anyhow::Result<Vec<[f64; 3]>> {
         let _age_or_stn_id = line_vec[13];
         let _checksum = line_vec[14];
         let mut llh = [0.0f64; 3];
-        let mut pos = [0.0f64; 3];
         llh[0] = parse_f64(&lat[..2])? + parse_f64(&lat[2..])? / 60.0;
 
         if lat_dir == "S" {
@@ -43,9 +45,10 @@ pub fn read_nmea_gga(filename: &PathBuf) -> anyhow::Result<Vec<[f64; 3]>> {
         }
         llh[1] /= R2D;
         llh[2] = parse_f64(alt)? + parse_f64(undulation)?;
-        llh2xyz(&llh, &mut pos);
+        let pos = Ecef::from(&Location::from(llh));
+        // llh2xyz(&llh, &mut pos);
 
-        xyz.push([pos[0], pos[1], pos[2]]);
+        xyz.push(pos);
     }
     Ok(xyz)
 }
