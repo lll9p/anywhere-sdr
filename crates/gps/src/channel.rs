@@ -7,43 +7,68 @@ use crate::{
     propagation::compute_range,
     table::*,
 };
-///  Structure representing a Channel
+/// Structure representing a Channel
+/// Represents a single GPS satellite channel being tracked by the receiver.
+///
+/// Stores the state information necessary for signal acquisition, tracking,
+/// and decoding the navigation message for a specific satellite (identified by
+/// PRN).
 #[allow(non_snake_case)]
 pub struct Channel {
     /// PRN Number(Pseudorandom Noise)
+    /// Pseudorandom Noise (PRN) number identifying the satellite (1-32).
     pub prn: usize,
     /// C/A Sequence
+    /// The C/A (Coarse/Acquisition) code sequence for this satellite's PRN.
     ca: [i32; CA_SEQ_LEN],
     /// Carrier frequency
+    /// Instantaneous carrier frequency offset due to Doppler shift (Hz).
     f_carrier: f64,
     /// Code frequency
+    /// Instantaneous code frequency (Code Freq + Doppler shift effect) (Hz).
     f_code: f64,
     /* #ifdef FLOAT_CARR_PHASE
         double carr_phase;
     #endif */
     /// Carrier phase
+    /// Current carrier phase accumulator (scaled fixed-point representation).
     carr_phase: u32,
     /// Carrier phasestep
+    /// Carrier phase step per sample (scaled fixed-point representation).
     carr_phasestep: i32,
     /// Code phase
+    /// Current code phase (position within the C/A code sequence, 0.0 to
+    /// 1022.999...).
     code_phase: f64,
     /// GPS time at start
+    /// GPS time corresponding to the start of the navigation message frame.
     time_start: GpsTime,
     /// current subframe
+    /// Buffer storing the 5 subframes (10 words each) of the navigation
+    /// message.
     sbf: [[u32; N_DWRD_SBF]; 5],
     /// Data words of sub-frame
+    /// Buffer storing the full navigation message cycle (5 subframes * 10
+    /// words/subframe = 50 words).
     dwrd: [u32; N_DWRD],
     /// initial word
+    /// Index of the current navigation message word (0-49).
     iword: i32, // observed 0..59
     /// initial bit
+    /// Index of the current bit within the navigation message word (0-29).
     ibit: i32, // observed 0..26
     /// initial code
+    /// Index of the current C/A code epoch within the current bit (0-19).
     icode: i32, // observed 0..18
     ///  current data bit
+    /// The current navigation data bit value (+1 or -1).
     data_bit: i32, // observed -1..1
     ///  current C/A code
+    /// The current C/A code chip value (+1 or -1).
     code_ca: i32, // observed -1..1
+    /// Azimuth and elevation of the satellite.
     azel: Azel,
+    /// The previous pseudorange measurement and associated data.
     rho0: TimeRange,
 }
 impl Default for Channel {
@@ -70,14 +95,30 @@ impl Default for Channel {
     }
 }
 impl Channel {
+    /// Returns a reference to the initial pseudorange information.
     pub fn rho0(&self) -> &TimeRange {
         &self.rho0
     }
 
+    /// Returns a reference to the satellite's azimuth and elevation.
     pub fn azel(&self) -> &Azel {
         &self.azel
     }
 
+    /// Initializes or updates the channel state for a specific satellite.
+    ///
+    /// This involves setting the PRN, generating C/A code and navigation
+    /// subframes, initializing pseudorange, and setting the initial carrier
+    /// phase.
+    ///
+    /// # Arguments
+    /// * `prn` - The PRN number of the satellite.
+    /// * `eph` - The ephemeris data for the satellite.
+    /// * `ionoutc` - Ionospheric and UTC parameters.
+    /// * `receiver_gps_time` - The current GPS time at the receiver.
+    /// * `xyz` - The receiver's position in ECEF coordinates.
+    /// * `azel` - The satellite's azimuth and elevation as seen from the
+    ///   receiver.
     pub fn update_for_satellite(
         &mut self, prn: usize, eph: &Ephemeris, ionoutc: &IonoUtc,
         receiver_gps_time: &GpsTime, xyz: &Ecef, azel: Azel,
@@ -116,6 +157,18 @@ impl Channel {
         self.carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
     }
 
+    /// Updates the channel's state based on new pseudorange information and
+    /// time delta.
+    ///
+    /// Calculates the new code phase and carrier phase step based on the change
+    /// in pseudorange over the sampling period.
+    ///
+    /// # Arguments
+    /// * `rho1` - The new pseudorange measurement and associated time/azel
+    ///   data.
+    /// * `dt` - The time difference since the last pseudorange measurement
+    ///   (`rho0`).
+    /// * `sampling_period` - The receiver's sampling period in seconds.
     pub fn update_state(
         &mut self, rho1: &TimeRange, dt: f64, sampling_period: f64,
     ) {
@@ -132,6 +185,15 @@ impl Channel {
     ///  \param chan Channel on which we operate (is updated)
     ///  \param[in] rho1 Current range, after \a dt has expired
     ///  \param[in dt delta-t (time difference) in seconds
+    /// Computes the code phase for the channel based on pseudorange rate.
+    ///
+    /// Updates carrier and code frequencies, calculates initial code phase,
+    /// word/bit/code counters, and sets the initial C/A code and data bit
+    /// values.
+    ///
+    /// # Arguments
+    /// * `rho1` - Current range information.
+    /// * `dt` - Time difference since the last range measurement (`rho0`).
     #[inline]
     pub fn compute_code_phase(&mut self, rho1: &TimeRange, dt: f64) {
         // Pseudorange rate.
@@ -162,6 +224,12 @@ impl Channel {
     /// !generate the C/A code sequence for a given Satellite Vehicle PRN
     ///  \param[in] prn PRN number of the Satellite Vehicle
     ///  \param[out] ca Caller-allocated integer array of 1023 bytes
+    /// Generates the C/A (Coarse/Acquisition) code sequence for the channel's
+    /// PRN.
+    ///
+    /// Uses two 10-bit Linear Feedback Shift Registers (LFSRs), G1 and G2,
+    /// combined according to the specific PRN's delay offset.
+    /// The resulting 1023-chip sequence is stored in `self.ca`.
     #[inline]
     pub fn codegen(&mut self) {
         let delay: [usize; 32] = [
@@ -199,6 +267,17 @@ impl Channel {
         }
     }
 
+    /// Generates the full navigation message data words (DWRD) for a 30-second
+    /// cycle.
+    ///
+    /// Populates the `self.dwrd` array with the 5 subframes (50 words total).
+    /// It inserts the Time of Week (TOW) count and Week Number (WN) into the
+    /// appropriate words and computes the parity checksum for each word.
+    ///
+    /// # Arguments
+    /// * `time` - The current GPS time used to calculate TOW and WN.
+    /// * `init` - Flag indicating if this is the initial generation (handles
+    ///   subframe 5 differently).]
     pub fn generate_nav_msg(&mut self, time: &GpsTime, init: bool) {
         let mut time_init = GpsTime::default();
         let mut sbfwrd: u32;
@@ -265,10 +344,21 @@ impl Channel {
         }
     }
 
-    ///  \brief Compute the Checksum for one given word of a subframe
-    ///  \param[in] source The input data
-    ///  \param[in] nib Does this word contain non-information-bearing bits?
-    ///  \returns Computed Checksum
+    /// Computes the 6-bit parity checksum for a 30-bit navigation message word.
+    ///
+    /// Implements the parity algorithm defined in IS-GPS-200, using the
+    /// previous word's last two bits (D29*, D30*) and the current word's 24
+    /// data bits. Handles non-information bearing bits (NIB) adjustments
+    /// for specific words.
+    ///
+    /// # Arguments
+    /// * `source` - The 32-bit input word containing data bits (29-6) and
+    ///   previous parity bits (31-30).
+    /// * `nib` - Flag indicating if the word contains non-information-bearing
+    ///   bits (usually words 2 and 10).
+    ///
+    /// # Returns
+    /// The 32-bit word with the computed 6 parity bits (5-0) inserted.
     #[allow(non_snake_case)]
     // #[inline]
     pub fn compute_checksum(source: u32, nib: i32) -> u32 {
@@ -362,7 +452,18 @@ impl Channel {
         D
     }
 
-    // #[inline]
+    /// Updates the navigation bit state based on the elapsed sampling period.
+    ///
+    /// Increments the code phase. If a code epoch rolls over (every 1ms),
+    /// it increments the code counter (`icode`). If the code counter rolls over
+    /// (every 20ms), it increments the bit counter (`ibit`) and updates the
+    /// current data bit (`data_bit`). If the bit counter rolls over (every
+    /// 600ms), it increments the word counter (`iword`). It also updates
+    /// the current C/A code chip (`code_ca`) and carrier phase
+    /// (`carr_phase`).
+    ///
+    /// # Arguments
+    /// * `sampling_period` - The receiver sampling period in seconds.
     pub fn update_navigation_bits(&mut self, sampling_period: f64) {
         // Update code phase
         // 第四步：更新码相位（C/A码序列控制）
@@ -422,7 +523,18 @@ impl Channel {
         // self.carr_phase += self.carr_phasestep as u32;
     }
 
-    // #[inline]
+    /// Generates the In-phase (I) and Quadrature (Q) signal contributions for
+    /// this channel.
+    ///
+    /// Calculates the I/Q components based on the current carrier phase (using
+    /// a pre-computed sine/cosine lookup table), the current C/A code chip,
+    /// the current navigation data bit, and the antenna gain.
+    ///
+    /// # Arguments
+    /// * `antenna_gain` - The gain factor applied to the signal.
+    ///
+    /// # Returns
+    /// A tuple `(ip, qp)` representing the I and Q components.]]>
     pub fn generate_iq_contribution(
         &mut self, antenna_gain: i32,
     ) -> (i32, i32) {
