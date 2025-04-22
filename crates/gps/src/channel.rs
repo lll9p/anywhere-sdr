@@ -1,7 +1,10 @@
 use crate::{
     constants::*,
     datetime::{GpsTime, TimeRange},
-    geometry::Azel,
+    eph::Ephemeris,
+    geometry::{Azel, Ecef},
+    ionoutc::IonoUtc,
+    propagation::compute_range,
     table::*,
 };
 ///  Structure representing a Channel
@@ -68,6 +71,44 @@ impl Default for Channel {
     }
 }
 impl Channel {
+    pub fn update_for_satellite(
+        &mut self, prn: usize, eph: &Ephemeris, ionoutc: &IonoUtc,
+        receiver_gps_time: &GpsTime, xyz: &Ecef, azel: Azel,
+    ) {
+        // Initialize channel
+        self.prn = prn;
+        self.azel = azel;
+        // C/A code generation
+        self.codegen();
+        // Generate subframe
+        eph.generate_navigation_subframes(ionoutc, &mut self.sbf);
+        // Generate navigation message
+        // Populate the first full navigation message cycle (30 seconds / 5
+        // subframes)
+        self.generate_nav_msg(receiver_gps_time, true);
+        // Initialize pseudorange
+        let rho = compute_range(eph, ionoutc, receiver_gps_time, xyz);
+        self.rho0 = rho;
+        // Initialize carrier phase
+        // r_xyz = rho.range;
+        // below line does nothing
+        // let _rho =
+        //     compute_range(&eph[sv], ionoutc, grx,
+        // &ref_0); r_ref = rho.
+        // range;
+        // Initialize carrier phase (using a fixed or random value initially)
+        // A random initial phase is often more realistic unless specific
+        // alignment is needed.
+        let mut phase_ini: f64 = 0.0; // TODO: Must initialize properly
+        //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
+        // #ifdef FLOAT_CARR_PHASE
+        //                         self.carr_phase =
+        // phase_ini - floor(phase_ini);
+        // #else
+        phase_ini -= phase_ini.floor();
+        self.carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
+    }
+
     ///  \brief Compute the code phase for a given channel (satellite)
     ///  \param chan Channel on which we operate (is updated)
     ///  \param[in] rho1 Current range, after \a dt has expired
@@ -306,10 +347,13 @@ impl Channel {
     pub fn update_navigation_bits(&mut self, sampling_period: f64) {
         // Update code phase
         // 第四步：更新码相位（C/A码序列控制）
+        // Increment phase by instantaneous freq * dt
         self.code_phase += self.f_code * sampling_period;
+
+        // --- Handle Code Epoch Rollover (every 1ms / 1023 chips) ---
         if self.code_phase >= CA_SEQ_LEN_FLOAT {
-            self.code_phase -= CA_SEQ_LEN_FLOAT;
-            self.icode += 1;
+            self.code_phase -= CA_SEQ_LEN_FLOAT; // Wrap code phase
+            self.icode += 1; // Increment ms counter
             // Check for code rollover (20 codes per bit)
             // 20 C/A codes = 1 navigation data bit
             // 处理导航数据位（每20个C/A码周期）
@@ -370,10 +414,9 @@ impl Channel {
         // 使用预计算的正弦/余弦表生成载波
         let i_table = (self.carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
         // 生成I/Q分量（考虑导航数据位和C/A码）
-        let ip =
-            self.dataBit * self.codeCA * COS_TABLE512[i_table] * antenna_gain;
-        let qp =
-            self.dataBit * self.codeCA * SIN_TABLE512[i_table] * antenna_gain;
+        let scaled_gain = self.dataBit * self.codeCA * antenna_gain;
+        let ip = scaled_gain * COS_TABLE512[i_table];
+        let qp = scaled_gain * SIN_TABLE512[i_table];
         (ip, qp)
     }
 }

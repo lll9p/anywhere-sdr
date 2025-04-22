@@ -30,7 +30,7 @@ pub struct SignalGenerator {
     pub mode: MotionMode,
     pub elvmask: f64,          // set to 0.0
     pub sample_frequency: f64, // 26000000
-    pub sample_rate: f64,      // samples per 0.1sec
+    pub sample_rate: f64,      // samples per 0.1sec, it is fixed
     pub data_format: DataFormat,
     // when is some , disable path loss
     pub fixed_gain: Option<i32>,
@@ -70,7 +70,7 @@ impl Default for SignalGenerator {
     }
 }
 impl SignalGenerator {
-    pub fn initiallize(&mut self) -> Result<()> {
+    pub fn initialize(&mut self) -> Result<()> {
         // Initialize channels
         match self.mode {
             MotionMode::Static => eprintln!("Using static location mode."),
@@ -132,7 +132,7 @@ impl SignalGenerator {
     }
 
     pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
-        let mut nsat: i32 = 0;
+        let mut visible_satellite_count: i32 = 0;
         // let ref_0: [f64; 3] = [0., 0., 0.];
         // #[allow(unused_variables)]
         // let mut r_ref: f64 = 0.;
@@ -143,10 +143,12 @@ impl SignalGenerator {
             .enumerate()
             .take(MAX_SAT)
         {
-            if let Some((azel, true)) =
-                eph.check_visibility(&self.receiver_gps_time, &xyz, 0.0)
-            {
-                nsat += 1; // Number of visible satellites
+            if let Some((azel, true)) = eph.check_visibility(
+                &self.receiver_gps_time,
+                &xyz,
+                self.elvmask,
+            ) {
+                visible_satellite_count += 1; // Number of visible satellites
                 if self.allocated_satellite[sv] == -1 {
                     // Visible but not allocated
                     //
@@ -157,44 +159,14 @@ impl SignalGenerator {
                     {
                         if ichan.prn == 0 {
                             // Initialize channel
-                            ichan.prn = sv + 1;
-                            ichan.azel = azel;
-                            // C/A code generation
-                            ichan.codegen();
-                            // Generate subframe
-                            eph.generate_navigation_subframes(
-                                &self.ionoutc,
-                                &mut ichan.sbf,
-                            );
-                            // Generate navigation message
-                            ichan.generate_nav_msg(
-                                &self.receiver_gps_time,
-                                true,
-                            );
-                            // Initialize pseudorange
-                            let rho = compute_range(
+                            ichan.update_for_satellite(
+                                sv + 1,
                                 eph,
                                 &self.ionoutc,
                                 &self.receiver_gps_time,
                                 &xyz,
+                                azel,
                             );
-                            ichan.rho0 = rho;
-                            // Initialize carrier phase
-                            // r_xyz = rho.range;
-                            // below line does nothing
-                            // let _rho =
-                            //     compute_range(&eph[sv], ionoutc, grx,
-                            // &ref_0); r_ref = rho.
-                            // range;
-                            let mut phase_ini: f64 = 0.0; // TODO: Must initialize properly
-                            //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
-                            // #ifdef FLOAT_CARR_PHASE
-                            //                         ichan.carr_phase =
-                            // phase_ini - floor(phase_ini);
-                            // #else
-                            phase_ini -= phase_ini.floor();
-                            ichan.carr_phase =
-                                (512.0 * 65536.0 * phase_ini) as u32;
                             break;
                         }
                         channel_index = i + 1;
@@ -212,7 +184,7 @@ impl SignalGenerator {
                 self.allocated_satellite[sv] = -1;
             }
         }
-        nsat
+        visible_satellite_count
     }
 
     fn generate_and_write_samples(&mut self) -> Result<()> {
@@ -256,14 +228,14 @@ impl SignalGenerator {
 
     /// Update Rho, Doppler, Gain for all active channels
     fn update_channel_parameters(&mut self, current_location: Ecef) {
-        let ieph = self.valid_ephemerides_index;
+        let ephemeris_set_index = self.valid_ephemerides_index;
         let sampling_period = self.sample_frequency.recip();
         for i in 0..MAX_CHAN {
             // 仅处理已分配卫星的通道
             if self.channels[i].prn != 0 {
                 // 卫星PRN号转索引
                 let sv = self.channels[i].prn - 1;
-                let eph = &self.ephemerides[ieph][sv];
+                let eph = &self.ephemerides[ephemeris_set_index][sv];
                 // 计算当前时刻的伪距（传播时延）
                 // Refresh code phase and data bit counters
 
@@ -297,8 +269,9 @@ impl SignalGenerator {
                     // Path loss
                     let path_loss = 20_200_000.0 / rho.distance;
                     // Receiver antenna gain
-                    let ibs = ((90.0 - rho.azel.el * R2D) / 5.0) as usize; // covert elevation to boresight
-                    let ant_gain = self.antenna_pattern[ibs];
+                    let boresight_angle_index =
+                        ((90.0 - rho.azel.el * R2D) / 5.0) as usize; // covert elevation to boresight
+                    let ant_gain = self.antenna_pattern[boresight_angle_index];
                     (path_loss * ant_gain * 128.0) as i32 // scaled by 2^7
                 };
                 // Store gain for IQ generation phase
@@ -310,8 +283,9 @@ impl SignalGenerator {
     /// Handle periodic tasks like Nav Message updates, Ephemeris refresh,
     /// Channel reallocation
     fn handle_periodic_tasks(&mut self, current_location: Ecef) {
-        let igrx = (self.receiver_gps_time.sec * 10.0 + 0.5) as i32;
-        if igrx % 300 == 0 {
+        let current_step_index =
+            (self.receiver_gps_time.sec * 10.0 + 0.5) as i32;
+        if current_step_index % 300 == 0 {
             // Every 30 seconds
             // 1. Update Nav Msg for active channels
             for ichan in self.channels.iter_mut().take(MAX_CHAN) {
@@ -323,10 +297,10 @@ impl SignalGenerator {
             // Refresh ephemeris and subframes
             // Quick and dirty fix. Need more elegant way.
             let mut refreshed_eph = false;
-            let next_ieph = self.valid_ephemerides_index + 1;
+            let next_ephemeris_set_index = self.valid_ephemerides_index + 1;
             // Check if next ephemeris set is valid and timely
-            if next_ieph < self.ephemerides.len()
-                && self.ephemerides[next_ieph]
+            if next_ephemeris_set_index < self.ephemerides.len()
+                && self.ephemerides[next_ephemeris_set_index]
                     .iter()
                     .take(MAX_SAT)
                     .any(|eph| eph.vflg)
@@ -334,18 +308,19 @@ impl SignalGenerator {
                 // Find the earliest ToC in the next set (or check a specific
                 // SV) Simplified check: Assume SV 0's ToC is
                 // representative
-                if self.ephemerides[next_ieph][0].vflg {
-                    let dt = self.ephemerides[next_ieph][0]
+                if self.ephemerides[next_ephemeris_set_index][0].vflg {
+                    let dt = self.ephemerides[next_ephemeris_set_index][0]
                         .toc
                         .diff_secs(&self.receiver_gps_time);
                     // If the next ephemeris is close (e.g., within an hour),
                     // switch to it
                     if dt.abs() < SECONDS_IN_HOUR {
                         // Use absolute diff
-                        self.valid_ephemerides_index = next_ieph;
+                        self.valid_ephemerides_index = next_ephemeris_set_index;
                         refreshed_eph = true;
                         eprintln!(
-                            "\nSwitched to ephemeris set index {next_ieph}"
+                            "\nSwitched to ephemeris set index \
+                             {next_ephemeris_set_index}"
                         );
                     }
                 }
@@ -353,7 +328,7 @@ impl SignalGenerator {
 
             // If ephemeris refreshed, update subframes for active channels
             if refreshed_eph {
-                let ieph = self.valid_ephemerides_index;
+                let current_ephemeris_set_index = self.valid_ephemerides_index;
                 for ichan in self
                     .channels
                     .iter_mut()
@@ -361,10 +336,11 @@ impl SignalGenerator {
                     .filter(|ch| ch.prn != 0)
                 {
                     let sv = ichan.prn - 1;
-                    self.ephemerides[ieph][sv].generate_navigation_subframes(
-                        &self.ionoutc,
-                        &mut ichan.sbf,
-                    );
+                    self.ephemerides[current_ephemeris_set_index][sv]
+                        .generate_navigation_subframes(
+                            &self.ionoutc,
+                            &mut ichan.sbf,
+                        );
                     // Maybe need to regenerate nav message bits immediately?
                     // ichan.generate_nav_msg(&self.receiver_gps_time, false);
                     // // Already done above, maybe redundant
@@ -384,31 +360,35 @@ impl SignalGenerator {
     /// # Errors
     /// Returns `anyhow::Error`
     /// TODO: unroll `for i in 0..MAX_CHAN`, to make it faster around 12%
-    pub fn generate(&mut self) -> Result<()> {
+    pub fn run_simulation(&mut self) -> Result<()> {
         if !self.initialized {
             anyhow::bail!("Not initialized!");
         }
-        // let mut writer = self.writer.as_mut().unwrap();
-        // let file = File::create(self.out_file.as_ref().unwrap())?;
-        // let mut file = BufWriter::new(file);
+        // Determine the total number of simulation steps
+        let num_steps = match self.mode {
+            MotionMode::Static => self.user_motion_count.max(1), /* Ensure at least one step for static */
+            MotionMode::Dynamic => self.user_motion_count,
+        };
+
+        if num_steps == 0 {
+            eprintln!("Warning: No simulation steps requested.");
+            return Ok(());
+        }
+
+        eprintln!("Starting signal generation for {num_steps} steps...");
         // Generate baseband signals
-        // const INTERVAL: f64 = 0.1;
         self.receiver_gps_time =
             self.receiver_gps_time.add_secs(self.sample_rate);
-        // let mut ieph = self.valid_ephemerides_index;
-
-        // let iq_buff_size = self.iq_buffer_size;
-        // let sampling_period = self.sample_frequency.recip();
-
         let time_start = std::time::Instant::now();
         // 主循环：遍历每个时间间隔（0.1秒）
-        for user_motion_index in 1..self.user_motion_count {
+        // From 1..num_steps, because step 0 was done in initiallize.
+        for step_index in 1..num_steps {
             // 根据静态/动态模式选择接收机位置
             let current_location = match self.mode {
                 MotionMode::Static => self.positions[0],
                 MotionMode::Dynamic => self
                     .positions
-                    .get(user_motion_index)
+                    .get(step_index)
                     .copied()
                     .unwrap_or(self.positions[0]),
             };
@@ -427,7 +407,7 @@ impl SignalGenerator {
                 self.receiver_gps_time.add_secs(self.sample_rate);
             eprint!(
                 "\rTime into run = {:4.1}\0",
-                (user_motion_index + 1) as f64 / 10.0
+                (step_index + 1) as f64 / 10.0
             );
         }
 

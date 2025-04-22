@@ -115,8 +115,8 @@ impl Args {
             .path_loss(self.path_loss)
             .verbose(Some(self.verbose));
         let mut generator = builder.build()?;
-        generator.initiallize()?;
-        generator.generate()?;
+        generator.initialize()?;
+        generator.run_simulation()?;
         Ok(())
     }
 }
