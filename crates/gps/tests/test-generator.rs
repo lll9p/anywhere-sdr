@@ -131,9 +131,7 @@ fn string_to_args(value: &str) -> Vec<Vec<String>> {
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_circle_llh.bin;-x=resources/circle_llh.csv", "c_circle_llh.bin"; "circle_llh")]
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_location.bin;-l=30.286502,120.032669,100", "c_location.bin"; "location")]
 // original gpssim output is wrong skip it.
-// #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/
-// rust_location_ecef.bin;-c=-3813477.954,3554276.552,3662785.237",
-// "c_location_ecef.bin"; "location_ecef")]
+#[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_location_ecef.bin;-c=6378137.0,0.0,0.0", "c_location_ecef.bin"; "location_ecef")]
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_1b_p.bin;-p=63", "c_1b_p.bin"; "fixed_gain")]
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_1b_d.bin;-t=2022/01/01,11:45:14", "c_1b_d.bin"; "set_datetime")]
 // TODO: should be fixed
