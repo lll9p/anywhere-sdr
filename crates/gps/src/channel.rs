@@ -4,7 +4,6 @@ use crate::{
     geometry::Azel,
     table::*,
 };
-
 ///  Structure representing a Channel
 #[allow(non_snake_case)]
 #[derive(Debug)]
@@ -114,6 +113,9 @@ impl Channel {
         let mut g2: [i32; CA_SEQ_LEN] = [0; CA_SEQ_LEN];
         let mut r1: [i32; N_DWRD_SBF] = [-1; N_DWRD_SBF];
         let mut r2: [i32; N_DWRD_SBF] = [-1; N_DWRD_SBF];
+        // if !(self.prn <= 32 || self.prn >= 1) {
+        //     return;
+        // }
         if !(1..=32).contains(&self.prn) {
             return;
         }
@@ -305,8 +307,8 @@ impl Channel {
         // Update code phase
         // 第四步：更新码相位（C/A码序列控制）
         self.code_phase += self.f_code * sampling_period;
-        if self.code_phase >= CA_SEQ_LEN as f64 {
-            self.code_phase -= CA_SEQ_LEN as f64;
+        if self.code_phase >= CA_SEQ_LEN_FLOAT {
+            self.code_phase -= CA_SEQ_LEN_FLOAT;
             self.icode += 1;
             if self.icode >= 20 {
                 // 20 C/A codes = 1 navigation data bit
@@ -318,11 +320,9 @@ impl Channel {
                     // 30 navigation data bits = 1 word
                     self.ibit = 0;
                     self.iword += 1;
-
-                    /*
-                                                        if (chan[i].iword>=N_DWRD)
-                                                            fprintf(stderr, "\nWARNING: Subframe word buffer overflow.\n");
-                    */
+                    // if (chan[i].iword>=N_DWRD)
+                    // fprintf(stderr, "\nWARNING: Subframe word buffer
+                    // overflow.\n");
                 }
                 // 提取当前导航数据位
                 // Set new navigation data bit
@@ -337,7 +337,7 @@ impl Channel {
         // Set current code chip
         // this is slower self.codeCA = self.ca[self.code_phase as usize] * 2 -
         // 1;
-        self.codeCA = self.ca[self.code_phase as i32 as usize] * 2_i32 - 1_i32;
+        self.codeCA = self.ca[self.code_phase as i32 as usize] * 2 - 1;
         //Update carrier phase
         // #ifdef FLOAT_CARR_PHASE
         //                     chan[i].carr_phase +=

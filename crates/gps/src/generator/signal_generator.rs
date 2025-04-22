@@ -110,7 +110,7 @@ impl SignalGenerator {
         self.allocate_channel(self.positions[0]);
 
         for ichan in self.channels.iter().take(MAX_CHAN) {
-            if ichan.prn > 0 {
+            if ichan.prn != 0 {
                 eprintln!(
                     "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                     ichan.prn,
@@ -258,8 +258,9 @@ impl SignalGenerator {
             };
             // 第一步：更新所有通道的伪距、相位和增益参数
             for i in 0..MAX_CHAN {
+                println!("{}", self.channels[i].codeCA);
                 // 仅处理已分配卫星的通道
-                if self.channels[i].prn > 0 {
+                if self.channels[i].prn != 0 {
                     // 卫星PRN号转索引
                     let sv = self.channels[i].prn - 1;
                     // 计算当前时刻的伪距（传播时延）
@@ -304,7 +305,6 @@ impl SignalGenerator {
                 }
             }
             // 第二步：生成基带I/Q采样数据
-
             if let Some(w) = self.writer.as_mut() {
                 for isamp in 0..w.buffer_size {
                     let mut i_acc: i32 = 0;
@@ -314,7 +314,7 @@ impl SignalGenerator {
                     //     .channels
                     //     .iter_mut()
                     //     .zip(self.antenna_gains.iter())
-                    //     .filter(|(ch, _)| ch.prn > 0)
+                    //     .filter(|(ch, _)| ch.prn != 0)
                     //     .fold((0, 0), |(i_acc, q_acc), (ch, gain)| {
                     //         let (ip, qp) =
                     // ch.generate_iq_contribution(*gain);
@@ -327,7 +327,7 @@ impl SignalGenerator {
                     //         (i_acc + ip, q_acc + qp)
                     //     });
                     for i in 0..MAX_CHAN {
-                        if self.channels[i].prn > 0 {
+                        if self.channels[i].prn != 0 {
                             let (ip, qp) = self.channels[i]
                                 .generate_iq_contribution(
                                     self.antenna_gains[i],
@@ -363,7 +363,7 @@ impl SignalGenerator {
             if igrx % 300 == 0 {
                 // Every 30 seconds
                 for ichan in self.channels.iter_mut().take(MAX_CHAN) {
-                    if ichan.prn > 0 {
+                    if ichan.prn != 0 {
                         ichan.generate_nav_msg(&self.receiver_gps_time, false);
                     }
                 }
@@ -400,7 +400,7 @@ impl SignalGenerator {
                 if self.verbose {
                     eprintln!();
                     for ichan in self.channels.iter().take(MAX_CHAN) {
-                        if ichan.prn > 0 {
+                        if ichan.prn != 0 {
                             eprintln!(
                                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                                 ichan.prn,

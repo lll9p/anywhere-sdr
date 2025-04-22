@@ -23,6 +23,7 @@ pub const N_DWRD: usize = (N_SBF + 1) * N_DWRD_SBF; // Subframe word buffer size
 
 // \brief C/A code sequence length */
 pub const CA_SEQ_LEN: usize = 1023;
+pub const CA_SEQ_LEN_FLOAT: f64 = CA_SEQ_LEN as f64;
 
 pub const SECONDS_IN_WEEK: f64 = 604_800.0;
 pub const SECONDS_IN_HALF_WEEK: f64 = 302_400.0;
