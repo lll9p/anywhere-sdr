@@ -258,7 +258,6 @@ impl SignalGenerator {
             };
             // 第一步：更新所有通道的伪距、相位和增益参数
             for i in 0..MAX_CHAN {
-                println!("{}", self.channels[i].codeCA);
                 // 仅处理已分配卫星的通道
                 if self.channels[i].prn != 0 {
                     // 卫星PRN号转索引

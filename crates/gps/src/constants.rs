@@ -54,7 +54,9 @@ pub const WGS84_ECCENTRICITY: f64 = 0.081_819_190_842_6;
 pub const R2D: f64 = 57.295_779_513_1;
 
 pub const SPEED_OF_LIGHT: f64 = 2.997_924_58e8;
+pub const SPEED_OF_LIGHT_INV: f64 = SPEED_OF_LIGHT.recip();
 pub const LAMBDA_L1: f64 = 0.190_293_672_798_365;
+pub const LAMBDA_L1_INV: f64 = LAMBDA_L1.recip();
 
 // \brief GPS L1 Carrier frequency */
 #[allow(dead_code)]

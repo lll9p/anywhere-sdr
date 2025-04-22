@@ -32,15 +32,15 @@ pub struct Channel {
     /// Data words of sub-frame
     pub dwrd: [u32; N_DWRD],
     /// initial word
-    pub iword: i32,
+    pub iword: i32, // observed 0..59
     /// initial bit
-    pub ibit: i32,
+    pub ibit: i32, // observed 0..26
     /// initial code
-    pub icode: i32,
+    pub icode: i32, // observed 0..18
     ///  current data bit
-    pub dataBit: i32,
+    pub dataBit: i32, // observed -1..1
     ///  current C/A code
-    pub codeCA: i32,
+    pub codeCA: i32, // observed -1..1
     pub azel: Azel,
     pub rho0: TimeRange,
 }
@@ -77,14 +77,14 @@ impl Channel {
         // Pseudorange rate.
         let rhorate = (rho1.range - self.rho0.range) / dt;
         // Carrier and code frequency.
-        self.f_carr = -rhorate / LAMBDA_L1;
+        self.f_carr = -rhorate * LAMBDA_L1_INV;
         self.f_code = CODE_FREQ + self.f_carr * CARR_TO_CODE;
         // Initial code phase and data bit counters.
         let ms = (self.rho0.time.diff_secs(&self.time_start) + 6.0
-            - self.rho0.range / SPEED_OF_LIGHT)
+            - self.rho0.range * SPEED_OF_LIGHT_INV)
             * 1000.0;
         let mut ims = ms as i32;
-        self.code_phase = (ms - f64::from(ims)) * CA_SEQ_LEN as f64; // in chip
+        self.code_phase = ms.fract() * CA_SEQ_LEN_FLOAT; // in chip
         self.iword = ims / 600; // 1 word = 30 bits = 600 ms
         ims -= self.iword * 600;
         self.ibit = ims / 20; // 1 bit = 20 code = 20 ms
@@ -310,11 +310,13 @@ impl Channel {
         if self.code_phase >= CA_SEQ_LEN_FLOAT {
             self.code_phase -= CA_SEQ_LEN_FLOAT;
             self.icode += 1;
+            // Check for code rollover (20 codes per bit)
+            // 20 C/A codes = 1 navigation data bit
+            // 处理导航数据位（每20个C/A码周期）
             if self.icode >= 20 {
-                // 20 C/A codes = 1 navigation data bit
-                // 处理导航数据位（每20个C/A码周期）
                 self.icode = 0;
                 self.ibit += 1;
+                // Check for bit rollover (30 bits per word)
                 // 处理导航字（每30个数据位）
                 if self.ibit >= 30 {
                     // 30 navigation data bits = 1 word
@@ -325,17 +327,18 @@ impl Channel {
                     // overflow.\n");
                 }
                 // 提取当前导航数据位
+                // Update data bit based on new word/bit index
                 // Set new navigation data bit
-                self.dataBit = (self.dwrd[self.iword as usize]
-                    >> (29 - self.ibit)
-                    & 0x1) as i32
+                let word_index = self.iword as usize;
+                self.dataBit = (self.dwrd[word_index] >> (29 - self.ibit) & 0x1)
+                    as i32
                     * 2
                     - 1;
             }
         }
         // 更新当前C/A码片
         // Set current code chip
-        // this is slower self.codeCA = self.ca[self.code_phase as usize] * 2 -
+        // this is slower: self.codeCA = self.ca[self.code_phase as usize] * 2 -
         // 1;
         self.codeCA = self.ca[self.code_phase as i32 as usize] * 2 - 1;
         //Update carrier phase
@@ -351,9 +354,9 @@ impl Channel {
         // #else
         // 第五步：更新载波相位（使用相位累加器）
 
-        // self.carr_phase =
-        //     (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
-        self.carr_phase += self.carr_phasestep as u32;
+        self.carr_phase =
+            (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
+        // self.carr_phase += self.carr_phasestep as u32;
     }
 
     // #[inline]
