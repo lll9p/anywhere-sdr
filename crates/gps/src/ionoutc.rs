@@ -1,6 +1,6 @@
 #[allow(non_snake_case)]
 // #[repr(C)]
-#[derive(Debug, Clone, Default)]
+#[derive(Default)]
 pub struct IonoUtc {
     pub enable: bool,
     pub vflg: bool,

@@ -19,7 +19,7 @@ type EphemerisRelatedData = (
     IonoUtc,
     Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
 );
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct SignalGeneratorBuilder {
     output_file: Option<PathBuf>,
     ephemerides_data: Option<EphemerisRelatedData>,
