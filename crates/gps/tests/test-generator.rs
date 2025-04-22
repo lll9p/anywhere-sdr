@@ -145,8 +145,8 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<()> {
     prepare_c_bin(&args, c_bin_file)?;
     let builder = to_builder(&args)?;
     let mut generator = builder.build()?;
-    generator.initiallize()?;
-    generator.generate()?;
+    generator.initialize()?;
+    generator.run_simulation()?;
     let rust_file_name = generator
         .out_file
         .as_ref()

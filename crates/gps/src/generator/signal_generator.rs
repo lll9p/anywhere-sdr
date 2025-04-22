@@ -245,18 +245,12 @@ impl SignalGenerator {
                     &self.receiver_gps_time,
                     &current_location,
                 );
+                self.channels[i].update_state(
+                    &rho,
+                    self.sample_rate,
+                    sampling_period,
+                );
 
-                // 更新方位角/仰角信息
-                // Update code phase and data bit counters
-                self.channels[i].azel = rho.azel;
-                // 计算码相位（C/A码偏移）
-                self.channels[i].compute_code_phase(&rho, self.sample_rate);
-                self.channels[i].carr_phasestep = (512.0
-                    * 65536.0
-                    * self.channels[i].f_carr
-                    * sampling_period)
-                    .round()
-                    as i32;
                 // 计算信号增益（考虑路径损耗和天线方向图）
                 // Signal gain
                 // 应用增益模式选择
@@ -335,11 +329,15 @@ impl SignalGenerator {
                     .filter(|ch| ch.prn != 0)
                 {
                     let sv = ichan.prn - 1;
-                    self.ephemerides[current_ephemeris_set_index][sv]
-                        .generate_navigation_subframes(
-                            &self.ionoutc,
-                            &mut ichan.sbf,
-                        );
+                    ichan.generate_navigation_subframes(
+                        &self.ephemerides[current_ephemeris_set_index][sv],
+                        &self.ionoutc,
+                    );
+                    // self.ephemerides[current_ephemeris_set_index][sv]
+                    //     .generate_navigation_subframes(
+                    //         &self.ionoutc,
+                    //         &mut ichan.sbf,
+                    //     );
                     // Maybe need to regenerate nav message bits immediately?
                     // ichan.generate_nav_msg(&self.receiver_gps_time, false);
                     // // Already done above, maybe redundant
@@ -425,11 +423,11 @@ impl SignalGenerator {
             eprintln!(
                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                 ichan.prn,
-                ichan.azel.az * R2D,
-                ichan.azel.el * R2D,
-                ichan.rho0.distance, /* Using rho0 which is updated in
-                                      * channel.update_state */
-                ichan.rho0.iono_delay,
+                ichan.azel().az * R2D,
+                ichan.azel().el * R2D,
+                ichan.rho0().distance, /* Using rho0 which is updated in
+                                        * channel.update_state */
+                ichan.rho0().iono_delay,
             );
         }
     }

@@ -13,38 +13,38 @@ pub struct Channel {
     /// PRN Number(Pseudorandom Noise)
     pub prn: usize,
     /// C/A Sequence
-    pub ca: [i32; CA_SEQ_LEN],
+    ca: [i32; CA_SEQ_LEN],
     /// Carrier frequency
-    pub f_carr: f64,
+    f_carr: f64,
     /// Code frequency
-    pub f_code: f64,
+    f_code: f64,
     /* #ifdef FLOAT_CARR_PHASE
         double carr_phase;
     #endif */
     /// Carrier phase
-    pub carr_phase: u32,
+    carr_phase: u32,
     /// Carrier phasestep
-    pub carr_phasestep: i32,
+    carr_phasestep: i32,
     /// Code phase
-    pub code_phase: f64,
+    code_phase: f64,
     /// GPS time at start
-    pub time_start: GpsTime,
+    time_start: GpsTime,
     /// current subframe
-    pub sbf: [[u32; N_DWRD_SBF]; 5],
+    sbf: [[u32; N_DWRD_SBF]; 5],
     /// Data words of sub-frame
-    pub dwrd: [u32; N_DWRD],
+    dwrd: [u32; N_DWRD],
     /// initial word
-    pub iword: i32, // observed 0..59
+    iword: i32, // observed 0..59
     /// initial bit
-    pub ibit: i32, // observed 0..26
+    ibit: i32, // observed 0..26
     /// initial code
-    pub icode: i32, // observed 0..18
+    icode: i32, // observed 0..18
     ///  current data bit
-    pub dataBit: i32, // observed -1..1
+    dataBit: i32, // observed -1..1
     ///  current C/A code
-    pub codeCA: i32, // observed -1..1
-    pub azel: Azel,
-    pub rho0: TimeRange,
+    codeCA: i32, // observed -1..1
+    azel: Azel,
+    rho0: TimeRange,
 }
 impl Default for Channel {
     fn default() -> Self {
@@ -70,6 +70,14 @@ impl Default for Channel {
     }
 }
 impl Channel {
+    pub fn rho0(&self) -> &TimeRange {
+        &self.rho0
+    }
+
+    pub fn azel(&self) -> &Azel {
+        &self.azel
+    }
+
     pub fn update_for_satellite(
         &mut self, prn: usize, eph: &Ephemeris, ionoutc: &IonoUtc,
         receiver_gps_time: &GpsTime, xyz: &Ecef, azel: Azel,
@@ -80,7 +88,7 @@ impl Channel {
         // C/A code generation
         self.codegen();
         // Generate subframe
-        eph.generate_navigation_subframes(ionoutc, &mut self.sbf);
+        self.generate_navigation_subframes(eph, ionoutc);
         // Generate navigation message
         // Populate the first full navigation message cycle (30 seconds / 5
         // subframes)
@@ -106,6 +114,18 @@ impl Channel {
         // #else
         phase_ini -= phase_ini.floor();
         self.carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
+    }
+
+    pub fn update_state(
+        &mut self, rho1: &TimeRange, dt: f64, sampling_period: f64,
+    ) {
+        // 更新方位角/仰角信息
+        // Update code phase and data bit counters
+        self.azel = rho1.azel;
+        // 计算码相位（C/A码偏移）
+        self.compute_code_phase(rho1, dt);
+        self.carr_phasestep =
+            (512.0 * 65536.0 * self.f_carr * sampling_period).round() as i32;
     }
 
     ///  \brief Compute the code phase for a given channel (satellite)
@@ -417,5 +437,203 @@ impl Channel {
         let ip = scaled_gain * COS_TABLE512[i_table];
         let qp = scaled_gain * SIN_TABLE512[i_table];
         (ip, qp)
+    }
+
+    /// Converts ephemeris and UTC parameters into GPS navigation message
+    /// subframes
+    ///
+    /// Implements the construction of 5 subframes (each containing 10 30-bit
+    /// words) according to IS-GPS-200L specifications. Handles page 18
+    /// (ionospheric/UTC parameters) in subframe 4 and page 25 (reserved) in
+    /// subframe 5.
+    ///
+    /// # Arguments
+    /// * `eph` - Satellite ephemeris containing orbital parameters and clock
+    ///   corrections
+    /// * `ionoutc` - Ionospheric delay model and UTC time conversion parameters
+    /// * `sbf` - Output buffer for 5 subframes, each represented as [u32;
+    ///   `N_DWRD_SBF`]
+    ///
+    /// # Notes
+    /// - Subframes 1-3 contain fundamental ephemeris and clock correction data
+    /// - Subframe 4 page 18 includes:
+    ///   - Ionospheric α/β coefficients (Klochar model parameters)
+    ///   - UTC parameters (A0, A1, `ΔtLS`)
+    ///   - Leap second transition parameters
+    /// - Subframe 5 page 25 is reserved (zero-filled in this implementation)
+    /// - All value conversions follow GPS-ICD-defined scaling factors and
+    ///   bit-field layouts
+    #[allow(clippy::too_many_lines)]
+    pub fn generate_navigation_subframes(
+        &mut self, eph: &Ephemeris, ionoutc: &IonoUtc,
+    ) {
+        let ura = 0;
+        let data_id = 1;
+        let sbf4_page25_sv_id = 63;
+        let sbf5_page25_sv_id = 51;
+        let wnlsf;
+        let dtlsf;
+        let dn;
+        let sbf4_page18_sv_id = 56;
+
+        // FIXED: This has to be the "transmission" week number, not for the
+        // ephemeris reference time wn = (unsigned long)(self.toe.week%1024);
+        let wn = 0;
+        let toe = (eph.toe.sec / 16.0) as u32;
+        let toc = (eph.toc.sec / 16.0) as u32;
+        let iode = eph.iode as u32;
+        let iodc = eph.iodc as u32;
+        let deltan = (eph.deltan / POW2_M43 / PI) as i32;
+        let cuc = (eph.cuc / POW2_M29) as i32;
+        let cus = (eph.cus / POW2_M29) as i32;
+        let cic = (eph.cic / POW2_M29) as i32;
+        let cis = (eph.cis / POW2_M29) as i32;
+        let crc = (eph.crc / POW2_M5) as i32;
+        let crs = (eph.crs / POW2_M5) as i32;
+        let ecc = (eph.ecc / POW2_M33) as u32;
+        let sqrta = (eph.sqrta / POW2_M19) as u32;
+        let m0 = (eph.m0 / POW2_M31 / PI) as i32;
+        let omg0 = (eph.omg0 / POW2_M31 / PI) as i32;
+        let inc0 = (eph.inc0 / POW2_M31 / PI) as i32;
+        let aop = (eph.aop / POW2_M31 / PI) as i32;
+        let omgdot = (eph.omgdot / POW2_M43 / PI) as i32;
+        let idot = (eph.idot / POW2_M43 / PI) as i32;
+        let af0 = (eph.af0 / POW2_M31) as i32;
+        let af1 = (eph.af1 / POW2_M43) as i32;
+        let af2 = (eph.af2 / POW2_M55) as i32;
+        let tgd = (eph.tgd / POW2_M31) as i32;
+        let svhlth = eph.svhlth as u32 as i32;
+
+        #[allow(non_snake_case)]
+        let codeL2 = eph.codeL2 as u32 as i32;
+        let wna = (eph.toe.week % 256) as u32;
+        let toa = (eph.toe.sec / 4096.0) as u32;
+        let alpha0 = (ionoutc.alpha0 / POW2_M30).round() as i32;
+        let alpha1 = (ionoutc.alpha1 / POW2_M27).round() as i32;
+        let alpha2 = (ionoutc.alpha2 / POW2_M24).round() as i32;
+        let alpha3 = (ionoutc.alpha3 / POW2_M24).round() as i32;
+        let beta0 = (ionoutc.beta0 / 2048.0).round() as i32;
+        let beta1 = (ionoutc.beta1 / 16384.0).round() as i32;
+        let beta2 = (ionoutc.beta2 / 65536.0).round() as i32;
+        let beta3 = (ionoutc.beta3 / 65536.0).round() as i32;
+
+        #[allow(non_snake_case)]
+        let A0 = (ionoutc.A0 / POW2_M30).round() as i32;
+
+        #[allow(non_snake_case)]
+        let A1 = (ionoutc.A1 / POW2_M50).round() as i32;
+        let dtls = ionoutc.dtls;
+        let tot = (ionoutc.tot / 4096) as u32;
+        let week_number = (ionoutc.week_number % 256) as u32;
+        // 2016/12/31 (Sat) -> WNlsf = 1929, DN = 7 (http://navigationservices.agi.com/GNSSWeb/)
+        // Days are counted from 1 to 7 (Sunday is 1).
+        if ionoutc.leapen == 1 {
+            wnlsf = (ionoutc.wnlsf % 256) as u32;
+            dn = ionoutc.day_number as u32;
+            dtlsf = ionoutc.dtlsf as u32;
+        } else {
+            wnlsf = (1929 % 256) as u32;
+            dn = 7;
+            dtlsf = 18;
+        }
+        // Subframe 1
+        self.sbf[0] = [
+            0x008b_0000 << 6,
+            0x1 << 8,
+            (wn & 0x3ff) << 20
+                | (codeL2 as u32 & 0x3) << 18
+                | (ura & 0xf) << 14
+                | (svhlth as u32 & 0x3f) << 8
+                | (iodc >> 8 & 0x3) << 6,
+            0,
+            0,
+            0,
+            (tgd as u32 & 0xff) << 6,
+            (iodc & 0xff) << 22 | (toc & 0xffff) << 6,
+            (af2 as u32 & 0xff) << 22 | (af1 as u32 & 0xffff) << 6,
+            (af0 as u32 & 0x003f_ffff) << 8,
+        ];
+        // Subframe 2
+        self.sbf[1] = [
+            0x008b_0000 << 6,
+            0x2 << 8,
+            (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6,
+            (deltan as u32 & 0xffff) << 14 | ((m0 >> 24) as u32 & 0xff) << 6,
+            (m0 as u32 & 0x00ff_ffff) << 6,
+            (cuc as u32 & 0xffff) << 14 | (ecc >> 24 & 0xff) << 6,
+            (ecc & 0x00ff_ffff) << 6,
+            (cus as u32 & 0xffff) << 14 | (sqrta >> 24 & 0xff) << 6,
+            (sqrta & 0x00ff_ffff) << 6,
+            (toe & 0xffff) << 14,
+        ];
+        // Subframe 3
+        self.sbf[2] = [
+            0x008b_0000 << 6,
+            0x3 << 8,
+            (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6,
+            (omg0 as u32 & 0x00ff_ffff) << 6,
+            (cis as u32 & 0xffff) << 14 | ((inc0 >> 24) as u32 & 0xff) << 6,
+            (inc0 as u32 & 0x00ff_ffff) << 6,
+            (crc as u32 & 0xffff) << 14 | ((aop >> 24) as u32 & 0xff) << 6,
+            (aop as u32 & 0x00ff_ffff) << 6,
+            (omgdot as u32 & 0x00ff_ffff) << 6,
+            (iode & 0xff) << 22 | (idot as u32 & 0x3fff) << 8,
+        ];
+        if ionoutc.vflg {
+            // Subframe 4, page 18
+            self.sbf[3] = [
+                0x008b_0000 << 6,
+                0x4 << 8,
+                data_id << 28
+                    | sbf4_page18_sv_id << 22
+                    | (alpha0 as u32 & 0xff) << 14
+                    | (alpha1 as u32 & 0xff) << 6,
+                (alpha2 as u32 & 0xff) << 22
+                    | (alpha3 as u32 & 0xff) << 14
+                    | (beta0 as u32 & 0xff) << 6,
+                (beta1 as u32 & 0xff) << 22
+                    | (beta2 as u32 & 0xff) << 14
+                    | (beta3 as u32 & 0xff) << 6,
+                (A1 as u32 & 0x00ff_ffff) << 6,
+                ((A0 >> 8) as u32 & 0x00ff_ffff) << 6,
+                (A0 as u32 & 0xff) << 22
+                    | (tot & 0xff) << 14
+                    | (week_number & 0xff) << 6,
+                (dtls as u32 & 0xff) << 22
+                    | (wnlsf & 0xff) << 14
+                    | (dn & 0xff) << 6,
+                (dtlsf & 0xff) << 22,
+            ];
+        } else {
+            // Subframe 4, page 25
+            self.sbf[3] = [
+                0x008b_0000 << 6,
+                0x4 << 8,
+                data_id << 28 | sbf4_page25_sv_id << 22,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ];
+        }
+        // Subframe 5, page 25
+        self.sbf[4] = [
+            0x008b_0000 << 6,
+            0x5 << 8,
+            data_id << 28
+                | sbf5_page25_sv_id << 22
+                | (toa & 0xff) << 14
+                | (wna & 0xff) << 6,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
     }
 }
