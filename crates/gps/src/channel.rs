@@ -9,7 +9,6 @@ use crate::{
 };
 ///  Structure representing a Channel
 #[allow(non_snake_case)]
-#[derive(Debug)]
 pub struct Channel {
     /// PRN Number(Pseudorandom Noise)
     pub prn: usize,

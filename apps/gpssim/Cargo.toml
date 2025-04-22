@@ -26,11 +26,11 @@ tracing-subscriber.workspace = true
 [lints]
 workspace = true
 
-[profile.release-distro]
-inherits = "release"
+[profile.release]
 lto = true
 strip = true
 panic = "abort"
+codegen-units = 1
 
 [package.metadata.bundle]
 name = "LaoLilin"

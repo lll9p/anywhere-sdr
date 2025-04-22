@@ -14,7 +14,6 @@ use crate::{
     propagation::compute_range,
     table::ANT_PAT_DB,
 };
-#[derive(Debug)]
 pub struct SignalGenerator {
     pub ephemerides: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
     pub valid_ephemerides_index: usize,
