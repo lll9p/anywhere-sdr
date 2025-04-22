@@ -15,7 +15,7 @@ pub struct Channel {
     /// C/A Sequence
     ca: [i32; CA_SEQ_LEN],
     /// Carrier frequency
-    f_carr: f64,
+    f_carrier: f64,
     /// Code frequency
     f_code: f64,
     /* #ifdef FLOAT_CARR_PHASE
@@ -40,9 +40,9 @@ pub struct Channel {
     /// initial code
     icode: i32, // observed 0..18
     ///  current data bit
-    dataBit: i32, // observed -1..1
+    data_bit: i32, // observed -1..1
     ///  current C/A code
-    codeCA: i32, // observed -1..1
+    code_ca: i32, // observed -1..1
     azel: Azel,
     rho0: TimeRange,
 }
@@ -51,7 +51,7 @@ impl Default for Channel {
         Self {
             prn: 0,
             ca: [0; CA_SEQ_LEN],
-            f_carr: 0.0,
+            f_carrier: 0.0,
             f_code: 0.0,
             carr_phase: 0,
             carr_phasestep: 0,
@@ -62,8 +62,8 @@ impl Default for Channel {
             iword: 0,
             ibit: 0,
             icode: 0,
-            dataBit: 0,
-            codeCA: 0,
+            data_bit: 0,
+            code_ca: 0,
             azel: Azel::default(),
             rho0: TimeRange::default(),
         }
@@ -125,7 +125,7 @@ impl Channel {
         // 计算码相位（C/A码偏移）
         self.compute_code_phase(rho1, dt);
         self.carr_phasestep =
-            (512.0 * 65536.0 * self.f_carr * sampling_period).round() as i32;
+            (512.0 * 65536.0 * self.f_carrier * sampling_period).round() as i32;
     }
 
     ///  \brief Compute the code phase for a given channel (satellite)
@@ -137,8 +137,8 @@ impl Channel {
         // Pseudorange rate.
         let rhorate = (rho1.range - self.rho0.range) / dt;
         // Carrier and code frequency.
-        self.f_carr = -rhorate * LAMBDA_L1_INV;
-        self.f_code = CODE_FREQ + self.f_carr * CARR_TO_CODE;
+        self.f_carrier = -rhorate * LAMBDA_L1_INV;
+        self.f_code = CODE_FREQ + self.f_carrier * CARR_TO_CODE;
         // Initial code phase and data bit counters.
         let ms = (self.rho0.time.diff_secs(&self.time_start) + 6.0
             - self.rho0.range * SPEED_OF_LIGHT_INV)
@@ -150,8 +150,8 @@ impl Channel {
         self.ibit = ims / 20; // 1 bit = 20 code = 20 ms
         ims -= self.ibit * 20;
         self.icode = ims; // 1 code = 1 ms
-        self.codeCA = self.ca[self.code_phase as usize] * 2 - 1;
-        self.dataBit = (self.dwrd[self.iword as usize] >> (29 - self.ibit)
+        self.code_ca = self.ca[self.code_phase as usize] * 2 - 1;
+        self.data_bit = (self.dwrd[self.iword as usize] >> (29 - self.ibit)
             & 0x1) as i32
             * 2
             - 1;
@@ -393,8 +393,8 @@ impl Channel {
                 // Update data bit based on new word/bit index
                 // Set new navigation data bit
                 let word_index = self.iword as usize;
-                self.dataBit = (self.dwrd[word_index] >> (29 - self.ibit) & 0x1)
-                    as i32
+                self.data_bit = (self.dwrd[word_index] >> (29 - self.ibit)
+                    & 0x1) as i32
                     * 2
                     - 1;
             }
@@ -403,7 +403,7 @@ impl Channel {
         // Set current code chip
         // this is slower: self.codeCA = self.ca[self.code_phase as usize] * 2 -
         // 1;
-        self.codeCA = self.ca[self.code_phase as i32 as usize] * 2 - 1;
+        self.code_ca = self.ca[self.code_phase as i32 as usize] * 2 - 1;
         //Update carrier phase
         // #ifdef FLOAT_CARR_PHASE
         //                     chan[i].carr_phase +=
@@ -433,7 +433,7 @@ impl Channel {
         // 使用预计算的正弦/余弦表生成载波
         let i_table = (self.carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
         // 生成I/Q分量（考虑导航数据位和C/A码）
-        let scaled_gain = self.dataBit * self.codeCA * antenna_gain;
+        let scaled_gain = self.data_bit * self.code_ca * antenna_gain;
         let ip = scaled_gain * COS_TABLE512[i_table];
         let qp = scaled_gain * SIN_TABLE512[i_table];
         (ip, qp)
