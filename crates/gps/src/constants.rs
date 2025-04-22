@@ -31,8 +31,8 @@ pub const SECONDS_IN_DAY: f64 = 86400.0;
 pub const SECONDS_IN_HOUR: f64 = 3600.0;
 pub const SECONDS_IN_MINUTE: f64 = 60.0;
 
-pub const POW2_M5: f64 = 0.03125;
-pub const POW2_M19: f64 = 1.907_348_632_812_5e-6;
+pub const POW2_M5: f64 = 0.03125; // 2.0.powi(-5);
+pub const POW2_M19: f64 = 1.907_348_632_812_5e-6; // 2.0.powi(-19);
 pub const POW2_M29: f64 = 1.862_645_149_230_957e-9;
 pub const POW2_M31: f64 = 4.656_612_873_077_393e-10;
 pub const POW2_M33: f64 = 1.164_153_218_269_348e-10;
