@@ -1,4 +1,7 @@
-use crate::{constants::*, geometry::Azel};
+use constants::{
+    SECONDS_IN_DAY, SECONDS_IN_HOUR, SECONDS_IN_MINUTE, SECONDS_IN_WEEK,
+};
+use geometry::Azel;
 // Structure representing GPS time
 #[derive(Debug, Clone, Default)]
 // #[repr(C)]

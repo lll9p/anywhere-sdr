@@ -1,17 +1,6 @@
-//! Geodetic coordinate transformations and navigation calculations
-//! Implements formulas from <http://www.movable-type.co.uk/scripts/latlong.html>
-use crate::constants::*;
+use constants::*;
 
-/// Common mathematical operations for geodetic types
-pub trait LocationMath {
-    /// Vector magnitude (Euclidean norm)
-    fn norm(&self) -> f64;
-    /// Dot product between two vectors
-    fn dot_prod(&self, _rhs: &Self) -> f64;
-    #[cfg(test)]
-    /// Approximate equality check with epsilon tolerance
-    fn precise(&self, rhs: &Self, eps: f64) -> bool;
-}
+use crate::traits::LocationMath;
 
 /// Geodetic coordinates in Latitude-Longitude-Height (LLH) system
 /// - Latitude: Degrees north/south (-90° to 90°)
@@ -113,64 +102,6 @@ impl LocationMath for Location {
             && (self.height - rhs.height).abs() <= eps
     }
 }
-impl From<&Ecef> for Location {
-    fn from(ecef: &Ecef) -> Self {
-        let a: f64 = WGS84_RADIUS;
-        let eps: f64 = 1.0e-3;
-        let e: f64 = WGS84_ECCENTRICITY;
-        let e2: f64 = e.powi(2);
-
-        let mut dz: f64;
-        let mut zdz: f64;
-        let mut nh: f64;
-        let mut slat: f64;
-        let mut n: f64;
-        let mut dz_new: f64;
-        if ecef.norm() < eps {
-            // Invalid ECEF vector
-            return Self {
-                latitude: 0.,
-                longitude: 0.,
-                height: -a,
-            };
-        }
-        let x = ecef.x;
-        let y = ecef.y;
-        let z = ecef.z;
-        let rho2: f64 = x * x + y * y;
-        dz = e2 * z;
-        loop {
-            zdz = z + dz;
-            nh = (rho2 + zdz * zdz).sqrt();
-            slat = zdz / nh;
-            n = a / (1.0 - e2 * slat * slat).sqrt();
-            dz_new = n * e2 * slat;
-            if (dz - dz_new).abs() < eps {
-                break;
-            }
-
-            dz = dz_new;
-        }
-        let llh0 = zdz.atan2(rho2.sqrt());
-        let llh1 = y.atan2(x);
-        let llh2 = nh - n;
-
-        Self {
-            latitude: llh0,
-            longitude: llh1,
-            height: llh2,
-        }
-    }
-}
-impl From<&[f64; 3]> for Location {
-    fn from(value: &[f64; 3]) -> Self {
-        Self {
-            latitude: value[0],
-            longitude: value[1],
-            height: value[2],
-        }
-    }
-}
 impl std::ops::Sub for Location {
     type Output = Self;
 
@@ -220,42 +151,6 @@ impl LocationMath for Ecef {
         (self.x - rhs.x).abs() <= eps
             && (self.y - rhs.y).abs() <= eps
             && (self.z - rhs.z).abs() <= eps
-    }
-}
-impl From<&Location> for Ecef {
-    /// Converts LLH to ECEF using WGS84 ellipsoid parameters:
-    /// N = a / √(1 - e²·sin²φ)
-    /// x = (N + h)cosφ·cosλ
-    /// y = (N + h)cosφ·sinλ
-    /// z = ((1 - e²)N + h)sinφ
-    fn from(loc: &Location) -> Self {
-        let a: f64 = WGS84_RADIUS;
-        let e: f64 = WGS84_ECCENTRICITY;
-        let e2: f64 = e * e;
-
-        let clat: f64 = loc.latitude.cos();
-        let slat: f64 = loc.latitude.sin();
-        let clon: f64 = loc.longitude.cos();
-        let slon: f64 = loc.longitude.sin();
-        let d: f64 = e * slat;
-
-        let n: f64 = a / (1. - d.powi(2)).sqrt();
-        let nph: f64 = n + loc.height;
-
-        let tmp: f64 = nph * clat;
-        let x = tmp * clon;
-        let y = tmp * slon;
-        let z = ((1. - e2) * n + loc.height) * slat;
-        Self { x, y, z }
-    }
-}
-impl From<&[f64; 3]> for Ecef {
-    fn from(value: &[f64; 3]) -> Self {
-        Self {
-            x: value[0],
-            y: value[1],
-            z: value[2],
-        }
     }
 }
 impl std::ops::Sub<&Self> for Ecef {
@@ -312,24 +207,6 @@ impl Neu {
         Self { north, east, up }
     }
 }
-impl From<&Ecef> for Neu {
-    /// Transforms ECEF to NEU using rotation matrix:
-    /// `neu = R·(ecef - reference_ecef)`
-    /// where R is the local tangent plane rotation matrix
-    fn from(value: &Ecef) -> Self {
-        let ltcmat = Location::from(value).ltcmat();
-        Self::from_ecef(value, ltcmat)
-    }
-}
-impl From<&[f64; 3]> for Neu {
-    fn from(value: &[f64; 3]) -> Self {
-        Self {
-            north: value[0],
-            east: value[1],
-            up: value[2],
-        }
-    }
-}
 impl LocationMath for Neu {
     fn norm(&self) -> f64 {
         (self.north.powi(2) + self.east.powi(2) + self.up.powi(2)).sqrt()
@@ -355,30 +232,7 @@ pub struct Azel {
     pub az: f64,
     pub el: f64,
 }
-impl From<&[f64; 2]> for Azel {
-    fn from(value: &[f64; 2]) -> Self {
-        Self {
-            az: value[0],
-            el: value[1],
-        }
-    }
-}
 
-impl From<&Neu> for Azel {
-    /// Converts NEU to Azimuth/Elevation:
-    /// azimuth = atan2(east, north) [adjusted to 0-2π]
-    /// elevation = atan2(up, √(north² + east²))
-    fn from(neu: &Neu) -> Self {
-        let mut az = neu.east.atan2(neu.north);
-        if az < 0.0 {
-            az += 2.0 * PI;
-        }
-
-        let ne = (neu.north * neu.north + neu.east * neu.east).sqrt();
-        let el = neu.up.atan2(ne);
-        Self { az, el }
-    }
-}
 #[derive(Debug)]
 pub struct NavigationTarget {
     bearing_step: f64,
@@ -447,117 +301,5 @@ impl NavigationTarget {
         );
         self.location = new_location;
         new_location
-    }
-}
-mod test {
-    #![allow(dead_code, unused)]
-    use super::*;
-    const LLH: [f64; 3] = [35.274_143_229, 137.014_853_084, 99.998];
-    const XYZ: [f64; 3] = [-3_813_477.954, 3_554_276.552, 3_662_785.237];
-    const EPS: f64 = 1e-28;
-    #[test]
-    fn test_geometry_location2efef() {
-        let mut xyz = [0.0; 3];
-        let xyz = [
-            f64::from_bits(13_923_324_196_484_912_872),
-            f64::from_bits(4_706_606_011_222_523_641),
-            f64::from_bits(13_929_576_035_448_519_812),
-        ];
-        // xyz = [-1676694.4690794293, 4515052.0724484855, -4167476.3179927487]
-        let location = Location::from(&LLH);
-        let ecef = Ecef::from(&location);
-        let ecef_from_xyz = Ecef::from(&xyz);
-        println!("Ecef fro old: {ecef_from_xyz:?}");
-        println!("Ecef from new: {ecef:?}");
-        assert!(
-            ecef.precise(&ecef_from_xyz, EPS),
-            "Not equal! {:#?}",
-            ecef - &ecef_from_xyz
-        );
-    }
-    #[test]
-    fn test_geometry_ecef2location() {
-        let llh = [
-            f64::from_bits(4_603_720_481_224_739_772),
-            f64::from_bits(4_612_567_283_934_169_376),
-            f64::from_bits(4_636_737_350_692_634_624),
-        ];
-        // xyz = [0.6156477194111782, 2.391360502574699, 100.00084324367344]
-        let ecef = Ecef::from(&XYZ);
-        let location = Location::from(&ecef);
-        let location_from_llh = Location::from(&llh);
-        println!("Location from old: {location_from_llh:?}");
-        println!("Location from new: {location:?}");
-        assert!(
-            location.precise(&location_from_llh, EPS),
-            "Not equal! {:#?}",
-            location - location_from_llh
-        );
-    }
-    #[test]
-    fn test_geometry_ltcmat() {
-        let tmat = [
-            [
-                f64::from_bits(4_597_406_541_513_150_448),
-                f64::from_bits(13_827_093_489_331_282_323),
-                f64::from_bits(13_828_338_932_311_870_902),
-            ],
-            [
-                f64::from_bits(4_606_618_994_045_393_047),
-                f64::from_bits(4_599_942_923_006_032_601),
-                f64::from_bits(0_000_000_000_000_000_000),
-            ],
-            [
-                f64::from_bits(13_821_772_391_745_090_068),
-                f64::from_bits(4_604_542_057_699_443_572),
-                f64::from_bits(13_827_463_570_854_459_512),
-            ],
-        ];
-
-        let location = Location::from(&LLH);
-        let tmat_from_location = location.ltcmat();
-        for (vec0, vec1) in tmat.iter().zip(&tmat_from_location) {
-            for (i0, i1) in vec0.iter().zip(vec1) {
-                assert!((i0 - i1).abs() <= EPS, "Not equal!");
-            }
-        }
-    }
-    #[test]
-    fn test_geometry_ecef2neu() {
-        let tmat = Location::from(&LLH).ltcmat();
-        let neu = [
-            f64::from_bits(13_931_381_818_169_503_716),
-            f64::from_bits(13_925_646_393_143_350_753),
-            f64::from_bits(4_697_507_633_163_841_812),
-        ];
-        let ecef = Ecef::from(&XYZ);
-        let neu = Neu::from(&neu);
-        let neu_from_ecef = Neu::from_ecef(&ecef, tmat);
-        println!("Neu from old: {neu:?}");
-        println!("Neu from new: {neu_from_ecef:?}");
-        assert!(neu.precise(&neu_from_ecef, EPS), "Not equal!",);
-    }
-    #[test]
-    fn test_geometry_neu2azel() {
-        let tmat = Location::from(&LLH).ltcmat();
-        let neu = [
-            f64::from_bits(13_931_381_818_169_503_716),
-            f64::from_bits(13_925_646_393_143_350_753),
-            f64::from_bits(4_697_507_633_163_841_812),
-        ];
-        let azel = [
-            f64::from_bits(4_615_116_355_893_774_375),
-            f64::from_bits(4_595_463_099_674_307_653),
-        ];
-        let neu = Neu::from(&neu);
-        let azel = Azel::from(&azel);
-        let azel_new = Azel::from(&neu);
-        println!("Azel from old: {azel:?}");
-        println!("Azel from new: {azel_new:?}");
-        assert!(
-            (azel.az - azel_new.az).abs() <= EPS
-                && (azel.el - azel_new.el).abs() <= EPS,
-            "Not equal!"
-        );
     }
 }

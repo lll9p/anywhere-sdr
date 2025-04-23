@@ -1,9 +1,7 @@
-use crate::{
-    constants::*,
-    datetime::GpsTime,
-    geometry::{Azel, Location},
-    ionoutc::IonoUtc,
-};
+use constants::{PI, SECONDS_IN_DAY, SPEED_OF_LIGHT};
+use geometry::{Azel, Location};
+
+use crate::{datetime::GpsTime, ionoutc::IonoUtc};
 
 #[allow(non_snake_case)]
 pub fn ionospheric_delay(

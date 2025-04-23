@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use constants::*;
+use geometry::Ecef;
 
-pub use super::utils::MotionMode;
 use crate::{
     channel::Channel,
-    constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
-    geometry::Ecef,
+    generator::utils::MotionMode,
     io::{DataFormat, IQWriter},
     ionoutc::IonoUtc,
     propagation::compute_range,

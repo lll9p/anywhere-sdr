@@ -1,9 +1,7 @@
 use std::{fs, path::PathBuf};
 
-use crate::{
-    constants::*,
-    geometry::{Ecef, Location},
-};
+use constants::R2D;
+use geometry::{Ecef, Location};
 pub fn parse_f64(num_string: &str) -> Result<f64, std::num::ParseFloatError> {
     num_string.parse()
 }

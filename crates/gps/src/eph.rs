@@ -1,8 +1,7 @@
-use crate::{
-    constants::*,
-    datetime::{DateTime, GpsTime},
-    geometry::{Azel, Ecef, Location, Neu},
-};
+use constants::{OMEGA_EARTH, R2D, SECONDS_IN_HALF_WEEK, SECONDS_IN_WEEK};
+use geometry::{Azel, Ecef, Location, Neu};
+
+use crate::datetime::{DateTime, GpsTime};
 ///  Structure representing ephemeris of a single satellite
 #[allow(non_snake_case)]
 // #[repr(C)]

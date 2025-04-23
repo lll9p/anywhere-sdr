@@ -1,9 +1,7 @@
 use std::{fs, path::PathBuf};
 
-use crate::{
-    constants::*,
-    geometry::{Ecef, Location},
-};
+use constants::R2D;
+use geometry::{Ecef, Location};
 ///  \brief Read the list of user motions from the input file
 ///  \param[out] xyz Output array of ECEF vectors for user motion
 ///  \param[[in] filename File name of the text input file

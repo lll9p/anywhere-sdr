@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use anyhow::{Error, Result, bail};
+use constants::{EPHEM_ARRAY_SIZE, MAX_CHAN, MAX_SAT, R2D, SECONDS_IN_HOUR};
+use geometry::{Ecef, Location};
 
-use super::{signal_generator::SignalGenerator, utils::MotionMode};
 use crate::{
-    constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
-    geometry::{Ecef, Location},
+    generator::{signal_generator::SignalGenerator, utils::MotionMode},
     io::DataFormat,
     ionoutc::IonoUtc,
     read_nmea_gga::read_nmea_gga,

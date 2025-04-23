@@ -1,10 +1,8 @@
 mod channel;
-mod constants;
 mod datetime;
 mod delay;
 mod eph;
 mod generator;
-pub mod geometry;
 mod io;
 mod ionoutc;
 mod propagation;

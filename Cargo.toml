@@ -15,14 +15,15 @@ exclude = ["/.github/"]
 
 [workspace]
 resolver = "2"
-members = ["crates/gps", "apps/gpssim"]
+members = ["crates/*", "apps/gpssim"]
 exclude = ["target", "dist"]
 
-# internal dependencies
 
 [workspace.dependencies]
-gps = { path = "./crates/gps" }
 # internal dependencies
+constants = { path = "./crates/constants" }
+geometry = { path = "./crates/geometry" }
+gps = { path = "./crates/gps" }
 
 # external dependencies
 anyhow = { version = "1" }

@@ -1,7 +1,10 @@
 use std::{fs, path::Path};
 
+use constants::{
+    EPHEM_ARRAY_SIZE, GM_EARTH, MAX_SAT, OMEGA_EARTH, SECONDS_IN_HOUR,
+};
+
 use crate::{
-    constants::*,
     datetime::{DateTime, GpsTime},
     eph::Ephemeris,
     ionoutc::IonoUtc,

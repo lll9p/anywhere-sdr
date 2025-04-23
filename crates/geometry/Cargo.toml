@@ -1,5 +1,5 @@
 [package]
-name = "gps"
+name = "geometry"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
@@ -12,11 +12,10 @@ license-file.workspace = true
 edition.workspace = true
 
 [lib]
-path = "src/gps.rs"
+path = "src/geometry.rs"
 
 [dependencies]
 # internal dependencies
-geometry.workspace = true
 constants.workspace = true
 
 # external dependencies
