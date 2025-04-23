@@ -10,16 +10,6 @@ fn rinex_read() -> Result<(), Error> {
     let _ = Rinex::read_string(RINEX_DATA)?;
     Ok(())
 }
-#[test]
-fn rinex_file_read() -> Result<(), Error> {
-    let fname = r"C:\Users\lll9p\World\Repositories\Apps\anywhere-sdr\crates\gps\resources\brdc0010.22n";
-    let content = std::fs::read_to_string(fname)?;
-    let data = Rinex::read_string(&content)?;
-    println!("len: {}", data.ephemerides.len());
-    println!("toc {:#?}", data.delta_utc);
-    println!("{:#?}", data.ephemerides[0]);
-    Ok(())
-}
 const RINEX_DATA: &str = r"     2              NAVIGATION DATA                         RINEX VERSION / TYPE
 CCRINEXN V1.6.0 UX  CDDIS               02-JUN-24 23:31     PGM / RUN BY / DATE
 IGS BROADCAST EPHEMERIS FILE                                COMMENT
