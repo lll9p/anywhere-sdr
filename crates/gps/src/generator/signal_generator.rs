@@ -7,7 +7,7 @@ use geometry::Ecef;
 use crate::{
     channel::Channel,
     datetime::{DateTime, GpsTime},
-    eph::Ephemeris,
+    ephemeris::Ephemeris,
     generator::utils::MotionMode,
     io::{DataFormat, IQWriter},
     ionoutc::IonoUtc,

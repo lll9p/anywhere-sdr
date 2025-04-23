@@ -3,16 +3,17 @@ use std::path::PathBuf;
 use anyhow::{Error, Result, bail};
 use constants::{EPHEM_ARRAY_SIZE, MAX_CHAN, MAX_SAT, R2D, SECONDS_IN_HOUR};
 use geometry::{Ecef, Location};
+use parsing::{read_nmea_gga, read_user_motion, read_user_motion_llh};
 
 use crate::{
     datetime::{DateTime, GpsTime},
-    eph::Ephemeris,
-    generator::{signal_generator::SignalGenerator, utils::MotionMode},
+    ephemeris::Ephemeris,
+    generator::{
+        signal_generator::SignalGenerator,
+        utils::{MotionMode, read_navigatioin_data},
+    },
     io::DataFormat,
     ionoutc::IonoUtc,
-    read_nmea_gga::read_nmea_gga,
-    read_rinex::read_rinex_nav_all,
-    read_user_motion::{read_user_motion, read_user_motion_llh},
 };
 type EphemerisRelatedData = (
     usize,
@@ -47,17 +48,10 @@ impl SignalGeneratorBuilder {
     ) -> Result<Self, Error> {
         // Read ephemeris
         if let Some(file) = navigation_file {
-            let mut ephemerides: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]> =
-                std::array::from_fn(|_| {
-                    std::array::from_fn(|_| Ephemeris::default())
-                })
-                .into();
-            let mut iono_utc = IonoUtc::default();
-            let count =
-                read_rinex_nav_all(&mut ephemerides, &mut iono_utc, &file)
-                    .map_err(|_| {
-                        Error::msg("ERROR: ephemeris file not found or error.")
-                    })?;
+            let (count, iono_utc, ephemerides) = read_navigatioin_data(&file)
+                .map_err(|_| {
+                Error::msg("ERROR: ephemeris file not found or error.")
+            })?;
             if count == 0 {
                 bail!("");
             }

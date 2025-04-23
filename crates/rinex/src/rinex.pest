@@ -1,0 +1,134 @@
+/* reference `https://files.igs.org/pub/data/format/rinex2.txt` TABLE A3 and A4 */
+
+WHITESPACE               = _{ " " }
+float_number             = _{ "-"? ~ ASCII_DIGIT+ ~ "."? ~ ASCII_DIGIT+ ~ ("D" | "d" | "E" | "e") ~ ("-" | "+")? ~ ASCII_DIGIT+ }
+integer                  = _{ ASCII_DIGIT* }
+mixed_newline            = _{ NEWLINE? }
+float_number_mix_newline = _{ float_number ~ mixed_newline }
+
+/* header */
+header_version_token   = _{ "RINEX VERSION / TYPE" }
+header_program_token   = _{ "PGM / RUN BY / DATE" }
+header_comment_token   = _{ "COMMENT" }
+header_ion_alpha_token = _{ "ION ALPHA" }
+header_ion_beta_token  = _{ "ION BETA" }
+header_delta_utc_token = _{ "DELTA-UTC: A0,A1,T,W" }
+header_leap_secs_token = _{ "LEAP SECONDS" }
+header_end_token       = _{ "END OF HEADER" }
+header_tokens          = _{ header_version_token | header_program_token | header_comment_token | header_ion_alpha_token | header_ion_beta_token | header_delta_utc_token | header_leap_secs_token | header_end_token }
+
+/* version */
+version        =  { NUMBER }
+header_char    = _{ !header_tokens ~ ASCII }
+file_type      =  { header_char* }
+header_version =  { WHITESPACE* ~ version ~ file_type ~ header_version_token ~ NEWLINE }
+
+/* program */
+program_name   = ${ header_char{20} }
+agency         = ${ header_char{20} }
+date           = ${ header_char{20} }
+header_program =  { WHITESPACE* ~ program_name ~ agency ~ date ~ header_program_token ~ NEWLINE }
+
+/* comment */
+_comment       = ${ header_char{60} }
+header_comment =  { WHITESPACE* ~ _comment ~ header_comment_token ~ NEWLINE }
+
+/* ion alpha and beta */
+ion_a0           = ${ float_number }
+ion_a1           = ${ float_number }
+ion_a2           = ${ float_number }
+ion_a3           = ${ float_number }
+header_ion_alpha =  { WHITESPACE* ~ ion_a0 ~ ion_a1 ~ ion_a2 ~ ion_a3 ~ header_ion_alpha_token ~ NEWLINE }
+ion_b0           = ${ float_number }
+ion_b1           = ${ float_number }
+ion_b2           = ${ float_number }
+ion_b3           = ${ float_number }
+header_ion_beta  =  { WHITESPACE* ~ ion_b0 ~ ion_b1 ~ ion_b2 ~ ion_b3 ~ header_ion_beta_token ~ NEWLINE }
+
+/* delta utc */
+utc_a0           = ${ float_number }
+utc_a1           = ${ float_number }
+utc_t            = ${ integer }
+utc_w            = ${ integer }
+header_delta_utc =  { WHITESPACE* ~ utc_a0 ~ utc_a1 ~ utc_t ~ utc_w ~ header_delta_utc_token ~ NEWLINE }
+
+/* leap seconds */
+leap_secs        = ${ integer }
+header_leap_secs =  { WHITESPACE* ~ leap_secs ~ header_leap_secs_token ~ NEWLINE }
+
+header = { header_version? ~ header_program? ~ header_comment? ~ header_ion_alpha? ~ header_ion_beta? ~ header_delta_utc? ~ header_leap_secs? ~ header_end_token ~ NEWLINE }
+
+/* records definitions */
+
+prn = ${ integer }
+
+/* epoch */
+toc_year          = ${ integer }
+toc_month         = ${ integer }
+toc_day           = ${ integer }
+toc_hour          = ${ integer }
+toc_minute        = ${ integer }
+pure_float_number = _{ ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT+ }
+toc_secs          = ${ pure_float_number }
+epoch             =  { toc_year ~ toc_month ~ toc_day ~ toc_hour ~ toc_minute ~ toc_secs }
+/* sv clock */
+sv_clk_bias       = ${ float_number_mix_newline }
+sv_clk_drift      = ${ float_number_mix_newline }
+sv_clk_drift_rate = ${ float_number_mix_newline }
+sv_clk            =  { sv_clk_bias ~ sv_clk_drift ~ sv_clk_drift_rate }
+
+/* orbit 1 */
+iode    = ${ float_number_mix_newline }
+crs     = ${ float_number_mix_newline }
+delta_n = ${ float_number_mix_newline }
+m0      = ${ float_number_mix_newline }
+orbit_1 =  { iode ~ crs ~ delta_n ~ m0 }
+
+/* orbit 2 */
+cuc     = ${ float_number_mix_newline }
+ecc     = ${ float_number_mix_newline }
+cus     = ${ float_number_mix_newline }
+sqrta   = ${ float_number_mix_newline }
+orbit_2 =  { cuc ~ ecc ~ cus ~ sqrta }
+
+/* orbit 3 */
+toe     = ${ float_number_mix_newline }
+cic     = ${ float_number_mix_newline }
+omega   = ${ float_number_mix_newline }
+cis     = ${ float_number_mix_newline }
+orbit_3 =  { toe ~ cic ~ omega ~ cis }
+
+/* orbit 4 */
+i0        = ${ float_number_mix_newline }
+crc       = ${ float_number_mix_newline }
+omega_4   = ${ float_number_mix_newline }
+omega_dot = ${ float_number_mix_newline }
+orbit_4   =  { i0 ~ crc ~ omega_4 ~ omega_dot }
+
+/* orbit 5 */
+idot    = ${ float_number_mix_newline }
+cl2     = ${ float_number_mix_newline }
+week    = ${ float_number_mix_newline }
+pl2     = ${ float_number_mix_newline }
+orbit_5 =  { idot ~ cl2 ~ week ~ pl2 }
+
+/* orbit 6 */
+sva     = ${ float_number_mix_newline }
+svh     = ${ float_number_mix_newline }
+tgd     = ${ float_number_mix_newline }
+iodc    = ${ float_number_mix_newline }
+orbit_6 =  { sva ~ svh ~ tgd ~ iodc }
+
+/* orbit 7 */
+tom     = ${ float_number_mix_newline }
+s70     = ${ float_number_mix_newline }
+s71     = ${ float_number_mix_newline }
+s72     = ${ float_number_mix_newline }
+orbit_7 =  { tom ~ s70 ~ s71 ~ s72 }
+
+/* records */
+ephemeris = { WHITESPACE* ~ prn ~ epoch ~ sv_clk ~ orbit_1 ~ orbit_2 ~ orbit_3 ~ orbit_4 ~ orbit_5 ~ orbit_6 ~ orbit_7 }
+
+ephemerides = { ephemeris+ }
+
+rinex = { SOI ~ header ~ ephemerides ~ NEWLINE? ~ EOI }

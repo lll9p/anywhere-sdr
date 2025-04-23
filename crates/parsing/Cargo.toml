@@ -1,5 +1,5 @@
 [package]
-name = "gps"
+name = "parsing"
 version.workspace = true
 authors.workspace = true
 description.workspace = true
@@ -12,14 +12,12 @@ license-file.workspace = true
 edition.workspace = true
 
 [lib]
-path = "src/gps.rs"
+path = "src/parsing.rs"
 
 [dependencies]
 # internal dependencies
 geometry.workspace = true
 constants.workspace = true
-parsing.workspace = true
-rinex.workspace = true
 
 # external dependencies
 anyhow.workspace = true

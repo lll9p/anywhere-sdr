@@ -8,7 +8,7 @@ use geometry::{Azel, Ecef};
 
 use crate::{
     datetime::{GpsTime, TimeRange},
-    eph::Ephemeris,
+    ephemeris::Ephemeris,
     ionoutc::IonoUtc,
     propagation::compute_range,
     table::*,

@@ -1,6 +1,6 @@
 #[allow(non_snake_case)]
 // #[repr(C)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct IonoUtc {
     pub enable: bool,
     pub vflg: bool,
@@ -54,4 +54,22 @@ pub struct IonoUtc {
 
     // enable custom leap event
     pub leapen: i32,
+}
+impl IonoUtc {
+    pub fn read_from_rinex(&mut self, rinex: &rinex::Rinex) {
+        self.alpha0 = rinex.ion_alpha[0];
+        self.alpha1 = rinex.ion_alpha[1];
+        self.alpha2 = rinex.ion_alpha[2];
+        self.alpha3 = rinex.ion_alpha[3];
+        self.beta0 = rinex.ion_beta[0];
+        self.beta1 = rinex.ion_beta[1];
+        self.beta2 = rinex.ion_beta[2];
+        self.beta3 = rinex.ion_beta[3];
+        self.A0 = rinex.delta_utc.a0;
+        self.A1 = rinex.delta_utc.a1;
+        self.tot = rinex.delta_utc.time;
+        self.week_number = rinex.delta_utc.week;
+        self.dtls = rinex.leap_seconds;
+        self.vflg = self.tot % 4096 == 0;
+    }
 }

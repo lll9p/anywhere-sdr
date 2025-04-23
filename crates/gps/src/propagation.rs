@@ -4,7 +4,7 @@ use geometry::{Azel, Ecef, Location, LocationMath, Neu};
 use crate::{
     datetime::{GpsTime, TimeRange},
     delay::ionospheric_delay,
-    eph::Ephemeris,
+    ephemeris::Ephemeris,
     ionoutc::IonoUtc,
 };
 

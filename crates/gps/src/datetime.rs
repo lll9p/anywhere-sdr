@@ -105,6 +105,18 @@ impl From<&GpsTime> for DateTime {
         }
     }
 }
+impl From<jiff::Zoned> for DateTime {
+    fn from(value: jiff::Zoned) -> Self {
+        Self {
+            y: i32::from(value.year()),
+            m: i32::from(value.month()),
+            d: i32::from(value.day()),
+            hh: i32::from(value.hour()),
+            mm: i32::from(value.minute()),
+            sec: f64::from(value.second()),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct TimeRange {
