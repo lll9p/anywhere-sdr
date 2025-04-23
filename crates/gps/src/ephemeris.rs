@@ -5,7 +5,7 @@ use crate::datetime::{DateTime, GpsTime};
 ///  Structure representing ephemeris of a single satellite
 #[allow(non_snake_case)]
 // #[repr(C)]
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct Ephemeris {
     /// Valid Flag
     pub vflg: bool,

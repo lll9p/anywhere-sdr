@@ -209,11 +209,10 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    #[allow(unused_mut, unused_variables, clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines)]
     pub fn build(mut self) -> Result<SignalGenerator> {
         // ensure navigation data is read
-        let Some((mut count, mut ionoutc, mut ephemerides)) =
-            self.ephemerides_data
+        let Some((count, mut ionoutc, mut ephemerides)) = self.ephemerides_data
         else {
             bail!("You must set navigation!");
         };
@@ -256,7 +255,7 @@ impl SignalGeneratorBuilder {
         // sample_rate, default is 0.1/10HZ
         let sample_rate = self.sample_rate.unwrap_or(0.1);
         // mode
-        let mut mode = self.mode.unwrap_or(MotionMode::Static);
+        let mode = self.mode.unwrap_or(MotionMode::Static);
         // check duration
         if self.duration.is_some_and(|d| d < 0.0) {
             bail!("ERROR: Invalid duration.");
@@ -278,10 +277,8 @@ impl SignalGeneratorBuilder {
         let sample_frequency = self.frequency.unwrap_or(2_600_000.0);
         // is override time?
 
-        let mut antenna_gains: [i32; MAX_CHAN] = [0; MAX_CHAN];
-        let mut antenna_pattern: [f64; 37] = [0.; 37];
-        let mut datetime_min = DateTime::default();
-        let mut datetime_max = DateTime::default();
+        let antenna_gains: [i32; MAX_CHAN] = [0; MAX_CHAN];
+        let antenna_pattern: [f64; 37] = [0.; 37];
         let mut gpstime_min = GpsTime::default();
         let mut gpstime_max = GpsTime::default();
         // get min time of ephemerides

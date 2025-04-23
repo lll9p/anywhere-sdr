@@ -3,7 +3,7 @@ use constants::{
 };
 use geometry::Azel;
 // Structure representing GPS time
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 // #[repr(C)]
 pub struct GpsTime {
     // GPS week number (since January 1980)
@@ -62,7 +62,7 @@ impl From<&DateTime> for GpsTime {
 }
 
 //  Structure repreenting UTC time
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 // #[repr(C)]
 pub struct DateTime {
     // < Calendar year
@@ -118,7 +118,7 @@ impl From<jiff::Zoned> for DateTime {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct TimeRange {
     pub time: GpsTime,
     // pseudorange
