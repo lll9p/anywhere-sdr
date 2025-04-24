@@ -119,13 +119,14 @@ impl SignalGenerator {
 
         self.iq_buffer_size =
             (self.sample_frequency * self.sample_rate).floor() as usize;
-        // self.iq_buffer = vec![0; 2 * self.iq_buffer_size];
-        let writer = IQWriter::new(
-            self.out_file.as_ref().unwrap(),
-            self.data_format,
-            self.iq_buffer_size,
-        )?;
-        self.writer = Some(writer);
+        self.writer = match &self.out_file {
+            Some(file) => Some(IQWriter::new(
+                file,
+                self.data_format,
+                self.iq_buffer_size,
+            )?),
+            None => None,
+        };
         self.initialized = true;
         Ok(())
     }
