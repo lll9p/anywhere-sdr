@@ -203,7 +203,8 @@ impl SignalGeneratorBuilder {
     ///
     /// # Arguments
     /// * `disable` - Optional boolean flag to disable ionospheric correction
-    ///   (default: true)
+    ///   When true, ionospheric correction is disabled (ionoutc.enable = false)
+    ///   When false, ionospheric correction is enabled (ionoutc.enable = true)
     ///
     /// # Returns
     /// * `Self` - Builder with ionospheric correction setting
@@ -744,8 +745,10 @@ impl SignalGeneratorBuilder {
         let Some(valid_ephemerides_index) = valid_ephemerides_index else {
             return Err(Error::no_current_ephemerides());
         };
-        // Disable ionospheric correction
-        ionoutc.enable = self.ionospheric_disable.unwrap_or(true);
+        // Set ionospheric correction based on the disable flag
+        // In gpssim.c, when -i flag is used, ionoutc.enable is set to FALSE
+        // So when ionospheric_disable is true, ionoutc.enable should be false
+        ionoutc.enable = !self.ionospheric_disable.unwrap_or(false);
         let Some(data_format) = self.data_format else {
             return Err(Error::data_format_not_set());
         };
