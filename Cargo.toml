@@ -69,3 +69,9 @@ used_underscore_binding = "allow"
 todo = "deny"
 
 [workspace.lints.rust]
+
+[profile.release]
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1
