@@ -14,6 +14,20 @@ use crate::{
     propagation::compute_range,
     table::ANT_PAT_DB,
 };
+/// Main class for GPS signal generation and simulation.
+///
+/// This struct contains all the state needed to simulate GPS signals:
+/// - Satellite ephemeris data and parameters
+/// - Receiver position and motion information
+/// - Channel allocation and tracking state
+/// - Signal generation parameters
+/// - I/O configuration for sample output
+///
+/// The typical usage flow is:
+/// 1. Create a `SignalGeneratorBuilder` and configure simulation parameters
+/// 2. Call `build()` to create a `SignalGenerator`
+/// 3. Call `initialize()` to set up the simulation
+/// 4. Call `run_simulation()` to generate the GPS signals
 pub struct SignalGenerator {
     /// Satellite ephemeris data organized in hourly sets
     pub ephemerides: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
@@ -88,6 +102,25 @@ impl Default for SignalGenerator {
     }
 }
 impl SignalGenerator {
+    /// Initializes the signal generator before simulation.
+    ///
+    /// This method performs the necessary setup steps before running the
+    /// simulation:
+    /// - Displays the simulation mode and initial position
+    /// - Sets up the receiver time
+    /// - Allocates satellite channels based on visibility
+    /// - Initializes the antenna gain pattern
+    /// - Sets up the I/Q sample buffer and writer
+    ///
+    /// This method must be called before `run_simulation()`.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If initialization is successful
+    /// * `Err(Error)` - If there's an error during initialization
+    ///
+    /// # Errors
+    /// * Returns an error if the output file cannot be opened or if there's an
+    ///   issue with the I/Q writer
     pub fn initialize(&mut self) -> Result<(), Error> {
         // Initialize channels
         match self.mode {
@@ -150,6 +183,18 @@ impl SignalGenerator {
         Ok(())
     }
 
+    /// Allocates satellite channels based on visibility from the current
+    /// position.
+    ///
+    /// This method determines which satellites are visible from the given
+    /// position, allocates channels to visible satellites, and deallocates
+    /// channels for satellites that are no longer visible.
+    ///
+    /// # Arguments
+    /// * `xyz` - The current receiver position in ECEF coordinates
+    ///
+    /// # Returns
+    /// * The number of visible satellites
     pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
         let mut visible_satellite_count: i32 = 0;
         // let ref_0: [f64; 3] = [0., 0., 0.];
@@ -206,6 +251,22 @@ impl SignalGenerator {
         visible_satellite_count
     }
 
+    /// Generates I/Q samples for all active channels and writes them to the
+    /// output file.
+    ///
+    /// This method:
+    /// 1. Calculates I/Q contributions from each active satellite channel
+    /// 2. Accumulates these contributions into a combined signal
+    /// 3. Updates the code phase and carrier phase for each channel
+    /// 4. Quantizes and writes the I/Q samples to the output file
+    ///
+    /// # Returns
+    /// * `Ok(())` - If sample generation and writing is successful
+    /// * `Err(Error)` - If there's an error during sample generation or writing
+    ///
+    /// # Errors
+    /// * Returns an error if the I/Q writer is not initialized
+    /// * Returns an error if writing to the output file fails
     #[inline]
     fn generate_and_write_samples(&mut self) -> Result<(), Error> {
         let sampling_period = self.sample_frequency.recip();
@@ -246,7 +307,21 @@ impl SignalGenerator {
         Ok(())
     }
 
-    /// Update Rho, Doppler, Gain for all active channels
+    /// Updates pseudorange, Doppler shift, and signal gain for all active
+    /// channels.
+    ///
+    /// This method calculates the current signal parameters for each active
+    /// satellite channel:
+    /// - Computes the current pseudorange (distance) to each satellite
+    /// - Updates the code and carrier phase based on the pseudorange change
+    /// - Calculates the signal gain based on path loss and antenna pattern
+    ///
+    /// The gain calculation depends on whether fixed gain mode is enabled:
+    /// - If fixed gain is set, all satellites use the same constant gain
+    /// - Otherwise, gain is calculated based on distance and elevation angle
+    ///
+    /// # Arguments
+    /// * `current_location` - The current receiver position in ECEF coordinates
     fn update_channel_parameters(&mut self, current_location: Ecef) {
         let ephemeris_set_index = self.valid_ephemerides_index;
         let sampling_period = self.sample_frequency.recip();
@@ -294,8 +369,21 @@ impl SignalGenerator {
         }
     }
 
-    /// Handle periodic tasks like Nav Message updates, Ephemeris refresh,
-    /// Channel reallocation
+    /// Handles periodic tasks that occur at regular intervals during
+    /// simulation.
+    ///
+    /// This method performs tasks that need to happen periodically (every 30
+    /// seconds):
+    /// - Updates the navigation message for all active channels
+    /// - Refreshes the ephemeris data set if a newer one is available
+    /// - Updates the navigation subframes if the ephemeris set changed
+    /// - Reallocates satellite channels based on current visibility
+    ///
+    /// These periodic updates ensure that the simulation accurately reflects
+    /// the changing satellite positions and navigation data over time.
+    ///
+    /// # Arguments
+    /// * `current_location` - The current receiver position in ECEF coordinates
     fn handle_periodic_tasks(&mut self, current_location: Ecef) {
         let current_step_index =
             (self.receiver_gps_time.sec * 10.0 + 0.5) as i32;
@@ -374,9 +462,27 @@ impl SignalGenerator {
         }
     }
 
-    /// Generate baseband signals
+    /// Runs the GPS signal simulation and generates baseband I/Q samples.
+    ///
+    /// This is the main simulation method that:
+    /// 1. Determines the number of simulation steps based on mode and duration
+    /// 2. For each time step:
+    ///    - Determines the current receiver position (static or from motion
+    ///      file)
+    ///    - Updates channel parameters (pseudorange, Doppler, gain)
+    ///    - Generates and writes I/Q samples
+    ///    - Performs periodic tasks (nav message updates, ephemeris refresh)
+    ///    - Updates the simulation time
+    ///
+    /// The method must be called after `initialize()`.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the simulation completes successfully
+    /// * `Err(Error)` - If there's an error during simulation
+    ///
     /// # Errors
-    /// Returns `Error`
+    /// * Returns an error if the generator was not initialized
+    /// * Returns an error if there's an issue generating or writing samples
     pub fn run_simulation(&mut self) -> Result<(), Error> {
         if !self.initialized {
             return Err(Error::msg("Not initialized!"));
@@ -436,7 +542,20 @@ impl SignalGenerator {
         Ok(())
     }
 
-    // Show details about simulated channels
+    /// Prints detailed status information about active satellite channels.
+    ///
+    /// This method displays a table of information for each active channel,
+    /// including:
+    /// - PRN number (satellite identifier)
+    /// - Azimuth angle in degrees
+    /// - Elevation angle in degrees
+    /// - Range (distance) to the satellite in meters
+    /// - Ionospheric delay in meters
+    ///
+    /// This information is useful for debugging and monitoring the simulation.
+    ///
+    /// # Arguments
+    /// * `channels` - Array of satellite channels
     fn print_channel_status(channels: &[Channel; MAX_CHAN]) {
         eprintln!("PRN Az(deg) El(deg)  Range(m) Iono(m)");
         for ichan in channels.iter().filter(|ch| ch.prn != 0) {

@@ -15,11 +15,43 @@ use crate::{
     io::DataFormat,
     ionoutc::IonoUtc,
 };
+/// Type alias for ephemeris-related data used in the builder.
+///
+/// This tuple contains:
+/// - The number of valid ephemeris sets
+/// - Ionospheric and UTC parameters
+/// - A 2D array of ephemeris data organized by time set and satellite PRN
+///
+/// This is the same structure as the `Data` type in the utils module,
+/// but defined here for use within the builder.
 type EphemerisRelatedData = (
     usize,
     IonoUtc,
     Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
 );
+/// Builder for creating and configuring a `SignalGenerator`.
+///
+/// This struct implements the builder pattern for creating a `SignalGenerator`
+/// with a fluent API. It allows setting various simulation parameters through
+/// method chaining, with reasonable defaults for optional parameters.
+///
+/// # Example
+/// ```no_run
+/// use std::path::PathBuf;
+///
+/// use gps::SignalGeneratorBuilder;
+///
+/// let builder = SignalGeneratorBuilder::default()
+///     .navigation_file(Some(PathBuf::from("brdc0010.22n")))
+///     .location(Some(vec![35.6813, 139.7662, 10.0]))
+///     .duration(Some(60.0))
+///     .data_format(Some(8))
+///     .output_file(Some(PathBuf::from("output.bin")));
+///
+/// let mut generator = builder.build().unwrap();
+/// generator.initialize().unwrap();
+/// generator.run_simulation().unwrap();
+/// ```
 #[derive(Default)]
 pub struct SignalGeneratorBuilder {
     output_file: Option<PathBuf>,
@@ -38,11 +70,41 @@ pub struct SignalGeneratorBuilder {
     verbose: Option<bool>,
 }
 impl SignalGeneratorBuilder {
+    /// Parses a datetime string into a timestamp.
+    ///
+    /// Used internally to convert user-provided date/time strings into a format
+    /// that can be used for simulation timing.
+    ///
+    /// # Arguments
+    /// * `value` - A string representing a date and time in the format
+    ///   "YYYY-MM-DD HH:MM:SS"
+    ///
+    /// # Returns
+    /// A Result containing either the parsed timestamp or a parsing error
     fn parse_datetime(value: &str) -> Result<jiff::Timestamp, jiff::Error> {
         let time: jiff::Timestamp = value.parse()?;
         Ok(time)
     }
 
+    /// Sets the RINEX navigation file for GPS ephemerides.
+    ///
+    /// This file contains satellite orbit and clock parameters needed for the
+    /// simulation. The function reads and processes the navigation data,
+    /// extracting ephemeris sets and ionospheric/UTC parameters.
+    ///
+    /// # Arguments
+    /// * `navigation_file` - Optional path to a RINEX navigation file
+    ///   (typically with .nav or .n extension)
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with navigation data loaded
+    /// * `Err(Error)` - If the file cannot be read or contains no valid
+    ///   ephemeris data
+    ///
+    /// # Errors
+    /// * `Error::NoEphemeris` - If no valid ephemeris data was found in the
+    ///   file
+    /// * Other errors if the file cannot be read or parsed
     pub fn navigation_file(
         mut self, navigation_file: Option<PathBuf>,
     ) -> Result<Self, Error> {
@@ -60,11 +122,40 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets whether to override ephemeris time with the simulation start time.
+    ///
+    /// When enabled, this option adjusts the ephemeris data to match the
+    /// simulation start time, allowing the use of ephemeris data that would
+    /// otherwise be out of range. This is useful for testing with specific
+    /// ephemeris data at arbitrary times.
+    ///
+    /// # Arguments
+    /// * `time_override` - Optional boolean flag to enable time override
+    ///   (default: false)
+    ///
+    /// # Returns
+    /// * `Self` - Builder with time override setting
     pub fn time_override(mut self, time_override: Option<bool>) -> Self {
         self.time_override = time_override;
         self
     }
 
+    /// Sets the simulation start time.
+    ///
+    /// This method sets the GPS time at which the simulation will start.
+    /// The time can be specified as a string in the format "YYYY-MM-DD
+    /// HH:MM:SS" or as the special value "now" to use the current system
+    /// time.
+    ///
+    /// # Arguments
+    /// * `time` - Optional string representing the start time or "now"
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with start time set
+    /// * `Err(Error)` - If the time string cannot be parsed
+    ///
+    /// # Errors
+    /// * Returns an error if the time string format is invalid
     pub fn time(mut self, time: Option<String>) -> Result<Self, Error> {
         if let Some(time) = time {
             let time_parsed = match time.to_lowercase().as_str() {
@@ -84,21 +175,78 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets the simulation duration in seconds.
+    ///
+    /// This method specifies how long the simulation should run.
+    /// For static positioning, this determines how many samples to generate.
+    /// For dynamic positioning, this is limited by the number of positions
+    /// available in the user motion file.
+    ///
+    /// # Arguments
+    /// * `duration` - Optional simulation duration in seconds
+    ///
+    /// # Returns
+    /// * `Self` - Builder with duration set
     pub fn duration(mut self, duration: Option<f64>) -> Self {
         self.duration = duration;
         self
     }
 
+    /// Controls whether ionospheric correction is disabled.
+    ///
+    /// The ionospheric layer affects GPS signal propagation, causing delays.
+    /// This option allows disabling the ionospheric correction model for
+    /// testing or when simulating ideal conditions.
+    ///
+    /// # Arguments
+    /// * `disable` - Optional boolean flag to disable ionospheric correction
+    ///   (default: true)
+    ///
+    /// # Returns
+    /// * `Self` - Builder with ionospheric correction setting
     pub fn ionospheric_disable(mut self, disable: Option<bool>) -> Self {
         self.ionospheric_disable = disable;
         self
     }
 
+    /// Sets leap second parameters for UTC-GPS time conversion.
+    ///
+    /// GPS time and UTC time differ by a number of leap seconds. This method
+    /// allows setting the leap second parameters for accurate time conversion.
+    ///
+    /// # Arguments
+    /// * `leap` - Optional vector containing [week number, day number, delta
+    ///   time in seconds]
+    ///   - week number: GPS week number when the leap second becomes effective
+    ///   - day number: Day of week (1-7, where 1 is Sunday) when the leap
+    ///     second becomes effective
+    ///   - delta time: Current difference between GPS time and UTC in seconds
+    ///
+    /// # Returns
+    /// * `Self` - Builder with leap second parameters set
     pub fn leap(mut self, leap: Option<Vec<i32>>) -> Self {
         self.leap = leap;
         self
     }
 
+    /// Sets the I/Q sample data format for the output file.
+    ///
+    /// This method specifies the bit depth for the I/Q samples in the output
+    /// file. Different bit depths offer trade-offs between file size and
+    /// signal quality.
+    ///
+    /// # Arguments
+    /// * `data_format` - Optional bit depth (1, 8, or 16)
+    ///   - 1: 1-bit I/Q samples (smallest file size, lowest quality)
+    ///   - 8: 8-bit I/Q samples (medium file size and quality)
+    ///   - 16: 16-bit I/Q samples (largest file size, highest quality)
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with data format set
+    /// * `Err(Error)` - If an invalid bit depth is specified
+    ///
+    /// # Errors
+    /// * Returns an error if the data format is not 1, 8, or 16 bits
     pub fn data_format(
         mut self, data_format: Option<usize>,
     ) -> Result<Self, Error> {
@@ -112,11 +260,38 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets the output file path for the generated I/Q samples.
+    ///
+    /// This method specifies where the generated GPS signal I/Q samples will be
+    /// saved. The file format is binary with the structure determined by
+    /// the `data_format` setting.
+    ///
+    /// # Arguments
+    /// * `file` - Optional path to the output file
+    ///
+    /// # Returns
+    /// * `Self` - Builder with output file path set
     pub fn output_file(mut self, file: Option<PathBuf>) -> Self {
         self.output_file = file;
         self
     }
 
+    /// Sets the sampling frequency for the generated I/Q samples.
+    ///
+    /// This method specifies the sampling rate in Hz for the generated GPS
+    /// signal. Higher sampling rates provide more detail but result in
+    /// larger output files. The default is 2.6 MHz (2,600,000 Hz).
+    ///
+    /// # Arguments
+    /// * `frequency` - Optional sampling frequency in Hz (must be at least 1
+    ///   MHz)
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with sampling frequency set
+    /// * `Err(Error)` - If the frequency is invalid
+    ///
+    /// # Errors
+    /// * Returns an error if the frequency is less than 1 MHz
     pub fn frequency(
         mut self, frequency: Option<usize>,
     ) -> Result<Self, Error> {
@@ -130,6 +305,24 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets a static location in ECEF (Earth-Centered, Earth-Fixed)
+    /// coordinates.
+    ///
+    /// This method sets a fixed receiver position using ECEF coordinates.
+    /// When this option is used, the simulation will use static positioning
+    /// mode.
+    ///
+    /// # Arguments
+    /// * `location` - Optional vector containing [X, Y, Z] coordinates in
+    ///   meters
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with static location set
+    /// * `Err(Error)` - If another positioning method was already set
+    ///
+    /// # Errors
+    /// * Returns an error if another positioning method was already set
+    ///   (duplicate position)
     pub fn location_ecef(
         mut self, location: Option<Vec<f64>>,
     ) -> Result<Self, Error> {
@@ -144,6 +337,24 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets a static location in LLH (Latitude, Longitude, Height) coordinates.
+    ///
+    /// This method sets a fixed receiver position using geodetic coordinates.
+    /// The coordinates are automatically converted from degrees to radians and
+    /// then to ECEF. When this option is used, the simulation will use
+    /// static positioning mode.
+    ///
+    /// # Arguments
+    /// * `location` - Optional vector containing [latitude, longitude,
+    ///   altitude] in degrees and meters
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with static location set
+    /// * `Err(Error)` - If another positioning method was already set
+    ///
+    /// # Errors
+    /// * Returns an error if another positioning method was already set
+    ///   (duplicate position)
     pub fn location(
         mut self, location: Option<Vec<f64>>,
     ) -> Result<Self, Error> {
@@ -163,16 +374,61 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Controls whether to enable verbose output during simulation.
+    ///
+    /// When enabled, this option causes the simulator to output detailed
+    /// information about satellite visibility, signal strength, and other
+    /// parameters during the simulation. This is useful for debugging and
+    /// understanding the simulation process.
+    ///
+    /// # Arguments
+    /// * `verbose` - Optional boolean flag to enable verbose output (default:
+    ///   false)
+    ///
+    /// # Returns
+    /// * `Self` - Builder with verbose setting
     pub fn verbose(mut self, verbose: Option<bool>) -> Self {
         self.verbose = verbose;
         self
     }
 
+    /// Sets a fixed gain value to override path loss calculations.
+    ///
+    /// Normally, the simulator calculates signal strength based on satellite
+    /// distance (path loss). This method allows setting a fixed gain value
+    /// for all satellites, which can be useful for testing or when
+    /// simulating ideal conditions.
+    ///
+    /// # Arguments
+    /// * `loss` - Optional fixed gain value in dB
+    ///
+    /// # Returns
+    /// * `Self` - Builder with fixed gain value set
     pub fn path_loss(mut self, loss: Option<i32>) -> Self {
         self.path_loss = loss;
         self
     }
 
+    /// Sets a user motion file in ECEF coordinates for dynamic positioning.
+    ///
+    /// This method loads a file containing user motion data in Earth-Centered,
+    /// Earth-Fixed (ECEF) coordinate format. The file should contain
+    /// position data for each time step of the simulation. When this option
+    /// is used, the simulation will use dynamic positioning mode.
+    ///
+    /// # Arguments
+    /// * `file` - Optional path to a user motion file in ECEF format
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with user motion data loaded
+    /// * `Err(Error)` - If the file cannot be read or if another positioning
+    ///   method was already set
+    ///
+    /// # Errors
+    /// * Returns an error if another positioning method was already set
+    ///   (duplicate position)
+    /// * Returns parsing errors if the file cannot be read or contains invalid
+    ///   data
     pub fn user_motion_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
@@ -188,6 +444,29 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets a user motion file in LLH coordinates for dynamic positioning.
+    ///
+    /// This method loads a file containing user motion data in Latitude,
+    /// Longitude, Height (LLH) coordinate format. The file should contain
+    /// position data for each time step of the simulation.
+    /// The LLH coordinates will be automatically converted to ECEF coordinates
+    /// for internal use. When this option is used, the simulation will use
+    /// dynamic positioning mode.
+    ///
+    /// # Arguments
+    /// * `file` - Optional path to a user motion file in LLH format
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with user motion data loaded and converted to
+    ///   ECEF
+    /// * `Err(Error)` - If the file cannot be read or if another positioning
+    ///   method was already set
+    ///
+    /// # Errors
+    /// * Returns an error if another positioning method was already set
+    ///   (duplicate position)
+    /// * Returns parsing errors if the file cannot be read or contains invalid
+    ///   data
     pub fn user_motion_llh_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
@@ -206,6 +485,28 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets a NMEA GGA format file for dynamic positioning.
+    ///
+    /// This method loads a file containing position data in NMEA GGA sentence
+    /// format. NMEA GGA sentences contain position information including
+    /// latitude, longitude, and altitude. The NMEA data will be
+    /// automatically converted to ECEF coordinates for internal use.
+    /// When this option is used, the simulation will use dynamic positioning
+    /// mode.
+    ///
+    /// # Arguments
+    /// * `file` - Optional path to a file containing NMEA GGA sentences
+    ///
+    /// # Returns
+    /// * `Ok(Self)` - Builder with NMEA GGA data loaded and converted to ECEF
+    /// * `Err(Error)` - If the file cannot be read or if another positioning
+    ///   method was already set
+    ///
+    /// # Errors
+    /// * Returns an error if another positioning method was already set
+    ///   (duplicate position)
+    /// * Returns parsing errors if the file cannot be read or contains invalid
+    ///   NMEA data
     pub fn user_motion_nmea_gga_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
@@ -221,11 +522,48 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Sets the time step between simulation updates.
+    ///
+    /// This method specifies the time interval in seconds between position
+    /// updates in the simulation. The default is 0.1 seconds (10 Hz update
+    /// rate). Smaller values provide more frequent updates but increase
+    /// computation time.
+    ///
+    /// # Arguments
+    /// * `rate` - Optional time step in seconds
+    ///
+    /// # Returns
+    /// * `Self` - Builder with sample rate set
     pub fn sample_rate(mut self, rate: Option<f64>) -> Self {
         self.sample_rate = rate;
         self
     }
 
+    /// Builds the `SignalGenerator` with the configured settings.
+    ///
+    /// This method finalizes the builder pattern, creating a `SignalGenerator`
+    /// instance with all the settings that have been configured. It
+    /// performs validation of the settings and sets appropriate defaults
+    /// for any unspecified options.
+    ///
+    /// # Returns
+    /// * `Ok(SignalGenerator)` - A fully configured signal generator ready for
+    ///   simulation
+    /// * `Err(Error)` - If the configuration is invalid or incomplete
+    ///
+    /// # Errors
+    /// * `Error::navigation_not_set()` - If no navigation file was provided
+    /// * `Error::invalid_gps_day()` - If an invalid GPS day was specified
+    /// * `Error::invalid_gps_week()` - If an invalid GPS week was specified
+    /// * `Error::invalid_delta_leap_second()` - If an invalid leap second delta
+    ///   was specified
+    /// * `Error::wrong_positions()` - If the positions vector is empty
+    /// * `Error::invalid_duration()` - If a negative duration was specified
+    /// * `Error::invalid_start_time()` - If the start time is outside the
+    ///   ephemeris range
+    /// * `Error::no_current_ephemerides()` - If no valid ephemeris is available
+    ///   for the start time
+    /// * `Error::data_format_not_set()` - If no data format was specified
     #[allow(clippy::too_many_lines)]
     pub fn build(mut self) -> Result<SignalGenerator, Error> {
         // ensure navigation data is read

@@ -9,21 +9,58 @@ use crate::{
     ephemeris::Ephemeris,
     ionoutc::IonoUtc,
 };
+/// Defines the motion mode for the GPS signal simulation.
+///
+/// This enum specifies how the receiver position changes during simulation:
+/// - In Static mode, the receiver remains at a fixed position
+/// - In Dynamic mode, the receiver moves according to a predefined trajectory
 #[derive(Debug)]
 pub enum MotionMode {
+    /// Receiver remains at a fixed position throughout the simulation
     Static,
+    /// Receiver moves according to a trajectory defined in a motion file
     Dynamic,
-    // UserControl
+    // UserControl - Future feature for real-time user-controlled motion
 }
+/// Type alias for the data returned by the `read_navigation_data` function.
+///
+/// This tuple contains:
+/// - The number of valid ephemeris sets
+/// - Ionospheric and UTC parameters
+/// - A 2D array of ephemeris data organized by time set and satellite PRN
 type Data = (
     usize,
     IonoUtc,
     Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
 );
 
-/// Reads Iono/UTC parameters and ephemeris data from RINEX navigation file.
+/// Reads ionospheric/UTC parameters and ephemeris data from a RINEX navigation
+/// file.
 ///
-/// Ephemeris data is stored in approximately hourly groupings.
+/// This function parses a RINEX navigation file to extract:
+/// - Satellite ephemeris data (orbit and clock parameters)
+/// - Ionospheric correction parameters
+/// - UTC conversion parameters
+///
+/// The ephemeris data is organized into hourly sets to allow for
+/// time-appropriate selection during simulation. Each set contains ephemeris
+/// data for all satellites that are valid within approximately the same time
+/// period.
+///
+/// # Arguments
+/// * `file` - Reference to a path pointing to a RINEX navigation file
+///
+/// # Returns
+/// * `Ok((count, ionoutc, ephemerides))` - A tuple containing:
+///   - `count`: The number of valid ephemeris sets
+///   - `ionoutc`: Ionospheric and UTC parameters
+///   - `ephemerides`: A 2D array of ephemeris data organized by time set and
+///     satellite PRN
+/// * `Err(Error)` - If the file cannot be read or parsed
+///
+/// # Errors
+/// * Returns an error if the file cannot be opened
+/// * Returns an error if the RINEX format is invalid
 pub fn read_navigation_data(
     file: &dyn AsRef<Path>,
 ) -> Result<Data, crate::Error> {
