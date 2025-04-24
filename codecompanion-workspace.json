@@ -1,165 +1,329 @@
 {
   "name": "GPS Signal Generator",
   "version": "0.0.1",
-  "system_prompt": "你正在协助开发GPS信号生成软件，Rust写的用于GNSS信号生成的软件，可用于SDR发送，目前仅实现GPS，后续将添加beidou等",
-  "vars": {},
+  "system_prompt": "You are assisting with the development of a GPS Signal Generator, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals, with plans to add support for other systems like BeiDou in the future.",
+  "vars": {
+    "project_repo": "https://github.com/lll9p/anywhere-sdr"
+  },
   "groups": [
     {
-      "name": "全部代码",
-      "system_prompt": "全部代码",
+      "name": "All Code",
+      "system_prompt": "This group contains all the code files in the project. Use this when you need a comprehensive overview of the entire codebase.",
       "data": [
         "gpssim-cli",
         "gpssim-main",
         "gpssim-utils",
         "gps-channel",
-        "gps-constants",
+        "constants-constants",
         "gps-datetime",
         "gps-delay-ionospheric",
         "gps-delay",
-        "gps-eph",
-        "gps-geometry",
+        "gps-ephemeris",
+        "geometry-coordinates",
+        "geometry-transformation",
+        "geometry-geometry",
+        "geometry-traits",
+        "geometry-tests",
         "gps-gps",
         "gps-ionoutc",
-        "gps-generator-utils",
+        "gps-io",
+        "gps-propagation",
         "gps-signal-builder",
         "gps-generator",
-        "gps-read_nmea_gga",
-        "gps-read_rinex",
-        "gps-read_user_motion",
-        "gps-table"
+        "gps-generator-utils",
+        "gps-generator-mod",
+        "parsing-nmea",
+        "parsing-user-motion",
+        "parsing-mod",
+        "rinex-ephemeris",
+        "rinex-ephemeris-orbit",
+        "rinex-rule",
+        "rinex-error",
+        "rinex-mod",
+        "rinex-utc",
+        "rinex-utils",
+        "gps-table",
+        "gps-tests-prepare",
+        "gps-tests-generator",
+        "rinex-tests",
+        "readme",
+        "project-cargo"
       ]
     },
     {
-      "name": "核心模块",
-      "system_prompt": "处理GPS信号生成的核心算法和卫星数据计算",
-      "data": ["gps-main", "gps-eph", "gps-ionoutc"]
+      "name": "Core Modules",
+      "system_prompt": "This group contains the core modules responsible for GPS signal generation algorithms and satellite data calculations.",
+      "data": [
+        "gps-channel",
+        "gps-ephemeris",
+        "gps-ionoutc",
+        "gps-propagation",
+        "gps-gps"
+      ]
     },
     {
-      "name": "数据处理",
-      "system_prompt": "处理RINEX和NMEA格式的输入数据解析",
-      "data": ["read_rinex", "read_nmea_gga"]
+      "name": "Signal Generation",
+      "system_prompt": "This group focuses on the signal generation components that create the actual GPS signals.",
+      "data": [
+        "gps-signal-builder",
+        "gps-generator",
+        "gps-generator-utils",
+        "gps-channel"
+      ]
     },
     {
-      "name": "时间系统",
-      "system_prompt": "处理GPS时间转换和日期计算",
-      "data": ["datetime"]
+      "name": "Data Parsing",
+      "system_prompt": "This group contains modules for parsing various input formats like RINEX navigation files and NMEA GGA streams.",
+      "data": [
+        "parsing-nmea",
+        "parsing-user-motion",
+        "parsing-mod",
+        "rinex-ephemeris",
+        "rinex-ephemeris-orbit",
+        "rinex-rule",
+        "rinex-error",
+        "rinex-mod",
+        "rinex-utc",
+        "rinex-utils"
+      ]
     },
     {
-      "name": "工具函数",
-      "system_prompt": "命令行参数解析和数学工具函数",
-      "data": ["getopt", "table"]
+      "name": "Geometry and Coordinates",
+      "system_prompt": "This group contains modules for handling coordinate systems and geometric transformations.",
+      "data": [
+        "geometry-coordinates",
+        "geometry-transformation",
+        "geometry-geometry",
+        "geometry-traits",
+        "geometry-tests"
+      ]
     },
     {
-      "name": "基础定义",
-      "system_prompt": "常量和基础类型定义",
-      "data": ["constants"]
+      "name": "Time Systems",
+      "system_prompt": "This group focuses on GPS time conversion and date calculations.",
+      "data": ["gps-datetime"]
+    },
+    {
+      "name": "CLI Application",
+      "system_prompt": "This group contains the command-line interface application components.",
+      "data": ["gpssim-cli", "gpssim-main", "gpssim-utils"]
+    },
+    {
+      "name": "Utility Functions",
+      "system_prompt": "This group contains various utility functions used throughout the project.",
+      "data": ["gps-io", "gps-table"]
+    },
+    {
+      "name": "Constants and Definitions",
+      "system_prompt": "This group contains constant values and basic type definitions used throughout the project.",
+      "data": ["constants-constants"]
+    },
+    {
+      "name": "Project Documentation",
+      "system_prompt": "This group contains project documentation and configuration files.",
+      "data": ["readme", "project-cargo"]
+    },
+    {
+      "name": "Tests",
+      "system_prompt": "This group contains test files for verifying the functionality of the GPS signal generator.",
+      "data": [
+        "gps-tests-prepare",
+        "gps-tests-generator",
+        "rinex-tests",
+        "geometry-tests"
+      ]
     }
   ],
   "data": {
     "gpssim-cli": {
       "type": "symbols",
       "path": "apps/gpssim/src/cli.rs",
-      "description": ""
+      "description": "Command-line interface definition and argument parsing for the GPS simulator application."
     },
     "gpssim-main": {
       "type": "symbols",
       "path": "apps/gpssim/src/main.rs",
-      "description": ""
+      "description": "Main entry point for the GPS simulator application."
     },
     "gpssim-utils": {
       "type": "symbols",
       "path": "apps/gpssim/src/utils.rs",
-      "description": ""
+      "description": "Utility functions for the GPS simulator application."
     },
     "gps-channel": {
       "type": "symbols",
       "path": "crates/gps/src/channel.rs",
-      "description": ""
+      "description": "GPS channel implementation for signal generation and processing."
     },
-    "gps-constants": {
+    "constants-constants": {
       "type": "symbols",
-      "path": "crates/gps/src/constants.rs",
-      "description": ""
+      "path": "crates/constants/src/constants.rs",
+      "description": "Constants used throughout the GPS signal generation process."
     },
     "gps-datetime": {
       "type": "symbols",
       "path": "crates/gps/src/datetime.rs",
-      "description": ""
+      "description": "GPS time and date conversion utilities."
     },
     "gps-delay-ionospheric": {
       "type": "symbols",
       "path": "crates/gps/src/delay/ionospheric.rs",
-      "description": ""
+      "description": "Ionospheric delay modeling for GPS signal propagation."
     },
     "gps-delay": {
       "type": "symbols",
       "path": "crates/gps/src/delay.rs",
-      "description": ""
+      "description": "Signal delay modeling for GPS signal propagation."
     },
-    "gps-eph": {
+    "gps-ephemeris": {
       "type": "symbols",
-      "path": "crates/gps/src/eph.rs",
-      "description": ""
+      "path": "crates/gps/src/ephemeris.rs",
+      "description": "GPS ephemeris data structures and calculations."
     },
-    "gps-geometry": {
+    "geometry-coordinates": {
       "type": "symbols",
-      "path": "crates/gps/src/geometry.rs",
-      "description": ""
+      "path": "crates/geometry/src/coordinates.rs",
+      "description": "Coordinate system representations and conversions (ECEF, LLH, etc.)."
+    },
+    "geometry-transformation": {
+      "type": "symbols",
+      "path": "crates/geometry/src/transformation.rs",
+      "description": "Geometric transformations between different coordinate systems."
+    },
+    "geometry-geometry": {
+      "type": "symbols",
+      "path": "crates/geometry/src/geometry.rs",
+      "description": "Core geometry module that defines the main geometry types and functions."
+    },
+    "geometry-traits": {
+      "type": "symbols",
+      "path": "crates/geometry/src/traits.rs",
+      "description": "Trait definitions for geometry types and operations."
+    },
+    "geometry-tests": {
+      "type": "symbols",
+      "path": "crates/geometry/src/tests.rs",
+      "description": "Unit tests for geometry functionality."
     },
     "gps-gps": {
       "type": "symbols",
       "path": "crates/gps/src/gps.rs",
-      "description": ""
+      "description": "Core GPS functionality and data structures."
     },
     "gps-ionoutc": {
       "type": "symbols",
       "path": "crates/gps/src/ionoutc.rs",
-      "description": ""
+      "description": "Ionospheric and UTC parameters for GPS signal calculations."
     },
     "gps-io": {
       "type": "symbols",
       "path": "crates/gps/src/io.rs",
-      "description": ""
+      "description": "Input/output utilities for GPS data."
     },
     "gps-propagation": {
       "type": "symbols",
       "path": "crates/gps/src/propagation.rs",
-      "description": ""
+      "description": "GPS signal propagation modeling."
     },
     "gps-signal-builder": {
       "type": "symbols",
       "path": "crates/gps/src/generator/builder.rs",
-      "description": ""
+      "description": "Builder pattern implementation for GPS signal generation."
     },
     "gps-generator": {
       "type": "symbols",
       "path": "crates/gps/src/generator/signal_generator.rs",
-      "description": ""
+      "description": "Core signal generation functionality for GPS L1 C/A signals."
     },
     "gps-generator-utils": {
       "type": "symbols",
       "path": "crates/gps/src/generator/utils.rs",
-      "description": ""
+      "description": "Utility functions for GPS signal generation."
     },
-    "gps-read_nmea_gga": {
+    "gps-generator-mod": {
       "type": "symbols",
-      "path": "crates/gps/src/read_nmea_gga.rs",
-      "description": ""
+      "path": "crates/gps/src/generator.rs",
+      "description": "Module definition for the generator components."
     },
-    "gps-read_rinex": {
+    "parsing-nmea": {
       "type": "symbols",
-      "path": "crates/gps/src/read_rinex.rs",
-      "description": ""
+      "path": "crates/parsing/src/nmea.rs",
+      "description": "Parser for NMEA GGA streams for dynamic position input."
     },
-    "gps-read_user_motion": {
+    "parsing-user-motion": {
       "type": "symbols",
-      "path": "crates/gps/src/read_user_motion.rs",
-      "description": ""
+      "path": "crates/parsing/src/user_motion.rs",
+      "description": "Parser for user motion files in ECEF and LLH formats."
+    },
+    "parsing-mod": {
+      "type": "symbols",
+      "path": "crates/parsing/src/parsing.rs",
+      "description": "Module definition for the parsing components."
+    },
+    "rinex-ephemeris": {
+      "type": "symbols",
+      "path": "crates/rinex/src/ephemeris.rs",
+      "description": "RINEX navigation file parser for GPS ephemerides."
+    },
+    "rinex-ephemeris-orbit": {
+      "type": "symbols",
+      "path": "crates/rinex/src/ephemeris/orbit.rs",
+      "description": "Orbit calculations for RINEX ephemeris data."
+    },
+    "rinex-rule": {
+      "type": "symbols",
+      "path": "crates/rinex/src/rule.rs",
+      "description": "Rules for parsing RINEX navigation files."
+    },
+    "rinex-error": {
+      "type": "symbols",
+      "path": "crates/rinex/src/error.rs",
+      "description": "Error types for RINEX parsing."
+    },
+    "rinex-mod": {
+      "type": "symbols",
+      "path": "crates/rinex/src/rinex.rs",
+      "description": "Module definition for the RINEX components."
+    },
+    "rinex-utc": {
+      "type": "symbols",
+      "path": "crates/rinex/src/utc.rs",
+      "description": "UTC time handling for RINEX data."
+    },
+    "rinex-utils": {
+      "type": "symbols",
+      "path": "crates/rinex/src/utils.rs",
+      "description": "Utility functions for RINEX parsing."
     },
     "gps-table": {
       "type": "symbols",
       "path": "crates/gps/src/table.rs",
-      "description": ""
+      "description": "Lookup tables and mathematical functions for GPS calculations."
+    },
+    "gps-tests-prepare": {
+      "type": "symbols",
+      "path": "crates/gps/tests/prepare.rs",
+      "description": "Test preparation utilities for GPS tests."
+    },
+    "gps-tests-generator": {
+      "type": "symbols",
+      "path": "crates/gps/tests/test-generator.rs",
+      "description": "Tests for the GPS signal generator functionality."
+    },
+    "rinex-tests": {
+      "type": "symbols",
+      "path": "crates/rinex/tests/rinex.rs",
+      "description": "Tests for RINEX parsing functionality."
+    },
+    "readme": {
+      "type": "file",
+      "path": "README.md",
+      "description": "Project documentation including features, installation instructions, and usage examples."
+    },
+    "project-cargo": {
+      "type": "file",
+      "path": "Cargo.toml",
+      "description": "Main Cargo configuration file for the workspace."
     }
   }
 }
