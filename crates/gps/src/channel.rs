@@ -19,82 +19,60 @@ use crate::{
 /// Stores the state information necessary for signal acquisition, tracking,
 /// and decoding the navigation message for a specific satellite (identified by
 /// PRN).
-#[allow(non_snake_case)]
 pub struct Channel {
-    /// PRN Number(Pseudorandom Noise)
-    /// Pseudorandom Noise (PRN) number identifying the satellite (1-32).
+    /// Satellite PRN (Pseudorandom Noise) number (1-32)
     pub prn: usize,
-    /// C/A Sequence
-    /// The C/A (Coarse/Acquisition) code sequence for this satellite's PRN.
-    ca: [i32; CA_SEQ_LEN],
-    /// Carrier frequency
-    /// Instantaneous carrier frequency offset due to Doppler shift (Hz).
-    f_carrier: f64,
-    /// Code frequency
-    /// Instantaneous code frequency (Code Freq + Doppler shift effect) (Hz).
-    f_code: f64,
-    /* #ifdef FLOAT_CARR_PHASE
-        double carr_phase;
-    #endif */
-    /// Carrier phase
-    /// Current carrier phase accumulator (scaled fixed-point representation).
-    carr_phase: u32,
-    /// Carrier phasestep
-    /// Carrier phase step per sample (scaled fixed-point representation).
-    carr_phasestep: i32,
-    /// Code phase
-    /// Current code phase (position within the C/A code sequence, 0.0 to
-    /// 1022.999...).
+    /// C/A code sequence chips for this satellite (1023 chips)
+    ca_sequence: [i32; CA_SEQ_LEN],
+    /// Current carrier frequency with Doppler shift (Hz)
+    carrier_frequency: f64,
+    /// Current code frequency with Doppler effect (Hz)
+    code_frequency: f64,
+    /// Current carrier phase accumulator (fixed-point representation)
+    carrier_phase: u32,
+    /// Carrier phase step per sample (fixed-point representation)
+    carrier_phase_step: i32,
+    /// Current code phase position within C/A sequence (0.0 to 1022.999...)
     code_phase: f64,
-    /// GPS time at start
-    /// GPS time corresponding to the start of the navigation message frame.
-    time_start: GpsTime,
-    /// current subframe
-    /// Buffer storing the 5 subframes (10 words each) of the navigation
-    /// message.
-    sbf: [[u32; N_DWRD_SBF]; 5],
-    /// Data words of sub-frame
-    /// Buffer storing the full navigation message cycle (5 subframes * 10
-    /// words/subframe = 50 words).
-    dwrd: [u32; N_DWRD],
-    /// initial word
-    /// Index of the current navigation message word (0-49).
-    iword: i32, // observed 0..59
-    /// initial bit
-    /// Index of the current bit within the navigation message word (0-29).
-    ibit: i32, // observed 0..26
-    /// initial code
-    /// Index of the current C/A code epoch within the current bit (0-19).
-    icode: i32, // observed 0..18
-    ///  current data bit
-    /// The current navigation data bit value (+1 or -1).
-    data_bit: i32, // observed -1..1
-    ///  current C/A code
-    /// The current C/A code chip value (+1 or -1).
-    code_ca: i32, // observed -1..1
-    /// Azimuth and elevation of the satellite.
+    /// GPS time at the start of the navigation message frame
+    nav_message_start_time: GpsTime,
+    /// Navigation message subframes (5 subframes of 10 words each)
+    subframes: [[u32; N_DWRD_SBF]; 5],
+    /// Complete navigation message data words (50 words total)
+    data_words: [u32; N_DWRD],
+    /// Current word index in navigation message (0-49)
+    word_index: i32,
+    /// Current bit index within the current word (0-29)
+    bit_index: i32,
+    /// Current code epoch index within the current bit (0-19)
+    code_epoch_index: i32,
+    /// Current navigation data bit value (+1 or -1)
+    current_data_bit: i32,
+    /// Current C/A code chip value (+1 or -1)
+    current_code_chip: i32,
+    /// Satellite azimuth and elevation angles
     azel: Azel,
-    /// The previous pseudorange measurement and associated data.
+    /// Previous pseudorange measurement and associated data
     rho0: TimeRange,
 }
 impl Default for Channel {
     fn default() -> Self {
         Self {
             prn: 0,
-            ca: [0; CA_SEQ_LEN],
-            f_carrier: 0.0,
-            f_code: 0.0,
-            carr_phase: 0,
-            carr_phasestep: 0,
+            ca_sequence: [0; CA_SEQ_LEN],
+            carrier_frequency: 0.0,
+            code_frequency: 0.0,
+            carrier_phase: 0,
+            carrier_phase_step: 0,
             code_phase: 0.0,
-            time_start: GpsTime { week: 0, sec: 0. },
-            sbf: [[0; N_DWRD_SBF]; 5],
-            dwrd: [0; N_DWRD],
-            iword: 0,
-            ibit: 0,
-            icode: 0,
-            data_bit: 0,
-            code_ca: 0,
+            nav_message_start_time: GpsTime { week: 0, sec: 0. },
+            subframes: [[0; N_DWRD_SBF]; 5],
+            data_words: [0; N_DWRD],
+            word_index: 0,
+            bit_index: 0,
+            code_epoch_index: 0,
+            current_data_bit: 0,
+            current_code_chip: 0,
             azel: Azel::default(),
             rho0: TimeRange::default(),
         }
@@ -156,11 +134,11 @@ impl Channel {
         let mut phase_ini: f64 = 0.0; // TODO: Must initialize properly
         //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
         // #ifdef FLOAT_CARR_PHASE
-        //                         self.carr_phase =
+        //                         self.carrier_phase =
         // phase_ini - floor(phase_ini);
         // #else
         phase_ini -= phase_ini.floor();
-        self.carr_phase = (512.0 * 65536.0 * phase_ini) as u32;
+        self.carrier_phase = (512.0 * 65536.0 * phase_ini) as u32;
     }
 
     /// Updates the channel's state based on new pseudorange information and
@@ -178,13 +156,16 @@ impl Channel {
     pub fn update_state(
         &mut self, rho1: &TimeRange, dt: f64, sampling_period: f64,
     ) {
-        // 更新方位角/仰角信息
+        // Update azimuth/elevation information
         // Update code phase and data bit counters
         self.azel = rho1.azel;
-        // 计算码相位（C/A码偏移）
+        // Calculate code phase (C/A code offset)
         self.compute_code_phase(rho1, dt);
-        self.carr_phasestep =
-            (512.0 * 65536.0 * self.f_carrier * sampling_period).round() as i32;
+        self.carrier_phase_step = (512.0
+            * 65536.0
+            * self.carrier_frequency
+            * sampling_period)
+            .round() as i32;
     }
 
     ///  \brief Compute the code phase for a given channel (satellite)
@@ -205,21 +186,23 @@ impl Channel {
         // Pseudorange rate.
         let rhorate = (rho1.range - self.rho0.range) / dt;
         // Carrier and code frequency.
-        self.f_carrier = -rhorate * LAMBDA_L1_INV;
-        self.f_code = CODE_FREQ + self.f_carrier * CARR_TO_CODE;
+        self.carrier_frequency = -rhorate * LAMBDA_L1_INV;
+        self.code_frequency = CODE_FREQ + self.carrier_frequency * CARR_TO_CODE;
         // Initial code phase and data bit counters.
-        let ms = (self.rho0.time.diff_secs(&self.time_start) + 6.0
+        let ms = (self.rho0.time.diff_secs(&self.nav_message_start_time) + 6.0
             - self.rho0.range * SPEED_OF_LIGHT_INV)
             * 1000.0;
         let mut ims = ms as i32;
         self.code_phase = ms.fract() * CA_SEQ_LEN_FLOAT; // in chip
-        self.iword = ims / 600; // 1 word = 30 bits = 600 ms
-        ims -= self.iword * 600;
-        self.ibit = ims / 20; // 1 bit = 20 code = 20 ms
-        ims -= self.ibit * 20;
-        self.icode = ims; // 1 code = 1 ms
-        self.code_ca = self.ca[self.code_phase as usize] * 2 - 1;
-        self.data_bit = (self.dwrd[self.iword as usize] >> (29 - self.ibit)
+        self.word_index = ims / 600; // 1 word = 30 bits = 600 ms
+        ims -= self.word_index * 600;
+        self.bit_index = ims / 20; // 1 bit = 20 code = 20 ms
+        ims -= self.bit_index * 20;
+        self.code_epoch_index = ims; // 1 code = 1 ms
+        self.current_code_chip =
+            self.ca_sequence[self.code_phase as usize] * 2 - 1;
+        self.current_data_bit = (self.data_words[self.word_index as usize]
+            >> (29 - self.bit_index)
             & 0x1) as i32
             * 2
             - 1;
@@ -267,7 +250,7 @@ impl Channel {
         }
 
         let mut j = CA_SEQ_LEN - delay[self.prn - 1];
-        for (ica, ig1) in self.ca.iter_mut().zip(g1) {
+        for (ica, ig1) in self.ca_sequence.iter_mut().zip(g1) {
             *ica = (1 - ig1 * g2[j % CA_SEQ_LEN]) / 2;
             j += 1;
         }
@@ -295,13 +278,13 @@ impl Channel {
 
         let wn = (time_init.week % 1024) as u32;
         let mut tow = (time_init.sec as u32).wrapping_div(6);
-        self.time_start = time_init; // Data bit reference time
+        self.nav_message_start_time = time_init; // Data bit reference time
 
         if init {
             // Initialize subframe 5
             prevwrd = 0;
             for iwrd in 0..N_DWRD_SBF {
-                sbfwrd = self.sbf[4][iwrd];
+                sbfwrd = self.subframes[4][iwrd];
                 // Add TOW-count message into HOW
                 if iwrd == 1 {
                     sbfwrd |= (tow & 0x1ffff) << 13;
@@ -309,14 +292,15 @@ impl Channel {
                 // Compute checksum
                 sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
                 nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
-                self.dwrd[iwrd] = Self::compute_checksum(sbfwrd, nib);
-                prevwrd = self.dwrd[iwrd];
+                self.data_words[iwrd] = Self::compute_checksum(sbfwrd, nib);
+                prevwrd = self.data_words[iwrd];
             }
         } else {
             // Save subframe 5
             for iwrd in 0..N_DWRD_SBF {
-                self.dwrd[iwrd] = self.dwrd[N_DWRD_SBF * N_SBF + iwrd];
-                prevwrd = self.dwrd[iwrd];
+                self.data_words[iwrd] =
+                    self.data_words[N_DWRD_SBF * N_SBF + iwrd];
+                prevwrd = self.data_words[iwrd];
             }
             /*
             // Sanity check
@@ -331,7 +315,7 @@ impl Channel {
             tow = tow.wrapping_add(1);
 
             for iwrd in 0..N_DWRD_SBF {
-                sbfwrd = self.sbf[isbf][iwrd];
+                sbfwrd = self.subframes[isbf][iwrd];
                 // Add transmission week number to Subframe 1
                 if isbf == 0 && iwrd == 2 {
                     sbfwrd |= (wn & 0x3ff) << 20;
@@ -343,9 +327,9 @@ impl Channel {
                 // Compute checksum
                 sbfwrd |= prevwrd << 30 & 0xc000_0000; // 2 LSBs of the previous transmitted word
                 nib = i32::from(iwrd == 1 || iwrd == 9); // Non-information bearing bits for word 2 and 10
-                self.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd] =
+                self.data_words[(isbf + 1) * N_DWRD_SBF + iwrd] =
                     Self::compute_checksum(sbfwrd, nib);
-                prevwrd = self.dwrd[(isbf + 1) * N_DWRD_SBF + iwrd];
+                prevwrd = self.data_words[(isbf + 1) * N_DWRD_SBF + iwrd];
             }
         }
     }
@@ -472,61 +456,64 @@ impl Channel {
     /// * `sampling_period` - The receiver sampling period in seconds.
     pub fn update_navigation_bits(&mut self, sampling_period: f64) {
         // Update code phase
-        // 第四步：更新码相位（C/A码序列控制）
+        // Step 4: Update code phase (C/A code sequence control)
         // Increment phase by instantaneous freq * dt
-        self.code_phase += self.f_code * sampling_period;
+        self.code_phase += self.code_frequency * sampling_period;
 
         // --- Handle Code Epoch Rollover (every 1ms / 1023 chips) ---
         if self.code_phase >= CA_SEQ_LEN_FLOAT {
             self.code_phase -= CA_SEQ_LEN_FLOAT; // Wrap code phase
-            self.icode += 1; // Increment ms counter
+            self.code_epoch_index += 1; // Increment ms counter
             // Check for code rollover (20 codes per bit)
             // 20 C/A codes = 1 navigation data bit
-            // 处理导航数据位（每20个C/A码周期）
-            if self.icode >= 20 {
-                self.icode = 0;
-                self.ibit += 1;
+            // Process navigation data bit (every 20 C/A code periods)
+            if self.code_epoch_index >= 20 {
+                self.code_epoch_index = 0;
+                self.bit_index += 1;
                 // Check for bit rollover (30 bits per word)
-                // 处理导航字（每30个数据位）
-                if self.ibit >= 30 {
+                // Process navigation word (every 30 data bits)
+                if self.bit_index >= 30 {
                     // 30 navigation data bits = 1 word
-                    self.ibit = 0;
-                    self.iword += 1;
-                    // if (chan[i].iword>=N_DWRD)
+                    self.bit_index = 0;
+                    self.word_index += 1;
+                    // if (chan[i].word_index>=N_DWRD)
                     // fprintf(stderr, "\nWARNING: Subframe word buffer
                     // overflow.\n");
                 }
-                // 提取当前导航数据位
+                // Extract current navigation data bit
                 // Update data bit based on new word/bit index
                 // Set new navigation data bit
-                let word_index = self.iword as usize;
-                self.data_bit = (self.dwrd[word_index] >> (29 - self.ibit)
+                let word_idx = self.word_index as usize;
+                self.current_data_bit = (self.data_words[word_idx]
+                    >> (29 - self.bit_index)
                     & 0x1) as i32
                     * 2
                     - 1;
             }
         }
-        // 更新当前C/A码片
+        // Update current C/A code chip
         // Set current code chip
-        // this is slower: self.codeCA = self.ca[self.code_phase as usize] * 2 -
-        // 1;
-        self.code_ca = self.ca[self.code_phase as i32 as usize] * 2 - 1;
-        //Update carrier phase
+        // this is slower: self.current_code_chip =
+        // self.ca_sequence[self.code_phase as usize] * 2 - 1;
+        self.current_code_chip =
+            self.ca_sequence[self.code_phase as i32 as usize] * 2 - 1;
+
+        // Update carrier phase
         // #ifdef FLOAT_CARR_PHASE
-        //                     chan[i].carr_phase +=
-        // chan[i].f_carr
+        //                     chan[i].carrier_phase +=
+        // chan[i].carrier_frequency
         // * sampling_period;
         //
-        //                     if (chan[i].carr_phase >= 1.0)
-        //                         chan[i].carr_phase -= 1.0;
-        //                     else if (chan[i].carr_phase<0.0)
-        //                         chan[i].carr_phase += 1.0;
+        //                     if (chan[i].carrier_phase >= 1.0)
+        //                         chan[i].carrier_phase -= 1.0;
+        //                     else if (chan[i].carrier_phase<0.0)
+        //                         chan[i].carrier_phase += 1.0;
         // #else
-        // 第五步：更新载波相位（使用相位累加器）
+        // Step 5: Update carrier phase (using phase accumulator)
 
-        self.carr_phase =
-            (self.carr_phase).wrapping_add(self.carr_phasestep as u32);
-        // self.carr_phase += self.carr_phasestep as u32;
+        self.carrier_phase =
+            (self.carrier_phase).wrapping_add(self.carrier_phase_step as u32);
+        // self.carrier_phase += self.carrier_phase_step as u32;
     }
 
     /// Generates the In-phase (I) and Quadrature (Q) signal contributions for
@@ -544,12 +531,14 @@ impl Channel {
     pub fn generate_iq_contribution(&self, antenna_gain: i32) -> (i32, i32) {
         // #ifdef FLOAT_CARR_PHASE
         //                     iTable =
-        // (int)floor(chan[i].carr_phase*512.0);
+        // (int)floor(chan[i].carrier_phase*512.0);
         // #else
-        // 使用预计算的正弦/余弦表生成载波
-        let i_table = (self.carr_phase >> 16 & 0x1ff) as usize; // 9-bit index
-        // 生成I/Q分量（考虑导航数据位和C/A码）
-        let scaled_gain = self.data_bit * self.code_ca * antenna_gain;
+        // Use precomputed sine/cosine tables to generate carrier
+        let i_table = (self.carrier_phase >> 16 & 0x1ff) as usize; // 9-bit index
+        // Generate I/Q components (considering navigation data bit and C/A
+        // code)
+        let scaled_gain =
+            self.current_data_bit * self.current_code_chip * antenna_gain;
         let ip = scaled_gain * COS_TABLE512[i_table];
         let qp = scaled_gain * SIN_TABLE512[i_table];
         (ip, qp)
@@ -653,7 +642,7 @@ impl Channel {
             dtlsf = 18;
         }
         // Subframe 1
-        self.sbf[0] = [
+        self.subframes[0] = [
             0x008b_0000 << 6,
             0x1 << 8,
             (wn & 0x3ff) << 20
@@ -670,7 +659,7 @@ impl Channel {
             (af0 as u32 & 0x003f_ffff) << 8,
         ];
         // Subframe 2
-        self.sbf[1] = [
+        self.subframes[1] = [
             0x008b_0000 << 6,
             0x2 << 8,
             (iode & 0xff) << 22 | (crs as u32 & 0xffff) << 6,
@@ -683,7 +672,7 @@ impl Channel {
             (toe & 0xffff) << 14,
         ];
         // Subframe 3
-        self.sbf[2] = [
+        self.subframes[2] = [
             0x008b_0000 << 6,
             0x3 << 8,
             (cic as u32 & 0xffff) << 14 | ((omg0 >> 24) as u32 & 0xff) << 6,
@@ -697,7 +686,7 @@ impl Channel {
         ];
         if ionoutc.vflg {
             // Subframe 4, page 18
-            self.sbf[3] = [
+            self.subframes[3] = [
                 0x008b_0000 << 6,
                 0x4 << 8,
                 data_id << 28
@@ -722,7 +711,7 @@ impl Channel {
             ];
         } else {
             // Subframe 4, page 25
-            self.sbf[3] = [
+            self.subframes[3] = [
                 0x008b_0000 << 6,
                 0x4 << 8,
                 data_id << 28 | sbf4_page25_sv_id << 22,
@@ -736,7 +725,7 @@ impl Channel {
             ];
         }
         // Subframe 5, page 25
-        self.sbf[4] = [
+        self.subframes[4] = [
             0x008b_0000 << 6,
             0x5 << 8,
             data_id << 28

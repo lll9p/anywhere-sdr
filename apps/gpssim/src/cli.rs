@@ -101,9 +101,9 @@ impl Args {
     pub fn run(&self) -> Result<(), Error> {
         let builder = SignalGeneratorBuilder::default()
             .navigation_file(Some(self.ephemerides.clone()))?
-            .user_mothon_file(self.user_motion_ecef.clone())?
-            .user_mothon_llh_file(self.user_motion_llh.clone())?
-            .user_mothon_nmea_gga_file(self.nmea_gga.clone())?
+            .user_motion_file(self.user_motion_ecef.clone())?
+            .user_motion_llh_file(self.user_motion_llh.clone())?
+            .user_motion_nmea_gga_file(self.nmea_gga.clone())?
             .location_ecef(self.location_ecef.clone())?
             .location(self.location.clone())?
             .leap(self.leap.clone())

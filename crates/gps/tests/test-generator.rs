@@ -16,15 +16,15 @@ fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder, Error> {
             }
             [u, value] if u == "-u" => {
                 builder =
-                    builder.user_mothon_file(Some(PathBuf::from(value)))?;
+                    builder.user_motion_file(Some(PathBuf::from(value)))?;
             }
             [x, value] if x == "-x" => {
                 builder =
-                    builder.user_mothon_llh_file(Some(PathBuf::from(value)))?;
+                    builder.user_motion_llh_file(Some(PathBuf::from(value)))?;
             }
             [g, value] if g == "-g" => {
                 builder = builder
-                    .user_mothon_nmea_gga_file(Some(PathBuf::from(value)))?;
+                    .user_motion_nmea_gga_file(Some(PathBuf::from(value)))?;
             }
             [c, value] if c == "-c" => {
                 let location = value
@@ -145,7 +145,7 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
     generator.initialize()?;
     generator.run_simulation()?;
     let rust_file_name = generator
-        .out_file
+        .output_file
         .as_ref()
         .and_then(|p| p.file_name().map(|n| n.to_str()))
         .flatten()

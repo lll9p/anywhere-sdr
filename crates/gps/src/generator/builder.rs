@@ -10,7 +10,7 @@ use crate::{
     ephemeris::Ephemeris,
     generator::{
         signal_generator::SignalGenerator,
-        utils::{MotionMode, read_navigatioin_data},
+        utils::{MotionMode, read_navigation_data},
     },
     io::DataFormat,
     ionoutc::IonoUtc,
@@ -48,10 +48,10 @@ impl SignalGeneratorBuilder {
     ) -> Result<Self, Error> {
         // Read ephemeris
         if let Some(file) = navigation_file {
-            let (count, iono_utc, ephemerides) = read_navigatioin_data(&file)
+            let (count, iono_utc, ephemerides) = read_navigation_data(&file)
                 .map_err(|_| {
-                Error::msg("ERROR: ephemeris file not found or error.")
-            })?;
+                    Error::msg("ERROR: ephemeris file not found or error.")
+                })?;
             if count == 0 {
                 return Err(Error::NoEphemeris);
             }
@@ -173,7 +173,7 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn user_mothon_file(
+    pub fn user_motion_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
@@ -188,7 +188,7 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
-    pub fn user_mothon_llh_file(
+    pub fn user_motion_llh_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
@@ -206,7 +206,7 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
-    pub fn user_mothon_nmea_gga_file(
+    pub fn user_motion_nmea_gga_file(
         mut self, file: Option<PathBuf>,
     ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
@@ -387,16 +387,17 @@ impl SignalGeneratorBuilder {
             valid_ephemerides_index,
             ionoutc,
             positions,
-            user_motion_count,
+            simulation_step_count: user_motion_count,
             receiver_gps_time,
             antenna_gains,
             antenna_pattern,
             mode,
+            elevation_mask: 0.0, // Default elevation mask
             sample_frequency,
             sample_rate,
             data_format,
             fixed_gain: self.path_loss,
-            out_file: self.output_file,
+            output_file: self.output_file,
             verbose: false,
             ..Default::default()
         };

@@ -15,29 +15,48 @@ use crate::{
     table::ANT_PAT_DB,
 };
 pub struct SignalGenerator {
+    /// Satellite ephemeris data organized in hourly sets
     pub ephemerides: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
+    /// Index of the currently active ephemeris set
     pub valid_ephemerides_index: usize,
+    /// Array of satellite signal channels being tracked
     pub channels: [Channel; MAX_CHAN],
+    /// Ionospheric and UTC parameters
     pub ionoutc: IonoUtc,
+    /// Tracking which satellites are allocated to which channels (-1 = not
+    /// allocated)
     pub allocated_satellite: [i32; MAX_SAT],
-    /// posisions of receiver, per 100ms
+    /// Receiver positions in ECEF coordinates (one per 100ms time step)
     pub positions: Vec<Ecef>,
-    pub user_motion_count: usize,
+    /// Total number of motion steps to simulate
+    pub simulation_step_count: usize,
+    /// Current GPS time at the receiver
     pub receiver_gps_time: GpsTime,
+    /// Signal gain values for each channel
     pub antenna_gains: [i32; MAX_CHAN],
+    /// Antenna gain pattern lookup table (by elevation angle)
     pub antenna_pattern: [f64; 37],
+    /// Simulation mode (static or dynamic position)
     pub mode: MotionMode,
-    pub elvmask: f64,          // set to 0.0
-    pub sample_frequency: f64, // 26000000
-    pub sample_rate: f64,      // samples per 0.1sec, it is fixed
+    /// Elevation mask angle in radians (satellites below this are not visible)
+    pub elevation_mask: f64,
+    /// Sampling frequency in Hz (typically 2.6MHz)
+    pub sample_frequency: f64,
+    /// Time step between samples in seconds (typically 0.1s)
+    pub sample_rate: f64,
+    /// I/Q data format for output
     pub data_format: DataFormat,
-    // when is some , disable path loss
+    /// Optional fixed gain value (when Some, path loss is disabled)
     pub fixed_gain: Option<i32>,
+    /// Size of I/Q sample buffer
     pub iq_buffer_size: usize,
-    // pub iq_buffer: Vec<i16>,
-    pub out_file: Option<PathBuf>,
+    /// Output file path
+    pub output_file: Option<PathBuf>,
+    /// I/Q sample writer
     pub writer: Option<IQWriter>,
+    /// Whether the generator has been initialized
     pub initialized: bool,
+    /// Whether to show detailed channel status
     pub verbose: bool,
 }
 impl Default for SignalGenerator {
@@ -49,19 +68,19 @@ impl Default for SignalGenerator {
             ionoutc: IonoUtc::default(),
             allocated_satellite: [0; MAX_SAT],
             positions: Vec::new(),
-            user_motion_count: usize::default(),
+            simulation_step_count: usize::default(),
             receiver_gps_time: GpsTime::default(),
             antenna_gains: [0; MAX_CHAN],
             antenna_pattern: [0.0; 37],
             mode: MotionMode::Static,
-            elvmask: f64::default(),
+            elevation_mask: f64::default(),
             sample_frequency: 0.0,
             sample_rate: 0.0,
             data_format: DataFormat::Bits8,
             fixed_gain: None,
             iq_buffer_size: 0,
             // iq_buffer: Vec::new(),
-            out_file: None,
+            output_file: None,
             writer: None,
             initialized: false,
             verbose: true,
@@ -119,7 +138,7 @@ impl SignalGenerator {
 
         self.iq_buffer_size =
             (self.sample_frequency * self.sample_rate).floor() as usize;
-        self.writer = match &self.out_file {
+        self.writer = match &self.output_file {
             Some(file) => Some(IQWriter::new(
                 file,
                 self.data_format,
@@ -146,7 +165,7 @@ impl SignalGenerator {
             if let Some((azel, true)) = eph.check_visibility(
                 &self.receiver_gps_time,
                 &xyz,
-                self.elvmask,
+                self.elevation_mask,
             ) {
                 visible_satellite_count += 1; // Number of visible satellites
                 if self.allocated_satellite[sv] == -1 {
@@ -364,8 +383,8 @@ impl SignalGenerator {
         }
         // Determine the total number of simulation steps
         let num_steps = match self.mode {
-            MotionMode::Static => self.user_motion_count.max(1), /* Ensure at least one step for static */
-            MotionMode::Dynamic => self.user_motion_count,
+            MotionMode::Static => self.simulation_step_count.max(1), /* Ensure at least one step for static */
+            MotionMode::Dynamic => self.simulation_step_count,
         };
 
         if num_steps == 0 {
