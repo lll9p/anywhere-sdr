@@ -43,9 +43,12 @@ type EphemerisRelatedData = (
 ///
 /// let builder = SignalGeneratorBuilder::default()
 ///     .navigation_file(Some(PathBuf::from("brdc0010.22n")))
+///     .unwrap()
 ///     .location(Some(vec![35.6813, 139.7662, 10.0]))
+///     .unwrap()
 ///     .duration(Some(60.0))
 ///     .data_format(Some(8))
+///     .unwrap()
 ///     .output_file(Some(PathBuf::from("output.bin")));
 ///
 /// let mut generator = builder.build().unwrap();

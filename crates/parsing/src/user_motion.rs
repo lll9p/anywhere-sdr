@@ -13,7 +13,7 @@ use crate::Error;
 ///
 /// # File Format
 /// The file should be in CSV format with each line containing:
-/// ```
+/// ```text
 /// time, x, y, z
 /// ```
 /// Where:
@@ -93,7 +93,7 @@ pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
 ///
 /// # File Format
 /// The file should be in CSV format with each line containing:
-/// ```
+/// ```text
 /// time, latitude, longitude, height
 /// ```
 /// Where:

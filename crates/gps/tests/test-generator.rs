@@ -4,7 +4,7 @@ use std::{path::PathBuf, println, process::Command};
 use gps::{Error, SignalGeneratorBuilder};
 use test_case::test_case;
 mod prepare;
-use prepare::{OUTPUT_DIR, PATH, prepare_c_bin};
+use prepare::{OUTPUT_DIR, RESOURCES_DIR, prepare_c_bin};
 #[allow(non_snake_case)]
 fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder, Error> {
     let mut builder = SignalGeneratorBuilder::default();
@@ -138,29 +138,43 @@ fn string_to_args(value: &str) -> Vec<Vec<String>> {
 // TODO: should be fixed
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_1b_leap.bin;-l=42.3569048,-71.2564075,0;-t=2022/01/01,23:55;-T;-L=2347,3,17", "c_1b_leap.bin" => matches Err(_); "leap")]
 fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
-    let args = string_to_args(params);
+    // Replace paths in the parameters
+    let mut modified_params = params.to_string();
+    modified_params =
+        modified_params.replace("resources/", &format!("{}/", RESOURCES_DIR));
+    modified_params =
+        modified_params.replace("output/", &format!("{}/", OUTPUT_DIR));
+
+    let args = string_to_args(&modified_params);
     prepare_c_bin(&args, c_bin_file)?;
     let builder = to_builder(&args)?;
     let mut generator = builder.build()?;
     generator.initialize()?;
     generator.run_simulation()?;
-    let rust_file_name = generator
+
+    // Get the full path of the output file
+    let rust_file = generator
         .output_file
-        .as_ref()
-        .and_then(|p| p.file_name().map(|n| n.to_str()))
-        .flatten()
+        .clone()
+        .ok_or(gps::Error::msg("Output file not set"))?;
+
+    assert!(rust_file.exists(), "Rust file not exists: {:?}", rust_file);
+
+    let rust_file_name = rust_file
+        .file_name()
+        .and_then(|n| n.to_str())
         .ok_or(gps::Error::msg("Can not get file name"))?;
-    let rust_file = PathBuf::from(OUTPUT_DIR).join(rust_file_name);
-    assert!(rust_file.exists(), "Rust file not exists{rust_file_name}");
+
     let output = Command::new("diff")
-        .current_dir(PathBuf::from(PATH).join("output"))
+        .current_dir(PathBuf::from(OUTPUT_DIR))
         .args([rust_file_name, c_bin_file])
         .spawn()?
         .wait_with_output()?;
+
     let success = output.status.success();
     if success {
         println!("{rust_file_name} and {c_bin_file} are the same!");
-        std::fs::remove_file(rust_file)?;
+        std::fs::remove_file(&rust_file)?;
     }
     assert!(success, "Files are different! {rust_file_name}");
     Ok(())

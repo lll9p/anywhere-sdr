@@ -1,13 +1,13 @@
 use std::{path::PathBuf, process::Command};
 
 use gps::Error;
-pub static PATH: &str = env!("CARGO_MANIFEST_DIR");
-pub static OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output");
+pub static WORKSPACE_DIR: &str = env!("CARGO_WORKSPACE_DIR");
+pub static OUTPUT_DIR: &str = concat!(env!("CARGO_WORKSPACE_DIR"), "/output");
 pub static RESOURCES_DIR: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/resources");
+    concat!(env!("CARGO_WORKSPACE_DIR"), "/resources");
 
 pub fn check_gpssim() -> Result<PathBuf, Error> {
-    let output_dir = PathBuf::from(PATH).join("output");
+    let output_dir = PathBuf::from(OUTPUT_DIR);
     let gps_sim_executable = output_dir
         .join(format!("gpssim{}", if cfg!(windows) { ".exe" } else { "" }));
     // Check if executable of gps-sdr-sim exists
@@ -17,7 +17,7 @@ pub fn check_gpssim() -> Result<PathBuf, Error> {
              gpssim` to build"
         );
         let status = Command::new("gcc")
-            .current_dir(PATH)
+            .current_dir(WORKSPACE_DIR)
             .args([
                 &format!("{RESOURCES_DIR}/gpssim.c"),
                 "-lm",
@@ -56,9 +56,9 @@ pub fn prepare_c_bin(
         })
         .collect();
     args.push("-o".to_string());
-    args.push(format!("output/{c_bin_file}"));
+    args.push(format!("{OUTPUT_DIR}/{c_bin_file}"));
     let status = Command::new(gps_sim_executable)
-        .current_dir(PATH)
+        .current_dir(WORKSPACE_DIR)
         .args(args)
         .spawn()?
         .wait_with_output()?;

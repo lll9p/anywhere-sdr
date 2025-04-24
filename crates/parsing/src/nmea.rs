@@ -34,7 +34,7 @@ pub fn parse_f64(num_string: &str) -> Result<f64, Error> {
 ///
 /// # NMEA GGA Format
 /// Each GGA sentence has the following format:
-/// ```
+/// ```text
 /// $GPGGA,time,lat,lat_dir,lon,lon_dir,quality,num_sats,hdop,alt,alt_units,undulation,und_units,age,station_id*checksum
 /// ```
 /// Where:

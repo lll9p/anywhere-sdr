@@ -10,6 +10,7 @@ repos:
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: trailing-whitespace
+        exclude: ^resources/
   - repo: https://github.com/pre-commit/pre-commit
     rev: v4.2.0
     hooks:
