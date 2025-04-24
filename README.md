@@ -10,33 +10,31 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 
 ## Features
 
-- Generates GPS L1 C/A signals
-- Supports both static and dynamic scenarios
-- Compatible with various input formats:
+- **Signal Generation**: GPS L1 C/A signals with configurable parameters
+- **Position Modes**:
+  - Static positioning with ECEF or LLH coordinates
+  - Dynamic trajectories from motion files or NMEA streams
+- **Input Formats**:
   - RINEX navigation files for GPS ephemerides
   - User motion in ECEF (X,Y,Z) format
   - User motion in LLH (Latitude, Longitude, Height) format
   - NMEA GGA streams
-- Configurable I/Q sampling parameters
-- Supports different output formats (1-bit, 8-bit, 16-bit)
-- Ionospheric delay modeling (can be disabled)
-- Path loss simulation with configurable gain
-- Flexible API for direct sample access (without file I/O)
+- **Output Options**:
+  - Multiple I/Q data formats (1-bit, 8-bit, 16-bit)
+  - Configurable sampling frequency
+  - File output or direct buffer access via API
+- **Signal Modeling**:
+  - Ionospheric delay (can be disabled)
+  - Path loss simulation with configurable gain
 
 ## Installation
 
-Since this project is not yet published to crates.io, you can install it directly from the GitHub repository:
-
-```bash
-cargo install --git https://github.com/lll9p/anywhere-sdr
-```
-
-Or clone the repository and build it locally:
+This project is not yet published to crates.io. To use it, clone the repository and build it locally:
 
 ```bash
 git clone https://github.com/lll9p/anywhere-sdr
 cd anywhere-sdr
-cargo install --path .
+cargo build --release
 ```
 
 ## Usage
@@ -51,9 +49,23 @@ gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30
 
 ### Library Usage
 
-> [!Note]
-> TBD
+```rust
+use std::path::PathBuf;
+use gps::SignalGeneratorBuilder;
 
+// Configure the signal generator
+let builder = SignalGeneratorBuilder::default()
+    .navigation_file(Some(PathBuf::from("brdc0010.22n"))).unwrap()
+    .location(Some(vec![35.6813, 139.7662, 10.0])).unwrap()
+    .duration(Some(60.0))
+    .data_format(Some(8)).unwrap()
+    .output_file(Some(PathBuf::from("output.bin")));
+
+// Build and run the generator
+let mut generator = builder.build().unwrap();
+generator.initialize().unwrap();
+generator.run_simulation().unwrap();
+```
 
 ### Command Line Options
 
@@ -75,71 +87,71 @@ gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30
 
 ### Usage Examples
 
-Generate signal with different I/Q data formats (1-bit, 8-bit, or 16-bit):
-
 ```bash
-gpssim -e brdc0010.22n -b 1 -d 31.0 -o output_1bit.bin
+# Generate signal with 8-bit I/Q format for a static location
+gpssim -e brdc0010.22n -b 8 -d 60.0 -l 35.681298,139.766247,10.0 -o output.bin
+
+# Generate signal using NMEA GGA stream for dynamic motion
+gpssim -e brdc0010.22n -d 120.0 -g nmea_data.txt -s 2600000
+
+# Generate signal with custom sampling frequency and fixed gain
+gpssim -e brdc0010.22n -d 30.0 -s 2000000 -p 63 -c 3967283.154,1022538.181,4872414.484
 ```
 
-Generate signal for a static location using lat/lon/height:
+## Direct Sample Access API
 
-```bash
-gpssim -e brdc0010.22n -b 16 -d 31.0 -l 30.286502,120.032669,100
-```
+The library provides an API for direct sample access without file I/O. This allows integration with other applications or real-time processing:
 
-Generate signal using NMEA GGA stream for dynamic motion:
+```rust
+// After initializing the generator
+let mut generator = builder.build().unwrap();
+generator.initialize().unwrap();
 
-```bash
-gpssim -e brdc0010.22n -d 31.0 -g nmea_data.txt
-```
+// Instead of run_simulation(), you can process each step individually
+// and access the generated samples directly
+for step in 0..num_steps {
+    // Update satellite parameters for current position
+    generator.update_channel_parameters(current_position);
 
-Generate signal with custom sampling frequency and fixed gain:
+    // Generate samples for this step
+    generator.generate_samples();
 
-```bash
-gpssim -e brdc0010.22n -d 31.0 -s 2000000 -p 63
-```
+    // Access the sample buffer directly
+    let samples = generator.get_sample_buffer();
 
-## Building from Source
-
-```bash
-git clone https://github.com/lll9p/anywhere-sdr
-cd anywhere-sdr
-cargo build --release
+    // Process samples as needed...
+}
 ```
 
 ## Testing
 
-Run the test suite:
+Run the standard test suite:
 
 ```bash
 cargo test
 ```
 
-Note that the integration tests in `@crates/gps/tests/test-generator.rs` only run in release mode. To run these tests, use:
+The integration tests in `@crates/gps/tests/test-generator.rs` only run in release mode and compare output with the original C implementation:
 
 ```bash
 cargo test --release
 ```
 
-These tests are designed to verify that our implementation produces output identical to the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project, ensuring compatibility where needed.
+### Compatibility Tests
 
-### Completed Tests
-
-The following tests have been implemented and verified:
+The following compatibility tests have been implemented and verified:
 
 - Data format tests (1-bit, 8-bit, 16-bit)
 - Custom sampling frequency
 - NMEA GGA stream input
-- Circular motion trajectory (ECEF format)
-- Circular motion trajectory (LLH format)
-- Static location (lat/lon/height)
-- Static location (ECEF coordinates)
+- Circular motion trajectory (ECEF and LLH formats)
+- Static location (lat/lon/height and ECEF coordinates)
 - Fixed gain (path loss disabled)
 - Custom date/time setting
 
-### Known Failing Tests
+### Known Issues
 
-The following tests are currently failing and marked for future fixes:
+The following features are currently being worked on:
 
 - Date/time override functionality (`-T` flag)
 - Leap second handling (`-L` flag)
@@ -158,24 +170,28 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Roadmap
 
-The following features are planned for future releases:
+### Upcoming Features
 
-### Signal Generation Features
+- **Signal Generation**
+  - [x] GPS L1 C/A signal generation
+  - [x] Static position simulation
+  - [x] Dynamic trajectory simulation
+  - [ ] Advanced position movement (acceleration, jerk control)
+  - [ ] Support for additional GNSS systems (Galileo, BeiDou, GLONASS)
 
-- [x] GPS L1 C/A signal generation
-- [x] Static position simulation
-- [x] Dynamic trajectory simulation
-- [ ] Advanced position movement capabilities (acceleration, jerk control)
+- **Input/Output**
+  - [x] RINEX navigation file support
+  - [x] User motion file support (ECEF and LLH formats)
+  - [x] NMEA GGA stream support
+  - [x] Direct sample access API
+  - [ ] Real-time streaming output
+  - [ ] Direct SDR hardware integration
 
-### Input/Output Enhancements
-
-- [x] RINEX navigation file support
-- [x] User motion file support (ECEF and LLH formats)
-- [x] NMEA GGA stream support
-- [x] Direct sample access API (without file I/O)
-- [ ] Real-time streaming output
-- [ ] Direct SDR hardware integration
+- **Error Handling & Performance**
+  - [x] Implement error handling with thiserror
+  - [x] Optimize critical path performance
+  - [ ] Multi-threaded signal generation
 
 ## Acknowledgments
 
-This project is inspired by the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project and aims to provide a Rust implementation with improved performance and maintainability.
+This project is inspired by the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project and aims to provide a modern Rust implementation with improved performance, maintainability, and extensibility.
