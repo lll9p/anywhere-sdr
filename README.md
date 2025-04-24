@@ -21,6 +21,7 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 - Supports different output formats (1-bit, 8-bit, 16-bit)
 - Ionospheric delay modeling (can be disabled)
 - Path loss simulation with configurable gain
+- Flexible API for direct sample access (without file I/O)
 
 ## Installation
 
@@ -40,11 +41,19 @@ cargo install --path .
 
 ## Usage
 
+### Command Line Usage
+
 Basic usage example:
 
 ```bash
 gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30
 ```
+
+### Library Usage
+
+> [!Note]
+> TBD
+
 
 ### Command Line Options
 
@@ -163,6 +172,7 @@ The following features are planned for future releases:
 - [x] RINEX navigation file support
 - [x] User motion file support (ECEF and LLH formats)
 - [x] NMEA GGA stream support
+- [x] Direct sample access API (without file I/O)
 - [ ] Real-time streaming output
 - [ ] Direct SDR hardware integration
 
