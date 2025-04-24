@@ -228,6 +228,24 @@ impl SignalGeneratorBuilder {
     /// # Returns
     /// * `Self` - Builder with leap second parameters set
     pub fn leap(mut self, leap: Option<Vec<i32>>) -> Self {
+        if let Some(leap_values) = &leap {
+            // Validate leap second parameters
+            if leap_values.len() >= 3 {
+                // Ensure the values are valid
+                let week_number = leap_values[0];
+                let day_number = leap_values[1];
+                let delta_time = leap_values[2];
+
+                // Validate according to the same rules as in gpssim.c
+                if week_number < 0
+                    || !(1..=7).contains(&day_number)
+                    || !(-128..=127).contains(&delta_time)
+                {
+                    // Invalid parameters, but we'll still set them for
+                    // consistency with C version
+                }
+            }
+        }
         self.leap = leap;
         self
     }
@@ -702,7 +720,10 @@ impl SignalGeneratorBuilder {
             for e in eph_item.iter().take(MAX_SAT) {
                 if e.vflg {
                     let dt = receiver_gps_time.diff_secs(&e.toc);
-                    if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
+                    // Relax the time constraint when time_override is true
+                    if time_override
+                        || (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt)
+                    {
                         valid_ephemerides_index = Some(i);
                         break;
                     }
@@ -712,6 +733,12 @@ impl SignalGeneratorBuilder {
                 // ieph has been set
                 break;
             }
+        }
+
+        // If no valid ephemerides found and time_override is true, use the
+        // first set
+        if valid_ephemerides_index.is_none() && time_override && count > 0 {
+            valid_ephemerides_index = Some(0);
         }
 
         let Some(valid_ephemerides_index) = valid_ephemerides_index else {

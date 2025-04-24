@@ -44,17 +44,18 @@ pub fn prepare_c_bin(
     if c_bin_file_path_buf.exists() {
         return Ok(());
     }
-    let mut args: Vec<_> = params
-        .iter()
-        .filter(|v| v[0] != "-o")
-        .flat_map(|v| {
-            if v[0] == "-i" || v[0] == "-v" || v[0] == "-T" {
-                vec![v[0].clone()]
-            } else {
-                v.clone()
-            }
-        })
-        .collect();
+    // Convert parameters to C-style arguments
+    let mut args: Vec<String> = Vec::new();
+    for v in params.iter().filter(|v| v[0] != "-o") {
+        if v[0] == "-i" || v[0] == "-v" || v[0] == "-T" {
+            // Flags without values
+            args.push(v[0].clone());
+        } else {
+            // Parameters with values
+            args.push(v[0].clone());
+            args.push(v[1].clone());
+        }
+    }
     args.push("-o".to_string());
     args.push(format!("{OUTPUT_DIR}/{c_bin_file}"));
     let status = Command::new(gps_sim_executable)

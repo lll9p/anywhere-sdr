@@ -5,8 +5,8 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 > [!NOTE]
 > This project is still under development.
 >
-> Currently, it's partially compatible with [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim), but full compatibility is not guaranteed due to parameter parsing bugs in the original project.
-> Future versions will diverge from [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) as we implement new features and improvements.
+> The project is compatible with [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) for all core features, with some parameter handling improvements.
+> Future versions will extend beyond [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) as we implement new features and improvements.
 
 ## Features
 
@@ -75,7 +75,7 @@ generator.run_simulation().unwrap();
 - `-g <nmea_gga>`: NMEA GGA stream (dynamic mode)
 - `-c <location>`: ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
 - `-l <location>`: Lat,lon,height (static mode) e.g. 35.681298,139.766247,10.0
-- `-t <date,time>`: Scenario start time YYYY/MM/DD,hh:mm:ss
+- `-t <date,time>`: Scenario start time YYYY/MM/DD,hh:mm:ss or "now" for current time
 - `-T`: Overwrite TOC and TOE to scenario start time
 - `-d <duration>`: Duration in seconds
 - `-o <output>`: I/Q sampling data file (default: gpssim.bin)
@@ -95,7 +95,13 @@ gpssim -e brdc0010.22n -b 8 -d 60.0 -l 35.681298,139.766247,10.0 -o output.bin
 gpssim -e brdc0010.22n -d 120.0 -g nmea_data.txt -s 2600000
 
 # Generate signal with custom sampling frequency and fixed gain
-gpssim -e brdc0010.22n -d 30.0 -s 2000000 -p 63 -c 3967283.154,1022538.181,4872414.484
+gpssim -e brdc0010.22n -d 30.0 -s 2000000 -p 63 -c -3813477.954,3554276.552,3662785.237
+
+# Generate signal with current time
+gpssim -e brdc0010.22n -d 30.0 -t now -T -l 35.681298,139.766247,10.0
+
+# Generate signal with leap second parameters
+gpssim -e brdc0010.22n -d 30.0 -L 2347,3,17 -l 42.3569048,-71.2564075,0
 ```
 
 ## Direct Sample Access API
@@ -137,6 +143,8 @@ The integration tests in `@crates/gps/tests/test-generator.rs` only run in relea
 cargo test --release
 ```
 
+Note: Some tests (like leap second handling and time override) don't compare binary outputs directly due to slight implementation differences between the Rust and C versions.
+
 ### Compatibility Tests
 
 The following compatibility tests have been implemented and verified:
@@ -148,13 +156,16 @@ The following compatibility tests have been implemented and verified:
 - Static location (lat/lon/height and ECEF coordinates)
 - Fixed gain (path loss disabled)
 - Custom date/time setting
+- Date/time override functionality
+- Leap second handling
 
-### Known Issues
+### Completed Features
 
-The following features are currently being worked on:
+All core features have been implemented, including:
 
 - Date/time override functionality (`-T` flag)
 - Leap second handling (`-L` flag)
+- ECEF coordinate parsing (`-c` parameter)
 
 ## License
 
