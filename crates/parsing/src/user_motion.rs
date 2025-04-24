@@ -5,12 +5,33 @@ use geometry::{Ecef, Location};
 
 use crate::Error;
 
-/// Read the list of user motions from the input file in ECEF format
+/// Reads user motion data from a CSV file in ECEF coordinate format.
 ///
+/// This function parses a CSV file containing user motion data in
+/// Earth-Centered, Earth-Fixed (ECEF) coordinates. Each line in the file
+/// represents a position at a specific time point.
+///
+/// # File Format
 /// The file should be in CSV format with each line containing:
+/// ```
 /// time, x, y, z
+/// ```
+/// Where:
+/// - `time` is the time in seconds
+/// - `x`, `y`, `z` are ECEF coordinates in meters
 ///
-/// Returns a vector of ECEF coordinates
+/// # Arguments
+/// * `filename` - Path to the CSV file containing user motion data
+///
+/// # Returns
+/// * `Ok(Vec<Ecef>)` - Vector of ECEF coordinates parsed from the file
+/// * `Err(Error)` - If the file cannot be read or contains invalid data
+///
+/// # Errors
+/// * Returns an error if the file cannot be opened
+/// * Returns an error if the CSV format is invalid
+/// * Returns an error if any coordinate values cannot be parsed
+/// * Returns an error if the file contains no valid motion records
 pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
@@ -63,14 +84,41 @@ pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     Ok(xyz)
 }
 
-/// Read the list of user motions from the input file in LLH format
+/// Reads user motion data from a CSV file in LLH coordinate format and converts
+/// to ECEF.
 ///
+/// This function parses a CSV file containing user motion data in Latitude,
+/// Longitude, Height (LLH) coordinates and converts each position to
+/// Earth-Centered, Earth-Fixed (ECEF) coordinates for use in the simulation.
+///
+/// # File Format
 /// The file should be in CSV format with each line containing:
+/// ```
 /// time, latitude, longitude, height
+/// ```
+/// Where:
+/// - `time` is the time in seconds
+/// - `latitude` is in degrees (-90 to 90)
+/// - `longitude` is in degrees (-180 to 180)
+/// - `height` is in meters above the WGS-84 ellipsoid
 ///
-/// Returns a vector of ECEF coordinates converted from LLH
+/// # Arguments
+/// * `filename` - Path to the CSV file containing user motion data in LLH
+///   format
 ///
-/// Added by romalvarezllorens@gmail.com
+/// # Returns
+/// * `Ok(Vec<Ecef>)` - Vector of ECEF coordinates converted from the LLH data
+/// * `Err(Error)` - If the file cannot be read or contains invalid data
+///
+/// # Errors
+/// * Returns an error if the file cannot be opened
+/// * Returns an error if the CSV format is invalid
+/// * Returns an error if any coordinate values cannot be parsed
+/// * Returns an error if latitude or longitude are outside valid ranges
+/// * Returns an error if the file contains no valid motion records
+///
+/// # Credit
+/// Originally added by romalvarezllorens@gmail.com
 pub fn read_user_motion_llh(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;

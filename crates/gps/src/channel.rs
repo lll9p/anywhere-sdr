@@ -13,12 +13,23 @@ use crate::{
     propagation::compute_range,
     table::*,
 };
-/// Structure representing a Channel
 /// Represents a single GPS satellite channel being tracked by the receiver.
 ///
-/// Stores the state information necessary for signal acquisition, tracking,
-/// and decoding the navigation message for a specific satellite (identified by
-/// PRN).
+/// This structure maintains the complete state of a satellite signal channel,
+/// including signal generation parameters, navigation message data, and
+/// tracking information. Each Channel instance corresponds to one satellite
+/// (identified by PRN) that is being simulated.
+///
+/// The Channel is responsible for:
+/// - Generating the satellite-specific C/A code sequence (1023 chips)
+/// - Maintaining carrier and code phase information
+/// - Constructing and managing the navigation message data
+/// - Tracking pseudorange and geometric information
+/// - Generating I/Q samples for the satellite signal
+///
+/// During simulation, the channel state is updated at each time step to
+/// accurately model the changing satellite-receiver geometry and signal
+/// characteristics.
 pub struct Channel {
     /// Satellite PRN (Pseudorandom Noise) number (1-32)
     pub prn: usize,
@@ -210,15 +221,28 @@ impl Channel {
         self.rho0 = rho1.clone();
     }
 
-    /// !generate the C/A code sequence for a given Satellite Vehicle PRN
-    ///  \param[in] prn PRN number of the Satellite Vehicle
-    ///  \param[out] ca Caller-allocated integer array of 1023 bytes
-    /// Generates the C/A (Coarse/Acquisition) code sequence for the channel's
-    /// PRN.
+    /// Generates the C/A (Coarse/Acquisition) code sequence for this satellite
+    /// channel.
     ///
-    /// Uses two 10-bit Linear Feedback Shift Registers (LFSRs), G1 and G2,
-    /// combined according to the specific PRN's delay offset.
-    /// The resulting 1023-chip sequence is stored in `self.ca`.
+    /// This method implements the GPS C/A code generation algorithm as
+    /// specified in the GPS Interface Control Document (ICD-GPS-200). Each
+    /// satellite has a unique C/A code sequence that allows receivers to
+    /// distinguish between different satellite signals.
+    ///
+    /// The algorithm uses:
+    /// 1. Two 10-bit Linear Feedback Shift Registers (LFSRs), G1 and G2
+    /// 2. A satellite-specific delay value for the G2 register
+    /// 3. A modulo-2 addition (XOR) of specific taps from each register
+    ///
+    /// The resulting sequence has the following properties:
+    /// - Length: 1023 chips (repeats every 1 millisecond at 1.023 MHz)
+    /// - Balanced: Contains 512 zeros and 511 ones
+    /// - Low cross-correlation with other satellite codes
+    /// - Good autocorrelation properties for signal acquisition
+    ///
+    /// The generated sequence is stored in the channel's `ca_sequence` field
+    /// and is used for spreading the navigation data bits during signal
+    /// generation.
     #[inline]
     pub fn codegen(&mut self) {
         let delay: [usize; 32] = [
@@ -544,30 +568,48 @@ impl Channel {
         (ip, qp)
     }
 
-    /// Converts ephemeris and UTC parameters into GPS navigation message
-    /// subframes
+    /// Constructs the GPS navigation message subframes from ephemeris and UTC
+    /// parameters.
     ///
-    /// Implements the construction of 5 subframes (each containing 10 30-bit
-    /// words) according to IS-GPS-200L specifications. Handles page 18
-    /// (ionospheric/UTC parameters) in subframe 4 and page 25 (reserved) in
-    /// subframe 5.
+    /// This method implements the detailed bit-level formatting of the GPS
+    /// navigation message as specified in the Interface Specification
+    /// IS-GPS-200. It converts the satellite ephemeris and ionospheric/UTC
+    /// parameters into the binary format transmitted by GPS satellites.
+    ///
+    /// The navigation message consists of 5 subframes, each containing 10 words
+    /// of 30 bits:
+    /// - Subframe 1: Satellite clock parameters, GPS week number, and satellite
+    ///   health
+    /// - Subframe 2: Ephemeris parameters (first part)
+    /// - Subframe 3: Ephemeris parameters (second part)
+    /// - Subframe 4: Almanac, ionospheric model, UTC parameters (uses page 18)
+    /// - Subframe 5: Almanac for other satellites (uses page 25)
+    ///
+    /// Each parameter is scaled according to the GPS ICD specifications and
+    /// placed in the appropriate bit positions within each word. The method
+    /// also handles special cases such as:
+    /// - Proper scaling of floating-point values to integer representations
+    /// - Handling of sign bits for signed parameters
+    /// - Inclusion of preamble and telemetry words
+    /// - Formatting of Time of Week (TOW) counters
     ///
     /// # Arguments
     /// * `eph` - Satellite ephemeris containing orbital parameters and clock
     ///   corrections
     /// * `ionoutc` - Ionospheric delay model and UTC time conversion parameters
-    /// * `sbf` - Output buffer for 5 subframes, each represented as [u32;
-    ///   `N_DWRD_SBF`]
     ///
-    /// # Notes
-    /// - Subframes 1-3 contain fundamental ephemeris and clock correction data
+    /// # Implementation Details
+    /// - Subframes 1-3 contain the fundamental ephemeris and clock correction
+    ///   data needed for precise positioning
     /// - Subframe 4 page 18 includes:
-    ///   - Ionospheric α/β coefficients (Klochar model parameters)
-    ///   - UTC parameters (A0, A1, `ΔtLS`)
+    ///   - Ionospheric α/β coefficients (Klobuchar model parameters)
+    ///   - UTC parameters (`A0`, `A1`, `ΔtLS`)
     ///   - Leap second transition parameters
     /// - Subframe 5 page 25 is reserved (zero-filled in this implementation)
     /// - All value conversions follow GPS-ICD-defined scaling factors and
     ///   bit-field layouts
+    /// - The constructed subframes are stored in the channel's `subframes`
+    ///   field
     #[allow(clippy::too_many_lines)]
     pub fn generate_navigation_subframes(
         &mut self, eph: &Ephemeris, ionoutc: &IonoUtc,

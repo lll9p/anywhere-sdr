@@ -254,11 +254,10 @@ impl SignalGenerator {
     /// Generates I/Q samples for all active channels and writes them to the
     /// output file.
     ///
-    /// This method:
-    /// 1. Calculates I/Q contributions from each active satellite channel
-    /// 2. Accumulates these contributions into a combined signal
-    /// 3. Updates the code phase and carrier phase for each channel
-    /// 4. Quantizes and writes the I/Q samples to the output file
+    /// This method performs the following steps:
+    /// 1. Accumulates signal components from all active satellite channels
+    /// 2. Quantizes and stores the combined I/Q samples in the buffer
+    /// 3. Writes the I/Q data to the output file
     ///
     /// # Returns
     /// * `Ok(())` - If sample generation and writing is successful
@@ -278,31 +277,31 @@ impl SignalGenerator {
         for isamp in 0..buffer_size {
             let mut i_acc: i32 = 0;
             let mut q_acc: i32 = 0;
-            // 第三步：累加所有通道的信号分量
+            // Step 1: Accumulate signal components from all channels
             for i in 0..MAX_CHAN {
                 if self.channels[i].prn != 0 {
                     let (ip, qp) = self.channels[i]
                         .generate_iq_contribution(self.antenna_gains[i]);
                     // Accumulate for all visible satellites
-                    // 累加到总信号
+                    // Add to total signal accumulation
                     i_acc += ip;
                     q_acc += qp;
                     // Update code phase
-                    // 更新码相位（C/A码序列控制）
+                    // Update code phase (C/A code sequence control)
                     self.channels[i].update_navigation_bits(sampling_period);
                 }
             }
 
-            // 第六步：量化并存储I/Q采样
+            // Step 2: Quantize and store I/Q samples
             // Scaled by 2^7
             // i_acc = (i_acc + 64) >> 7;
             // q_acc = (q_acc + 64) >> 7;
             // Store I/Q samples into buffer
-            writer.buffer[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8位量化（带舍入）
+            writer.buffer[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8-bit quantization (with rounding)
             writer.buffer[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
         }
 
-        // 第七步：将I/Q数据写入输出文件（不同格式处理）
+        // Step 3: Write I/Q data to output file (handling different formats)
         writer.write_samples()?;
         Ok(())
     }
@@ -326,12 +325,12 @@ impl SignalGenerator {
         let ephemeris_set_index = self.valid_ephemerides_index;
         let sampling_period = self.sample_frequency.recip();
         for i in 0..MAX_CHAN {
-            // 仅处理已分配卫星的通道
+            // Only process channels with assigned satellites
             if self.channels[i].prn != 0 {
-                // 卫星PRN号转索引
+                // Convert satellite PRN to array index
                 let sv = self.channels[i].prn - 1;
                 let eph = &self.ephemerides[ephemeris_set_index][sv];
-                // 计算当前时刻的伪距（传播时延）
+                // Calculate current pseudorange (propagation delay)
                 // Refresh code phase and data bit counters
 
                 // Current pseudorange
@@ -347,14 +346,14 @@ impl SignalGenerator {
                     sampling_period,
                 );
 
-                // 计算信号增益（考虑路径损耗和天线方向图）
-                // Signal gain
-                // 应用增益模式选择
+                // Calculate signal gain (considering path loss and antenna
+                // pattern) Signal gain
+                // Apply gain mode selection
                 let gain = if let Some(fixed_gain) = self.fixed_gain {
-                    // 固定增益模式
+                    // Fixed gain mode
                     fixed_gain // hold the power level constant
                 } else {
-                    // 带路径损耗补偿
+                    // With path loss compensation
                     // Path loss
                     let path_loss = 20_200_000.0 / rho.distance;
                     // Receiver antenna gain
@@ -469,10 +468,10 @@ impl SignalGenerator {
     /// 2. For each time step:
     ///    - Determines the current receiver position (static or from motion
     ///      file)
-    ///    - Updates channel parameters (pseudorange, Doppler, gain)
-    ///    - Generates and writes I/Q samples
-    ///    - Performs periodic tasks (nav message updates, ephemeris refresh)
-    ///    - Updates the simulation time
+    ///    - Step 1: Updates satellite parameters (pseudorange, phase, and gain)
+    ///    - Step 2: Generates baseband I/Q sample data
+    ///    - Step 3: Periodically updates navigation data (every 30 seconds)
+    ///    - Step 4: Updates simulation time and displays progress
     ///
     /// The method must be called after `initialize()`.
     ///
@@ -503,10 +502,10 @@ impl SignalGenerator {
         self.receiver_gps_time =
             self.receiver_gps_time.add_secs(self.sample_rate);
         let time_start = std::time::Instant::now();
-        // 主循环：遍历每个时间间隔（0.1秒）
+        // Main loop: Iterate through each time interval (0.1 seconds)
         // From 1..num_steps, because step 0 was done in initiallize.
         for step_index in 1..num_steps {
-            // 根据静态/动态模式选择接收机位置
+            // Select receiver position based on static/dynamic mode
             let current_location = match self.mode {
                 MotionMode::Static => self.positions[0],
                 MotionMode::Dynamic => self
@@ -515,16 +514,17 @@ impl SignalGenerator {
                     .copied()
                     .unwrap_or(self.positions[0]),
             };
-            // 第一步：更新所有通道的伪距、相位和增益参数
+            // Step 1: Update satellite parameters (pseudorange, phase, and
+            // gain)
             self.update_channel_parameters(current_location);
 
-            // 第二步：生成基带I/Q采样数据
+            // Step 2: Generate baseband I/Q sample data
             self.generate_and_write_samples()?;
             // Update navigation message and channel allocation every 30 seconds
-            // 第八步：定期更新导航信息（每30秒）
+            // Step 3: Periodically update navigation data (every 30 seconds)
             self.handle_periodic_tasks(current_location);
 
-            // 第九步：更新时间并显示进度
+            // Step 4: Update simulation time and display progress
             // Update receiver time
             self.receiver_gps_time =
                 self.receiver_gps_time.add_secs(self.sample_rate);

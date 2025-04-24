@@ -1,6 +1,23 @@
 use constants::*;
 
 use crate::{coordinates::*, traits::LocationMath};
+/// Converts Earth-Centered, Earth-Fixed (ECEF) coordinates to geodetic
+/// coordinates.
+///
+/// This implementation uses an iterative method to convert ECEF Cartesian
+/// coordinates to geodetic latitude, longitude, and height above the WGS-84
+/// ellipsoid. The algorithm iteratively refines the latitude calculation until
+/// convergence.
+///
+/// # Algorithm
+/// 1. Calculate the distance from the Z-axis (rho)
+/// 2. Initialize the height correction term (dz)
+/// 3. Iteratively refine the latitude and height until convergence
+/// 4. Calculate final latitude, longitude, and height
+///
+/// # Special Cases
+/// - If the ECEF vector is near zero (invalid), returns (0°, 0°, -a) where a is
+///   Earth's radius
 impl From<&Ecef> for Location {
     fn from(ecef: &Ecef) -> Self {
         let a: f64 = WGS84_RADIUS;
@@ -50,6 +67,13 @@ impl From<&Ecef> for Location {
         }
     }
 }
+/// Creates a Location from a 3-element array of [latitude, longitude, height].
+///
+/// This is a convenience method for creating a Location from an array,
+/// which is useful when working with data from external sources.
+///
+/// # Arguments
+/// * `value` - Array containing [latitude, longitude, height] values
 impl From<&[f64; 3]> for Location {
     fn from(value: &[f64; 3]) -> Self {
         Self {
@@ -59,12 +83,26 @@ impl From<&[f64; 3]> for Location {
         }
     }
 }
+/// Converts geodetic coordinates to Earth-Centered, Earth-Fixed (ECEF)
+/// coordinates.
+///
+/// This implementation transforms latitude, longitude, and height (LLH)
+/// coordinates to ECEF Cartesian coordinates using the WGS-84 ellipsoid model.
+///
+/// # Algorithm
+/// The conversion uses the following formulas:
+/// - N = a / √(1 - e²·sin²φ)  (radius of curvature in the prime vertical)
+/// - x = (N + h)·cosφ·cosλ
+/// - y = (N + h)·cosφ·sinλ
+/// - z = ((1 - e²)·N + h)·sinφ
+///
+/// Where:
+/// - φ is latitude
+/// - λ is longitude
+/// - h is height above ellipsoid
+/// - a is semi-major axis
+/// - e is eccentricity
 impl From<&Location> for Ecef {
-    /// Converts LLH to ECEF using WGS84 ellipsoid parameters:
-    /// N = a / √(1 - e²·sin²φ)
-    /// x = (N + h)cosφ·cosλ
-    /// y = (N + h)cosφ·sinλ
-    /// z = ((1 - e²)N + h)sinφ
     fn from(loc: &Location) -> Self {
         let a: f64 = WGS84_RADIUS;
         let e: f64 = WGS84_ECCENTRICITY;
@@ -86,6 +124,13 @@ impl From<&Location> for Ecef {
         Self { x, y, z }
     }
 }
+/// Creates an ECEF coordinate from a 3-element array of [x, y, z].
+///
+/// This is a convenience method for creating an ECEF coordinate from an array,
+/// which is useful when working with data from external sources.
+///
+/// # Arguments
+/// * `value` - Array containing [x, y, z] values in meters
 impl From<&[f64; 3]> for Ecef {
     fn from(value: &[f64; 3]) -> Self {
         Self {
@@ -95,15 +140,34 @@ impl From<&[f64; 3]> for Ecef {
         }
     }
 }
+/// Converts ECEF coordinates to North-East-Up (NEU) local tangent plane
+/// coordinates.
+///
+/// This implementation transforms ECEF coordinates to NEU coordinates using
+/// the local tangent plane at the point itself. This is useful for visualizing
+/// the local orientation at a specific point.
+///
+/// Note: This differs from the typical NEU conversion where the reference point
+/// is separate from the point being converted. Here, the point itself is used
+/// as the reference point.
+///
+/// # Algorithm
+/// 1. Convert the ECEF point to geodetic coordinates
+/// 2. Compute the local tangent plane rotation matrix at that point
+/// 3. Apply the rotation matrix to transform to NEU coordinates
 impl From<&Ecef> for Neu {
-    /// Transforms ECEF to NEU using rotation matrix:
-    /// `neu = R·(ecef - reference_ecef)`
-    /// where R is the local tangent plane rotation matrix
     fn from(value: &Ecef) -> Self {
         let ltcmat = Location::from(value).ltcmat();
         Self::from_ecef(value, ltcmat)
     }
 }
+/// Creates a NEU coordinate from a 3-element array of [north, east, up].
+///
+/// This is a convenience method for creating a NEU coordinate from an array,
+/// which is useful when working with data from external sources.
+///
+/// # Arguments
+/// * `value` - Array containing [north, east, up] values in meters
 impl From<&[f64; 3]> for Neu {
     fn from(value: &[f64; 3]) -> Self {
         Self {
@@ -113,6 +177,14 @@ impl From<&[f64; 3]> for Neu {
         }
     }
 }
+/// Creates an Azimuth-Elevation coordinate from a 2-element array of [azimuth,
+/// elevation].
+///
+/// This is a convenience method for creating an Azel coordinate from an array,
+/// which is useful when working with data from external sources.
+///
+/// # Arguments
+/// * `value` - Array containing [azimuth, elevation] values in radians
 impl From<&[f64; 2]> for Azel {
     fn from(value: &[f64; 2]) -> Self {
         Self {
@@ -122,10 +194,22 @@ impl From<&[f64; 2]> for Azel {
     }
 }
 
+/// Converts North-East-Up (NEU) coordinates to Azimuth-Elevation angles.
+///
+/// This implementation transforms NEU coordinates to azimuth and elevation
+/// angles, which are commonly used for satellite tracking and antenna pointing.
+///
+/// # Algorithm
+/// The conversion uses the following formulas:
+/// - azimuth = atan2(east, north) [adjusted to 0-2π]
+///   - 0° is north, 90° is east, 180° is south, 270° is west
+/// - elevation = atan2(up, √(north² + east²))
+///   - 0° is horizontal, 90° is vertical up
+///
+/// # Notes
+/// - Azimuth is adjusted to be in the range [0, 2π]
+/// - Elevation is in the range [-π/2, π/2]
 impl From<&Neu> for Azel {
-    /// Converts NEU to Azimuth/Elevation:
-    /// azimuth = atan2(east, north) [adjusted to 0-2π]
-    /// elevation = atan2(up, √(north² + east²))
     fn from(neu: &Neu) -> Self {
         let mut az = neu.east.atan2(neu.north);
         if az < 0.0 {

@@ -68,7 +68,7 @@ impl Location {
     /// d = R·c
     /// Returns distance in meters
     pub fn measure(&self, other: &Self) -> f64 {
-        const R: f64 = 6378.137; // 地球半径，单位为千米
+        const R: f64 = 6378.137; // Earth radius in kilometers
         let d_lat = (other.latitude - self.latitude).to_radians();
         let d_lon = (other.longitude - self.longitude).to_radians();
 
@@ -80,7 +80,7 @@ impl Location {
         let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
         let d = R * c;
 
-        d * 1000.0 // 返回单位为米
+        d * 1000.0 // Convert from kilometers to meters
     }
 }
 impl LocationMath for Location {

@@ -5,17 +5,67 @@ use geometry::{Ecef, Location};
 
 use crate::Error;
 
-/// Parse a string to f64
+/// Parses a string into a floating-point number.
+///
+/// This is a helper function that converts a string representation of a number
+/// into an f64 value, with appropriate error handling.
+///
+/// # Arguments
+/// * `num_string` - String containing a floating-point number
+///
+/// # Returns
+/// * `Ok(f64)` - Successfully parsed floating-point value
+/// * `Err(Error)` - If the string cannot be parsed as a valid number
+///
+/// # Errors
+/// * Returns a `ParseFloatError` wrapped in the crate's Error type if parsing
+///   fails
 #[inline]
 pub fn parse_f64(num_string: &str) -> Result<f64, Error> {
     num_string.parse().map_err(Error::from)
 }
 
-/// Read NMEA GGA format file and convert to ECEF coordinates
+/// Reads NMEA GGA sentences from a file and converts them to ECEF coordinates.
 ///
-/// NMEA GGA format:
-/// `$GPGGA,time,lat,lat_dir,lon,lon_dir,quality,num_sats,hdop,alt,alt_units,
-/// undulation,und_units,age,station_id*checksum`
+/// This function parses a file containing NMEA GGA sentences (Global
+/// Positioning System Fix Data), extracts the position information, and
+/// converts it to Earth-Centered, Earth-Fixed (ECEF) coordinates for use in the
+/// simulation.
+///
+/// # NMEA GGA Format
+/// Each GGA sentence has the following format:
+/// ```
+/// $GPGGA,time,lat,lat_dir,lon,lon_dir,quality,num_sats,hdop,alt,alt_units,undulation,und_units,age,station_id*checksum
+/// ```
+/// Where:
+/// - `time` is UTC time in HHMMSS.SS format
+/// - `lat` is latitude in DDMM.MMMM format (degrees + minutes)
+/// - `lat_dir` is N (north) or S (south)
+/// - `lon` is longitude in DDDMM.MMMM format (degrees + minutes)
+/// - `lon_dir` is E (east) or W (west)
+/// - `quality` is fix quality (0=invalid, 1=GPS fix, 2=DGPS fix)
+/// - `num_sats` is number of satellites in use
+/// - `hdop` is horizontal dilution of precision
+/// - `alt` is altitude above mean sea level
+/// - `alt_units` is units of altitude (usually 'M' for meters)
+/// - `undulation` is height of geoid above WGS84 ellipsoid
+/// - `und_units` is units of undulation (usually 'M' for meters)
+/// - `age` is time since last DGPS update
+/// - `station_id` is DGPS station ID
+///
+/// # Arguments
+/// * `filename` - Path to the file containing NMEA GGA sentences
+///
+/// # Returns
+/// * `Ok(Vec<Ecef>)` - Vector of ECEF coordinates converted from the NMEA data
+/// * `Err(Error)` - If the file cannot be read or contains invalid data
+///
+/// # Errors
+/// * Returns an error if the file cannot be opened
+/// * Returns an error if the NMEA format is invalid
+/// * Returns an error if latitude or longitude values cannot be parsed
+/// * Returns an error if latitude or longitude are outside valid ranges
+/// * Returns an error if the file contains no valid NMEA records
 pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;

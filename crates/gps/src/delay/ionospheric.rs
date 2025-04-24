@@ -3,6 +3,30 @@ use geometry::{Azel, Location};
 
 use crate::{datetime::GpsTime, ionoutc::IonoUtc};
 
+/// Calculates the ionospheric delay for a GPS signal.
+///
+/// This function implements the Klobuchar ionospheric model to estimate
+/// the signal delay caused by the ionosphere. The model uses broadcast
+/// parameters (alpha and beta) and takes into account:
+/// - Receiver location (latitude and longitude)
+/// - Satellite elevation and azimuth
+/// - Time of day
+///
+/// The ionospheric delay varies with:
+/// - Receiver's geomagnetic latitude
+/// - Local time (maximum delay occurs around 14:00 local time)
+/// - Satellite elevation angle (lower elevation = longer path through
+///   ionosphere)
+///
+/// # Arguments
+/// * `ionoutc` - Ionospheric model parameters from the navigation message
+/// * `time` - Current GPS time
+/// * `llh` - Receiver location in geodetic coordinates
+/// * `azel` - Satellite azimuth and elevation angles
+///
+/// # Returns
+/// The estimated ionospheric delay in meters (0.0 if ionospheric correction is
+/// disabled)
 #[allow(non_snake_case)]
 pub fn ionospheric_delay(
     ionoutc: &IonoUtc, time: &GpsTime, llh: &Location, azel: &Azel,

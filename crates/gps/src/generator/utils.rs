@@ -125,12 +125,12 @@ pub fn read_navigation_data(
                 );
                 break; // Stop processing more records
             }
-            // 更新新集合的开始时间
+            // Update the start time for the new ephemeris set
             current_set_start_time = Some(gps_time.clone());
         }
         // --- End set index logic ---
 
-        // 获取要填充的目标 Ephemeris 结构体的可变引用
+        // Get a mutable reference to the target Ephemeris structure to populate
         // current_set_index is guaranteed to be in bounds here
         let eph = &mut ephemeris_data[current_set_index][sv];
         eph.t = utc_datetime;

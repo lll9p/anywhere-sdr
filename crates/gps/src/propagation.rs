@@ -8,11 +8,36 @@ use crate::{
     ionoutc::IonoUtc,
 };
 
-///  \brief Compute range between a satellite and the receiver
-///  \param[out] rho The computed range
-///  \param[in] eph Ephemeris data of the satellite
-///  \param[in] g GPS time at time of receiving the signal
-///  \param[in] xyz position of the receiver
+/// Computes the range between a satellite and the receiver.
+///
+/// This function calculates the pseudorange, geometric distance, range rate,
+/// azimuth/elevation angles, and ionospheric delay between a satellite and
+/// the receiver at a specific time. It accounts for:
+///
+/// - Satellite motion during signal propagation (light time)
+/// - Earth rotation during signal propagation
+/// - Satellite clock offset
+/// - Ionospheric delay
+///
+/// The calculation follows these steps:
+/// 1. Compute satellite position at reception time
+/// 2. Calculate initial light time
+/// 3. Extrapolate satellite position backward to transmission time
+/// 4. Apply Earth rotation correction
+/// 5. Recalculate geometric range
+/// 6. Apply satellite clock correction to get pseudorange
+/// 7. Calculate range rate (Doppler)
+/// 8. Calculate azimuth and elevation angles
+/// 9. Add ionospheric delay
+///
+/// # Arguments
+/// * `eph` - Ephemeris data of the satellite
+/// * `ionoutc` - Ionospheric and UTC parameters
+/// * `time` - GPS time at the moment of signal reception
+/// * `xyz` - Position of the receiver in ECEF coordinates
+///
+/// # Returns
+/// A `TimeRange` structure containing the computed range information
 pub fn compute_range(
     eph: &Ephemeris, ionoutc: &IonoUtc, time: &GpsTime, xyz: &Ecef,
 ) -> TimeRange {

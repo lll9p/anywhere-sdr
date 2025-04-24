@@ -5,7 +5,7 @@ newline_style = "Unix"
 use_field_init_shorthand = true
 reorder_imports = true
 fn_params_layout = "Compressed"
-comment_width = 100
+comment_width = 120
 
 # Unstable options
 unstable_features = true
