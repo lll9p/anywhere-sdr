@@ -3,11 +3,11 @@ use std::{fs, path::PathBuf};
 use constants::R2D;
 use geometry::{Ecef, Location};
 
-use crate::{Error, Result};
+use crate::Error;
 
 /// Parse a string to f64
 #[inline]
-pub fn parse_f64(num_string: &str) -> Result<f64> {
+pub fn parse_f64(num_string: &str) -> Result<f64, Error> {
     num_string.parse().map_err(Error::from)
 }
 
@@ -16,7 +16,7 @@ pub fn parse_f64(num_string: &str) -> Result<f64> {
 /// NMEA GGA format:
 /// `$GPGGA,time,lat,lat_dir,lon,lon_dir,quality,num_sats,hdop,alt,alt_units,
 /// undulation,und_units,age,station_id*checksum`
-pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>> {
+pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
 

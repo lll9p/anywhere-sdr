@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use clap::{ArgAction, Parser};
 use gps::SignalGeneratorBuilder;
 
+use crate::Error;
+
 /*
 
 Options:
@@ -96,7 +98,7 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn run(&self) -> anyhow::Result<()> {
+    pub fn run(&self) -> Result<(), Error> {
         let builder = SignalGeneratorBuilder::default()
             .navigation_file(Some(self.ephemerides.clone()))?
             .user_mothon_file(self.user_motion_ecef.clone())?

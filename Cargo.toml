@@ -28,7 +28,6 @@ rinex = { path = "./crates/rinex" }
 parsing = { path = "./crates/parsing" }
 
 # external dependencies
-anyhow = { version = "1" }
 clap = { version = "4", features = ["derive", "unicode", "wrap_help", "env"] }
 csv = { version = "1" }
 jiff = { version = "0.2" }

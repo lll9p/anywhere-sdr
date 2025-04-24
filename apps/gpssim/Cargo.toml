@@ -16,9 +16,9 @@ edition.workspace = true
 gps.workspace = true
 
 # external dependencies
-anyhow.workspace = true
 clap.workspace = true
 jiff.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true

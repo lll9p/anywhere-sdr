@@ -66,6 +66,3 @@ impl Error {
         Error::MissingField(field.into())
     }
 }
-
-/// Result type for the parsing crate
-pub type Result<T> = std::result::Result<T, Error>;

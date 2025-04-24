@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf};
 use constants::R2D;
 use geometry::{Ecef, Location};
 
-use crate::{Error, Result};
+use crate::Error;
 
 /// Read the list of user motions from the input file in ECEF format
 ///
@@ -11,7 +11,7 @@ use crate::{Error, Result};
 /// time, x, y, z
 ///
 /// Returns a vector of ECEF coordinates
-pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>> {
+pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
 
@@ -71,7 +71,7 @@ pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>> {
 /// Returns a vector of ECEF coordinates converted from LLH
 ///
 /// Added by romalvarezllorens@gmail.com
-pub fn read_user_motion_llh(filename: &PathBuf) -> Result<Vec<Ecef>> {
+pub fn read_user_motion_llh(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
 

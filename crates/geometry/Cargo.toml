@@ -19,7 +19,6 @@ path = "src/geometry.rs"
 constants.workspace = true
 
 # external dependencies
-anyhow.workspace = true
 clap.workspace = true
 csv.workspace = true
 jiff.workspace = true
