@@ -13,17 +13,20 @@
         "gpssim-cli",
         "gpssim-main",
         "gpssim-utils",
+        "gpssim-error",
         "gps-channel",
         "constants-constants",
         "gps-datetime",
         "gps-delay-ionospheric",
         "gps-delay",
         "gps-ephemeris",
+        "gps-error",
         "geometry-coordinates",
         "geometry-transformation",
         "geometry-geometry",
         "geometry-traits",
         "geometry-tests",
+        "geometry-error",
         "gps-gps",
         "gps-ionoutc",
         "gps-io",
@@ -35,6 +38,7 @@
         "parsing-nmea",
         "parsing-user-motion",
         "parsing-mod",
+        "parsing-error",
         "rinex-ephemeris",
         "rinex-ephemeris-orbit",
         "rinex-rule",
@@ -132,6 +136,17 @@
         "rinex-tests",
         "geometry-tests"
       ]
+    },
+    {
+      "name": "Error Handling",
+      "system_prompt": "This group contains error handling modules using thiserror throughout the project.",
+      "data": [
+        "gpssim-error",
+        "gps-error",
+        "geometry-error",
+        "parsing-error",
+        "rinex-error"
+      ]
     }
   ],
   "data": {
@@ -149,6 +164,11 @@
       "type": "symbols",
       "path": "apps/gpssim/src/utils.rs",
       "description": "Utility functions for the GPS simulator application."
+    },
+    "gpssim-error": {
+      "type": "symbols",
+      "path": "apps/gpssim/src/error.rs",
+      "description": "Error handling for the GPS simulator application using thiserror."
     },
     "gps-channel": {
       "type": "symbols",
@@ -180,6 +200,11 @@
       "path": "crates/gps/src/ephemeris.rs",
       "description": "GPS ephemeris data structures and calculations."
     },
+    "gps-error": {
+      "type": "symbols",
+      "path": "crates/gps/src/error.rs",
+      "description": "Error handling for the GPS crate using thiserror."
+    },
     "geometry-coordinates": {
       "type": "symbols",
       "path": "crates/geometry/src/coordinates.rs",
@@ -204,6 +229,11 @@
       "type": "symbols",
       "path": "crates/geometry/src/tests.rs",
       "description": "Unit tests for geometry functionality."
+    },
+    "geometry-error": {
+      "type": "symbols",
+      "path": "crates/geometry/src/error.rs",
+      "description": "Error handling for the geometry crate using thiserror."
     },
     "gps-gps": {
       "type": "symbols",
@@ -259,6 +289,11 @@
       "type": "symbols",
       "path": "crates/parsing/src/parsing.rs",
       "description": "Module definition for the parsing components."
+    },
+    "parsing-error": {
+      "type": "symbols",
+      "path": "crates/parsing/src/error.rs",
+      "description": "Error handling for the parsing crate using thiserror."
     },
     "rinex-ephemeris": {
       "type": "symbols",
