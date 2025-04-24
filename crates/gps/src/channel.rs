@@ -541,9 +541,7 @@ impl Channel {
     ///
     /// # Returns
     /// A tuple `(ip, qp)` representing the I and Q components.]]>
-    pub fn generate_iq_contribution(
-        &mut self, antenna_gain: i32,
-    ) -> (i32, i32) {
+    pub fn generate_iq_contribution(&self, antenna_gain: i32) -> (i32, i32) {
         // #ifdef FLOAT_CARR_PHASE
         //                     iTable =
         // (int)floor(chan[i].carr_phase*512.0);
