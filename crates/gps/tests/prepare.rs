@@ -1,12 +1,12 @@
 use std::{path::PathBuf, process::Command};
 
-use anyhow::Result;
+use gps::Error;
 pub static PATH: &str = env!("CARGO_MANIFEST_DIR");
 pub static OUTPUT_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/output");
 pub static RESOURCES_DIR: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/resources");
 
-pub fn check_gpssim() -> Result<PathBuf> {
+pub fn check_gpssim() -> Result<PathBuf, Error> {
     let output_dir = PathBuf::from(PATH).join("output");
     let gps_sim_executable = output_dir
         .join(format!("gpssim{}", if cfg!(windows) { ".exe" } else { "" }));
@@ -36,7 +36,9 @@ pub fn check_gpssim() -> Result<PathBuf> {
     );
     Ok(gps_sim_executable)
 }
-pub fn prepare_c_bin(params: &[Vec<String>], c_bin_file: &str) -> Result<()> {
+pub fn prepare_c_bin(
+    params: &[Vec<String>], c_bin_file: &str,
+) -> Result<(), Error> {
     let gps_sim_executable = check_gpssim()?;
     let c_bin_file_path_buf = PathBuf::from(OUTPUT_DIR).join(c_bin_file);
     if c_bin_file_path_buf.exists() {

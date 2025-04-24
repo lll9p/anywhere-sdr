@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use anyhow::{Error, Result, bail};
 use constants::{EPHEM_ARRAY_SIZE, MAX_CHAN, MAX_SAT, R2D, SECONDS_IN_HOUR};
 use geometry::{Ecef, Location};
 use parsing::{read_nmea_gga, read_user_motion, read_user_motion_llh};
 
 use crate::{
+    Error,
     datetime::{DateTime, GpsTime},
     ephemeris::Ephemeris,
     generator::{
@@ -53,7 +53,7 @@ impl SignalGeneratorBuilder {
                 Error::msg("ERROR: ephemeris file not found or error.")
             })?;
             if count == 0 {
-                bail!("");
+                return Err(Error::NoEphemeris);
             }
             self.ephemerides_data = Some((count, iono_utc, ephemerides));
         }
@@ -65,7 +65,7 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn time(mut self, time: Option<String>) -> Result<Self> {
+    pub fn time(mut self, time: Option<String>) -> Result<Self, Error> {
         if let Some(time) = time {
             let time_parsed = match time.to_lowercase().as_str() {
                 "now" => jiff::Timestamp::now().in_tz("UTC"),
@@ -99,15 +99,15 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn data_format(mut self, data_format: Option<usize>) -> Result<Self> {
+    pub fn data_format(
+        mut self, data_format: Option<usize>,
+    ) -> Result<Self, Error> {
         match data_format {
             Some(1) => self.data_format = Some(DataFormat::Bits1),
             Some(8) => self.data_format = Some(DataFormat::Bits8),
             Some(16) => self.data_format = Some(DataFormat::Bits16),
             None => {}
-            _ => {
-                bail!("ERROR: Invalid I/Q data format.")
-            }
+            _ => return Err(Error::invalid_data_format()),
         }
         Ok(self)
     }
@@ -117,20 +117,24 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn frequency(mut self, frequency: Option<usize>) -> Result<Self> {
+    pub fn frequency(
+        mut self, frequency: Option<usize>,
+    ) -> Result<Self, Error> {
         match frequency {
             Some(freq) if freq >= 1_000_000 => {
                 self.frequency = Some(freq as f64);
             }
             None => {}
-            _ => bail!("ERROR: Invalid sampling frequency."),
+            _ => return Err(Error::invalid_sampling_frequency()),
         }
         Ok(self)
     }
 
-    pub fn location_ecef(mut self, location: Option<Vec<f64>>) -> Result<Self> {
+    pub fn location_ecef(
+        mut self, location: Option<Vec<f64>>,
+    ) -> Result<Self, Error> {
         if self.positions.is_some() && location.is_some() {
-            bail!("Cannot set position(s) more than once");
+            return Err(Error::duplicate_position());
         }
         if let Some(location) = location {
             self.mode = Some(MotionMode::Static);
@@ -140,9 +144,11 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
-    pub fn location(mut self, location: Option<Vec<f64>>) -> Result<Self> {
+    pub fn location(
+        mut self, location: Option<Vec<f64>>,
+    ) -> Result<Self, Error> {
         if self.positions.is_some() && location.is_some() {
-            bail!("Cannot set position(s) more than once");
+            return Err(Error::duplicate_position());
         }
         if let Some(location) = location {
             self.mode = Some(MotionMode::Static);
@@ -167,39 +173,50 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    pub fn user_mothon_file(mut self, file: Option<PathBuf>) -> Result<Self> {
+    pub fn user_mothon_file(
+        mut self, file: Option<PathBuf>,
+    ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
-            bail!("Cannot set position(s) more than once");
+            return Err(Error::duplicate_position());
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_user_motion(&file)?);
+            self.positions = Some(
+                read_user_motion(&file)
+                    .map_err(|e| Error::ParsingError(e.to_string()))?,
+            );
         }
         Ok(self)
     }
 
     pub fn user_mothon_llh_file(
         mut self, file: Option<PathBuf>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
-            bail!("Cannot set position(s) more than once");
+            return Err(Error::duplicate_position());
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_user_motion_llh(&file)?);
+            self.positions = Some(
+                read_user_motion_llh(&file)
+                    .map_err(|e| Error::ParsingError(e.to_string()))?,
+            );
         }
         Ok(self)
     }
 
     pub fn user_mothon_nmea_gga_file(
         mut self, file: Option<PathBuf>,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         if self.positions.is_some() && file.is_some() {
-            bail!("Cannot set position(s) more than once");
+            return Err(Error::duplicate_position());
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_nmea_gga(&file)?);
+            self.positions = Some(
+                read_nmea_gga(&file)
+                    .map_err(|e| Error::ParsingError(e.to_string()))?,
+            );
         }
         Ok(self)
     }
@@ -210,11 +227,11 @@ impl SignalGeneratorBuilder {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn build(mut self) -> Result<SignalGenerator> {
+    pub fn build(mut self) -> Result<SignalGenerator, Error> {
         // ensure navigation data is read
         let Some((count, mut ionoutc, mut ephemerides)) = self.ephemerides_data
         else {
-            bail!("You must set navigation!");
+            return Err(Error::navigation_not_set());
         };
         // check and set defaults
         // leap setting
@@ -225,14 +242,14 @@ impl SignalGeneratorBuilder {
             ionoutc.dtlsf = leap[2];
             #[allow(clippy::impossible_comparisons)]
             if ionoutc.day_number < 1 && ionoutc.day_number > 7 {
-                bail!("ERROR: Invalid GPS day number");
+                return Err(Error::invalid_gps_day());
             }
             if ionoutc.wnlsf < 0 {
-                bail!("ERROR: Invalid GPS week number")
+                return Err(Error::invalid_gps_week());
             }
             #[allow(clippy::impossible_comparisons)]
             if ionoutc.dtlsf < -128 && ionoutc.dtlsf > 127 {
-                bail!("ERROR: Invalid delta leap second");
+                return Err(Error::invalid_delta_leap_second());
             }
         }
         // positions
@@ -240,7 +257,7 @@ impl SignalGeneratorBuilder {
             if positions.len() == 1 {
                 self.mode = Some(MotionMode::Static);
             } else if positions.is_empty() {
-                bail!("Wrong positions!");
+                return Err(Error::wrong_positions());
             }
             positions
         } else {
@@ -258,7 +275,7 @@ impl SignalGeneratorBuilder {
         let mode = self.mode.unwrap_or(MotionMode::Static);
         // check duration
         if self.duration.is_some_and(|d| d < 0.0) {
-            bail!("ERROR: Invalid duration.");
+            return Err(Error::invalid_duration());
         }
         let user_motion_count = if let Some(duration) = self.duration {
             let duration_count = (duration * 10.0 + 0.5) as usize;
@@ -331,7 +348,7 @@ impl SignalGeneratorBuilder {
             } else if gps_time_0.diff_secs(&gpstime_min) < 0.0
                 || gpstime_max.diff_secs(&gps_time_0) < 0.0f64
             {
-                bail!("ERROR: Invalid start time.");
+                return Err(Error::invalid_start_time());
             }
             gps_time_0
         } else {
@@ -357,12 +374,12 @@ impl SignalGeneratorBuilder {
         }
 
         let Some(valid_ephemerides_index) = valid_ephemerides_index else {
-            bail!("ERROR: No current set of ephemerides has been found.");
+            return Err(Error::no_current_ephemerides());
         };
         // Disable ionospheric correction
         ionoutc.enable = self.ionospheric_disable.unwrap_or(true);
         let Some(data_format) = self.data_format else {
-            bail!("data format is not set");
+            return Err(Error::data_format_not_set());
         };
 
         let generator = SignalGenerator {

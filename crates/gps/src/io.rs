@@ -6,8 +6,8 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
-#[derive(Debug, Clone, Copy)]
+use crate::Error;
+#[derive(Debug, Copy, Clone)]
 pub enum DataFormat {
     Bits1 = 1,
     Bits8 = 8,
@@ -24,7 +24,7 @@ pub struct IQWriter {
 impl IQWriter {
     pub fn new(
         path: &PathBuf, format: DataFormat, buffer_size: usize,
-    ) -> Result<Self> {
+    ) -> Result<Self, Error> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
         let buffer = vec![0; 2 * buffer_size];
@@ -36,7 +36,8 @@ impl IQWriter {
         })
     }
 
-    pub fn write_samples(&mut self) -> Result<()> {
+    #[inline]
+    pub fn write_samples(&mut self) -> Result<(), Error> {
         match self.format {
             DataFormat::Bits1 => {
                 let mut iq8_buff = vec![0; self.buffer_size / 4];

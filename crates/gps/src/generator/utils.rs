@@ -24,7 +24,9 @@ type Data = (
 /// Reads Iono/UTC parameters and ephemeris data from RINEX navigation file.
 ///
 /// Ephemeris data is stored in approximately hourly groupings.
-pub fn read_navigatioin_data(file: &dyn AsRef<Path>) -> anyhow::Result<Data> {
+pub fn read_navigatioin_data(
+    file: &dyn AsRef<Path>,
+) -> Result<Data, crate::Error> {
     let rinex_data = rinex::Rinex::read_file(file)?;
     let mut ephemeris_data: Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]> =
         std::array::from_fn(|_| std::array::from_fn(|_| Ephemeris::default()))

@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use constants::*;
 use geometry::Ecef;
 
 use crate::{
+    Error,
     channel::Channel,
     datetime::{DateTime, GpsTime},
     ephemeris::Ephemeris,
@@ -69,7 +69,7 @@ impl Default for SignalGenerator {
     }
 }
 impl SignalGenerator {
-    pub fn initialize(&mut self) -> Result<()> {
+    pub fn initialize(&mut self) -> Result<(), Error> {
         // Initialize channels
         match self.mode {
             MotionMode::Static => eprintln!("Using static location mode."),
@@ -187,12 +187,13 @@ impl SignalGenerator {
         visible_satellite_count
     }
 
-    fn generate_and_write_samples(&mut self) -> Result<()> {
+    #[inline]
+    fn generate_and_write_samples(&mut self) -> Result<(), Error> {
         let sampling_period = self.sample_frequency.recip();
         let writer = self
             .writer
             .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("IQWriter not initialized"))?;
+            .ok_or_else(|| Error::msg("IQWriter not initialized"))?;
         let buffer_size = writer.buffer_size;
         for isamp in 0..buffer_size {
             let mut i_acc: i32 = 0;
@@ -356,11 +357,10 @@ impl SignalGenerator {
 
     /// Generate baseband signals
     /// # Errors
-    /// Returns `anyhow::Error`
-    /// TODO: unroll `for i in 0..MAX_CHAN`, to make it faster around 12%
-    pub fn run_simulation(&mut self) -> Result<()> {
+    /// Returns `Error`
+    pub fn run_simulation(&mut self) -> Result<(), Error> {
         if !self.initialized {
-            anyhow::bail!("Not initialized!");
+            return Err(Error::msg("Not initialized!"));
         }
         // Determine the total number of simulation steps
         let num_steps = match self.mode {

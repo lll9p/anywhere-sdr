@@ -22,7 +22,6 @@ parsing.workspace = true
 rinex.workspace = true
 
 # external dependencies
-anyhow.workspace = true
 clap.workspace = true
 csv.workspace = true
 jiff.workspace = true
@@ -31,6 +30,7 @@ rayon.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+anyhow.workspace = true
 test-case.workspace = true
 
 [lints]

@@ -1,13 +1,12 @@
 #![cfg(not(debug_assertions))]
 use std::{path::PathBuf, println, process::Command};
 
-use anyhow::Result;
-use gps::SignalGeneratorBuilder;
+use gps::{Error, SignalGeneratorBuilder};
 use test_case::test_case;
 mod prepare;
 use prepare::{OUTPUT_DIR, PATH, prepare_c_bin};
 #[allow(non_snake_case)]
-fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder> {
+fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder, Error> {
     let mut builder = SignalGeneratorBuilder::default();
     for arg in args {
         match arg.as_slice() {
@@ -138,7 +137,7 @@ fn string_to_args(value: &str) -> Vec<Vec<String>> {
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_1b_dr.bin;-t=2022/01/01,11:45:14;-T", "c_1b_dr.bin" => matches Err(_); "set_datetime_override")]
 // TODO: should be fixed
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/rust_1b_leap.bin;-l=42.3569048,-71.2564075,0;-t=2022/01/01,23:55;-T;-L=2347,3,17", "c_1b_leap.bin" => matches Err(_); "leap")]
-fn test_builder(params: &str, c_bin_file: &str) -> Result<()> {
+fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
     let args = string_to_args(params);
     prepare_c_bin(&args, c_bin_file)?;
     let builder = to_builder(&args)?;
@@ -150,7 +149,7 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<()> {
         .as_ref()
         .and_then(|p| p.file_name().map(|n| n.to_str()))
         .flatten()
-        .ok_or(anyhow::Error::msg("Can not get file name"))?;
+        .ok_or(gps::Error::msg("Can not get file name"))?;
     let rust_file = PathBuf::from(OUTPUT_DIR).join(rust_file_name);
     assert!(rust_file.exists(), "Rust file not exists{rust_file_name}");
     let output = Command::new("diff")
