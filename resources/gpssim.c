@@ -2010,8 +2010,8 @@ void usage(void)
 					"  -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484\n"
 					"  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0\n"
 					"  -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19\n"
-					"  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss\n"
-					"  -T <date,time>   Overwrite TOC and TOE to scenario start time\n"
+					"  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss or \"now\" for current time\n"
+					"  -T               Overwrite TOC and TOE to scenario start time\n"
 					"  -d <duration>    Duration [sec] (dynamic mode max: %.0f, static mode max: %d)\n"
 					"  -o <output>      I/Q sampling data file (default: gpssim.bin)\n"
 					"  -s <frequency>   Sampling frequency [Hz] (default: 2600000)\n"
@@ -2111,7 +2111,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	while ((result = getopt(argc, argv, "e:u:x:g:c:l:o:s:b:L:T:t:d:ipv")) != -1)
+	while ((result = getopt(argc, argv, "e:u:x:g:c:l:o:s:b:L:Tt:d:ipv")) != -1)
 	{
 		switch (result)
 		{
@@ -2135,7 +2135,12 @@ int main(int argc, char *argv[])
 		case 'c':
 			// Static ECEF coordinates input mode
 			staticLocationMode = TRUE;
-			sscanf(optarg, "%lf,%lf,%lf", &xyz[0][0], &xyz[0][1], &xyz[0][2]);
+			// Use sscanf with explicit format to handle negative values
+			if (sscanf(optarg, "%lf,%lf,%lf", &xyz[0][0], &xyz[0][1], &xyz[0][2]) != 3)
+			{
+				fprintf(stderr, "ERROR: Invalid ECEF coordinates format. Expected X,Y,Z\n");
+				exit(1);
+			}
 			break;
 		case 'l':
 			// Static geodetic coordinates input mode
@@ -2169,26 +2174,29 @@ int main(int argc, char *argv[])
 			// enable custom Leap Event
 			ionoutc.leapen = TRUE;
 			sscanf(optarg, "%d,%d,%d", &ionoutc.wnlsf, &ionoutc.dn, &ionoutc.dtlsf);
-			if (ionoutc.dn < 1 && ionoutc.dn > 7)
+			if (ionoutc.dn < 1 || ionoutc.dn > 7)
 			{
-				fprintf(stderr, "ERROR: Invalid GPS day number");
+				fprintf(stderr, "ERROR: Invalid GPS day number\n");
 				exit(1);
 			}
 			if (ionoutc.wnlsf < 0)
 			{
-				fprintf(stderr, "ERROR: Invalid GPS week number");
+				fprintf(stderr, "ERROR: Invalid GPS week number\n");
 				exit(1);
 			}
-			if (ionoutc.dtlsf < -128 && ionoutc.dtlsf > 127)
+			if (ionoutc.dtlsf < -128 || ionoutc.dtlsf > 127)
 			{
-				fprintf(stderr, "ERROR: Invalid delta leap second");
+				fprintf(stderr, "ERROR: Invalid delta leap second\n");
 				exit(1);
 			}
 			break;
 		case 'T':
 			timeoverwrite = TRUE;
+			break;
+		case 't':
 			if (strncmp(optarg, "now", 3) == 0)
 			{
+				// Use current time
 				time_t timer;
 				struct tm *gmt;
 
@@ -2202,17 +2210,19 @@ int main(int argc, char *argv[])
 				t0.mm = gmt->tm_min;
 				t0.sec = (double)gmt->tm_sec;
 
-				date2gps(&t0, &g0);
-
-				break;
+				fprintf(stderr, "Using current time: %4d/%02d/%02d,%02d:%02d:%02.0f\n",
+						t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec);
 			}
-		case 't':
-			sscanf(optarg, "%d/%d/%d,%d:%d:%lf", &t0.y, &t0.m, &t0.d, &t0.hh, &t0.mm, &t0.sec);
-			if (t0.y <= 1980 || t0.m < 1 || t0.m > 12 || t0.d < 1 || t0.d > 31 ||
-				t0.hh < 0 || t0.hh > 23 || t0.mm < 0 || t0.mm > 59 || t0.sec < 0.0 || t0.sec >= 60.0)
+			else
 			{
-				fprintf(stderr, "ERROR: Invalid date and time.\n");
-				exit(1);
+				// Parse date and time from argument
+				sscanf(optarg, "%d/%d/%d,%d:%d:%lf", &t0.y, &t0.m, &t0.d, &t0.hh, &t0.mm, &t0.sec);
+				if (t0.y <= 1980 || t0.m < 1 || t0.m > 12 || t0.d < 1 || t0.d > 31 ||
+					t0.hh < 0 || t0.hh > 23 || t0.mm < 0 || t0.mm > 59 || t0.sec < 0.0 || t0.sec >= 60.0)
+				{
+					fprintf(stderr, "ERROR: Invalid date and time.\n");
+					exit(1);
+				}
 			}
 			t0.sec = floor(t0.sec);
 			date2gps(&t0, &g0);
@@ -2311,15 +2321,23 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		// Static geodetic coordinates input mode: "-l"
-		// Added by scateu@gmail.com
+		// Static mode (either ECEF or geodetic coordinates)
 		fprintf(stderr, "Using static location mode.\n");
 
 		// Set simulation duration
 		numd = iduration;
 
-		// Set user initial position
-		llh2xyz(llh, xyz[0]);
+		// If we're using geodetic coordinates (from -l option), convert to ECEF
+		// For ECEF coordinates (from -c option), we already have xyz[0] set
+		if (llh[0] != 0.0 || llh[1] != 0.0 || llh[2] != 0.0)
+		{
+			llh2xyz(llh, xyz[0]);
+		}
+		else
+		{
+			// If we're using ECEF coordinates, compute the corresponding LLH
+			xyz2llh(xyz[0], llh);
+		}
 	}
 
 	fprintf(stderr, "xyz = %11.1f, %11.1f, %11.1f\n", xyz[0][0], xyz[0][1], xyz[0][2]);
@@ -2390,7 +2408,7 @@ int main(int argc, char *argv[])
 			double dsec;
 
 			gtmp.week = g0.week;
-			gtmp.sec = (double)(((int)(g0.sec)) / 7200) * 7200.0;
+			gtmp.sec = (double)(((int)(g0.sec)) / 7200) * 7200.0; // Round to nearest 2-hour boundary
 
 			dsec = subGpsTime(gtmp, gmin);
 
