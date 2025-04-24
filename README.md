@@ -2,6 +2,26 @@
 
 A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim). It generates GPS L1 C/A signals that can be transmitted through SDR devices.
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Command Line Usage](#command-line-usage)
+  - [Library Usage](#library-usage)
+  - [Command Line Options](#command-line-options)
+  - [Usage Examples](#usage-examples)
+- [Direct Sample Access API](#direct-sample-access-api)
+- [Testing](#testing)
+  - [Compatibility Tests](#compatibility-tests)
+  - [Completed Features](#completed-features)
+- [License](#license)
+- [Contributing](#contributing)
+- [Authors](#authors)
+- [Roadmap](#roadmap)
+  - [Upcoming Features](#upcoming-features)
+- [Acknowledgments](#acknowledgments)
+
 > [!NOTE]
 > This project is still under development.
 >
@@ -9,6 +29,8 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 > Future versions will extend beyond [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) as we implement new features and improvements.
 
 ## Features
+
+[Back to Table of Contents](#table-of-contents)
 
 - **Signal Generation**: GPS L1 C/A signals with configurable parameters
 - **Position Modes**:
@@ -24,10 +46,12 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
   - Configurable sampling frequency
   - File output or direct buffer access via API
 - **Signal Modeling**:
-  - Ionospheric delay (can be disabled)
+  - Ionospheric delay correction (can be disabled with `-i` flag)
   - Path loss simulation with configurable gain
 
 ## Installation
+
+[Back to Table of Contents](#table-of-contents)
 
 This project is not yet published to crates.io. To use it, clone the repository and build it locally:
 
@@ -38,6 +62,8 @@ cargo build --release
 ```
 
 ## Usage
+
+[Back to Table of Contents](#table-of-contents)
 
 ### Command Line Usage
 
@@ -59,6 +85,7 @@ let builder = SignalGeneratorBuilder::default()
     .location(Some(vec![35.6813, 139.7662, 10.0])).unwrap()
     .duration(Some(60.0))
     .data_format(Some(8)).unwrap()
+    .ionospheric_disable(Some(true))  // Disable ionospheric delay correction
     .output_file(Some(PathBuf::from("output.bin")));
 
 // Build and run the generator
@@ -81,7 +108,7 @@ generator.run_simulation().unwrap();
 - `-o <output>`: I/Q sampling data file (default: gpssim.bin)
 - `-s <frequency>`: Sampling frequency in Hz (default: 2600000)
 - `-b <iq_bits>`: I/Q data format [1/8/16] (default: 16)
-- `-i`: Disable ionospheric delay for spacecraft scenario
+- `-i`: Disable ionospheric delay correction (useful for spacecraft scenarios)
 - `-p [fixed_gain]`: Disable path loss and hold power level constant
 - `-v`: Show details about simulated channels
 
@@ -102,9 +129,14 @@ gpssim -e brdc0010.22n -d 30.0 -t now -T -l 35.681298,139.766247,10.0
 
 # Generate signal with leap second parameters
 gpssim -e brdc0010.22n -d 30.0 -L 2347,3,17 -l 42.3569048,-71.2564075,0
+
+# Generate signal with ionospheric delay correction disabled
+gpssim -e brdc0010.22n -d 30.0 -i -l 35.681298,139.766247,10.0
 ```
 
 ## Direct Sample Access API
+
+[Back to Table of Contents](#table-of-contents)
 
 The library provides an API for direct sample access without file I/O. This allows integration with other applications or real-time processing:
 
@@ -131,6 +163,8 @@ for step in 0..num_steps {
 
 ## Testing
 
+[Back to Table of Contents](#table-of-contents)
+
 Run the standard test suite:
 
 ```bash
@@ -143,6 +177,16 @@ The integration tests in `@crates/gps/tests/test-generator.rs` only run in relea
 cargo test --release
 ```
 
+To run specific test cases:
+
+```bash
+# Run a specific test by name
+cargo test --release -p gps --test test-generator test_data_format_1bit
+
+# Run all tests related to sampling frequency
+cargo test --release -p gps --test test-generator test_sampling_frequency
+```
+
 Note: Some tests (like leap second handling and time override) don't compare binary outputs directly due to slight implementation differences between the Rust and C versions.
 
 ### Compatibility Tests
@@ -150,7 +194,7 @@ Note: Some tests (like leap second handling and time override) don't compare bin
 The following compatibility tests have been implemented and verified:
 
 - Data format tests (1-bit, 8-bit, 16-bit)
-- Custom sampling frequency
+- Custom sampling frequency (1MHz, 2MHz, 5MHz)
 - NMEA GGA stream input
 - Circular motion trajectory (ECEF and LLH formats)
 - Static location (lat/lon/height and ECEF coordinates)
@@ -158,6 +202,10 @@ The following compatibility tests have been implemented and verified:
 - Custom date/time setting
 - Date/time override functionality
 - Leap second handling
+- Ionospheric delay disable
+- Verbose output mode
+- Different simulation durations
+- Parameter combinations (location + frequency + bit format, etc.)
 
 ### Completed Features
 
@@ -166,43 +214,58 @@ All core features have been implemented, including:
 - Date/time override functionality (`-T` flag)
 - Leap second handling (`-L` flag)
 - ECEF coordinate parsing (`-c` parameter)
+- Ionospheric delay correction (with `-i` flag to disable)
+- Comprehensive test suite with meaningful test cases
 
 ## License
+
+[Back to Table of Contents](#table-of-contents)
 
 See the LICENSE file for details.
 
 ## Contributing
 
+[Back to Table of Contents](#table-of-contents)
+
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Authors
+
+[Back to Table of Contents](#table-of-contents)
 
 - Lao Lilin <lll9p.china@gmail.com>
 
 ## Roadmap
 
+[Back to Table of Contents](#table-of-contents)
+
 ### Upcoming Features
 
-- **Signal Generation**
-  - [x] GPS L1 C/A signal generation
-  - [x] Static position simulation
-  - [x] Dynamic trajectory simulation
-  - [ ] Advanced position movement (acceleration, jerk control)
-  - [ ] Support for additional GNSS systems (Galileo, BeiDou, GLONASS)
+#### Signal Generation
 
-- **Input/Output**
-  - [x] RINEX navigation file support
-  - [x] User motion file support (ECEF and LLH formats)
-  - [x] NMEA GGA stream support
-  - [x] Direct sample access API
-  - [ ] Real-time streaming output
-  - [ ] Direct SDR hardware integration
+- [x] GPS L1 C/A signal generation
+- [x] Static position simulation
+- [x] Dynamic trajectory simulation
+- [ ] Advanced position movement (acceleration, jerk control)
+- [ ] Support for additional GNSS systems (Galileo, BeiDou, GLONASS)
 
-- **Error Handling & Performance**
-  - [x] Implement error handling with thiserror
-  - [x] Optimize critical path performance
-  - [ ] Multi-threaded signal generation
+#### Input/Output
+
+- [x] RINEX navigation file support
+- [x] User motion file support (ECEF and LLH formats)
+- [x] NMEA GGA stream support
+- [x] Direct sample access API
+- [ ] Real-time streaming output
+- [ ] Direct SDR hardware integration
+
+#### Error Handling & Performance
+
+- [x] Implement error handling with thiserror
+- [x] Optimize critical path performance
+- [ ] Multi-threaded signal generation
 
 ## Acknowledgments
+
+[Back to Table of Contents](#table-of-contents)
 
 This project is inspired by the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project and aims to provide a modern Rust implementation with improved performance, maintainability, and extensibility.
