@@ -181,10 +181,9 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(
-                read_user_motion(&file)
-                    .map_err(|e| Error::ParsingError(e.to_string()))?,
-            );
+            self.positions = Some(read_user_motion(&file).map_err(|e| {
+                Error::ParsingError(format!("User motion file error: {e}"))
+            })?);
         }
         Ok(self)
     }
@@ -197,10 +196,12 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(
-                read_user_motion_llh(&file)
-                    .map_err(|e| Error::ParsingError(e.to_string()))?,
-            );
+            self.positions =
+                Some(read_user_motion_llh(&file).map_err(|e| {
+                    Error::ParsingError(format!(
+                        "User motion LLH file error: {e}"
+                    ))
+                })?);
         }
         Ok(self)
     }
@@ -213,10 +214,9 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(
-                read_nmea_gga(&file)
-                    .map_err(|e| Error::ParsingError(e.to_string()))?,
-            );
+            self.positions = Some(read_nmea_gga(&file).map_err(|e| {
+                Error::ParsingError(format!("NMEA GGA file error: {e}"))
+            })?);
         }
         Ok(self)
     }

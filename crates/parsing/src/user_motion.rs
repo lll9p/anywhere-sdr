@@ -2,56 +2,142 @@ use std::{fs, path::PathBuf};
 
 use constants::R2D;
 use geometry::{Ecef, Location};
-///  \brief Read the list of user motions from the input file
-///  \param[out] xyz Output array of ECEF vectors for user motion
-///  \param[[in] filename File name of the text input file
-///  \returns Number of user data motion records read, -1 on error
-pub fn read_user_motion(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
+
+use crate::{Error, Result};
+
+/// Read the list of user motions from the input file in ECEF format
+///
+/// The file should be in CSV format with each line containing:
+/// time, x, y, z
+///
+/// Returns a vector of ECEF coordinates
+pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
-    let lines = content.lines();
-    for line in lines {
-        let line_vec = line.split(',').collect::<Vec<&str>>();
-        xyz.push(Ecef::from(&[
-            line_vec[1].trim().parse()?,
-            line_vec[2].trim().parse()?,
-            line_vec[3].trim().parse()?,
-        ]));
+
+    // Create a CSV reader with comma delimiter
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .delimiter(b',')
+        .from_reader(content.as_bytes());
+
+    for result in rdr.records() {
+        let record = result?;
+
+        // Ensure we have enough fields
+        if record.len() < 4 {
+            return Err(Error::invalid_user_motion(format!(
+                "Expected at least 4 fields (time,x,y,z), got {}",
+                record.len()
+            )));
+        }
+
+        // Extract and parse ECEF coordinates
+        let x = record
+            .get(1)
+            .ok_or_else(|| Error::missing_field("x coordinate"))?
+            .trim()
+            .parse()?;
+
+        let y = record
+            .get(2)
+            .ok_or_else(|| Error::missing_field("y coordinate"))?
+            .trim()
+            .parse()?;
+
+        let z = record
+            .get(3)
+            .ok_or_else(|| Error::missing_field("z coordinate"))?
+            .trim()
+            .parse()?;
+
+        xyz.push(Ecef::from(&[x, y, z]));
     }
+
+    if xyz.is_empty() {
+        return Err(Error::invalid_user_motion(
+            "No valid motion records found".to_string(),
+        ));
+    }
+
     Ok(xyz)
 }
-///  \brief Read the list of user motions from the input file
-///  \param[out] xyz Output array of `LatLonHei` coordinates for user motion
-///  \param[[in] filename File name of the text input file with format
-/// Lat,Lon,Hei  \returns Number of user data motion records read, -1 on error
+
+/// Read the list of user motions from the input file in LLH format
+///
+/// The file should be in CSV format with each line containing:
+/// time, latitude, longitude, height
+///
+/// Returns a vector of ECEF coordinates converted from LLH
 ///
 /// Added by romalvarezllorens@gmail.com
-pub fn read_user_motion_llh(filename: &PathBuf) -> anyhow::Result<Vec<Ecef>> {
+pub fn read_user_motion_llh(filename: &PathBuf) -> Result<Vec<Ecef>> {
     let mut xyz = Vec::new();
     let content = fs::read_to_string(filename)?;
-    let lines = content.lines();
-    for line in lines {
-        let line_vec = line.split(',').collect::<Vec<&str>>();
-        let mut llh = Location::from(&[
-            line_vec[1].trim().parse()?,
-            line_vec[2].trim().parse()?,
-            line_vec[3].trim().parse()?,
-        ]);
+
+    // Create a CSV reader with comma delimiter
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .delimiter(b',')
+        .from_reader(content.as_bytes());
+
+    for result in rdr.records() {
+        let record = result?;
+
+        // Ensure we have enough fields
+        if record.len() < 4 {
+            return Err(Error::invalid_user_motion(format!(
+                "Expected at least 4 fields (time,lat,lon,height), got {}",
+                record.len()
+            )));
+        }
+
+        // Extract and parse LLH coordinates
+        let lat = record
+            .get(1)
+            .ok_or_else(|| Error::missing_field("latitude"))?
+            .trim()
+            .parse()?;
+
+        let lon = record
+            .get(2)
+            .ok_or_else(|| Error::missing_field("longitude"))?
+            .trim()
+            .parse()?;
+
+        let height = record
+            .get(3)
+            .ok_or_else(|| Error::missing_field("height"))?
+            .trim()
+            .parse()?;
+
+        let mut llh = Location::from(&[lat, lon, height]);
+
+        // Validate coordinates
         if llh.latitude > 90.0
             || llh.latitude < -90.0
             || llh.longitude > 180.0
             || llh.longitude < -180.0
         {
-            anyhow::bail!(
-                "ERROR: Invalid file format (time[s], latitude[deg], \
-                 longitude[deg], height [m].\n"
-            );
+            return Err(Error::invalid_coordinates(
+                llh.latitude,
+                llh.longitude,
+            ));
         }
-        llh.latitude /= R2D; // convert to RAD
-        llh.longitude /= R2D; // convert to RAD
-        // let mut xyz_item = [0.0; 3];
-        // llh2xyz(&llh, &mut xyz_item);
+
+        // Convert to radians
+        llh.latitude /= R2D;
+        llh.longitude /= R2D;
+
+        // Convert to ECEF
         xyz.push(Ecef::from(&llh));
     }
+
+    if xyz.is_empty() {
+        return Err(Error::invalid_user_motion(
+            "No valid motion records found".to_string(),
+        ));
+    }
+
     Ok(xyz)
 }
