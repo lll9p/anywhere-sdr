@@ -1,7 +1,7 @@
 {
   "name": "Anywhere-SDR",
   "version": "0.0.1",
-  "system_prompt": "You are assisting with the development of Anywhere-SDR, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals, with plans to add support for other systems like BeiDou in the future. The project includes a modified version of libhackrf-rs for HackRF device integration, with the main change being the replacement of rusb with nusb for improved USB communication.",
+  "system_prompt": "You are assisting with the development of Anywhere-SDR, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals compatible with gps-sdr-sim, with plans to add support for other systems like BeiDou in the future. The project follows Rust 2024 edition standards and uses thiserror for error handling. The codebase is organized into modular crates (constants, geometry, gps, parsing, rinex, libhackrf) with a CLI application. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
   "vars": {
     "project_repo": "https://github.com/lll9p/anywhere-sdr"
   },
@@ -62,86 +62,87 @@
       ]
     },
     {
-      "name": "Core Modules",
-      "system_prompt": "This group contains the core modules responsible for GPS signal generation algorithms and satellite data calculations.",
+      "name": "GPS Signal Generation",
+      "system_prompt": "This group contains the core components for GPS signal generation, including the signal generator, builder pattern implementation, and channel processing.",
       "data": [
+        "gps-gps",
+        "gps-generator",
+        "gps-generator-mod",
+        "gps-signal-builder",
+        "gps-generator-utils",
         "gps-channel",
+        "gps-propagation",
         "gps-ephemeris",
         "gps-ionoutc",
-        "gps-propagation",
-        "gps-gps"
+        "gps-table"
       ]
     },
     {
-      "name": "Signal Generation",
-      "system_prompt": "This group focuses on the signal generation components that create the actual GPS signals.",
+      "name": "Coordinate Systems",
+      "system_prompt": "This group contains modules for handling coordinate systems, geometric transformations, and location calculations essential for GPS positioning.",
       "data": [
-        "gps-signal-builder",
-        "gps-generator",
-        "gps-generator-utils",
-        "gps-channel"
+        "geometry-geometry",
+        "geometry-coordinates",
+        "geometry-transformation",
+        "geometry-traits",
+        "geometry-error"
       ]
     },
     {
-      "name": "Data Parsing",
-      "system_prompt": "This group contains modules for parsing various input formats like RINEX navigation files and NMEA GGA streams.",
+      "name": "Data Parsing and Input",
+      "system_prompt": "This group contains modules for parsing various input formats like RINEX navigation files, user motion files, and NMEA GGA streams.",
       "data": [
+        "parsing-mod",
         "parsing-nmea",
         "parsing-user-motion",
-        "parsing-mod",
+        "parsing-error",
+        "rinex-mod",
         "rinex-ephemeris",
         "rinex-ephemeris-orbit",
         "rinex-rule",
-        "rinex-error",
-        "rinex-mod",
         "rinex-utc",
-        "rinex-utils"
+        "rinex-utils",
+        "rinex-error",
+        "gps-io"
       ]
-    },
-    {
-      "name": "Geometry and Coordinates",
-      "system_prompt": "This group contains modules for handling coordinate systems and geometric transformations.",
-      "data": [
-        "geometry-coordinates",
-        "geometry-transformation",
-        "geometry-geometry",
-        "geometry-traits",
-        "geometry-tests"
-      ]
-    },
-    {
-      "name": "Time Systems",
-      "system_prompt": "This group focuses on GPS time conversion and date calculations.",
-      "data": ["gps-datetime"]
     },
     {
       "name": "CLI Application",
-      "system_prompt": "This group contains the command-line interface application components.",
-      "data": ["gpssim-cli", "gpssim-main", "gpssim-utils"]
+      "system_prompt": "This group contains the command-line interface application components for the GPS simulator.",
+      "data": ["gpssim-main", "gpssim-cli", "gpssim-utils", "gpssim-error"]
     },
     {
-      "name": "Utility Functions",
-      "system_prompt": "This group contains various utility functions used throughout the project.",
-      "data": ["gps-io", "gps-table"]
+      "name": "HackRF Integration",
+      "system_prompt": "This group contains modules for interfacing with HackRF software-defined radio devices. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
+      "data": [
+        "libhackrf-lib",
+        "libhackrf-hackrf",
+        "libhackrf-constants",
+        "libhackrf-enums",
+        "libhackrf-error",
+        "libhackrf-prelude",
+        "libhackrf-tests"
+      ]
     },
     {
-      "name": "Constants and Definitions",
-      "system_prompt": "This group contains constant values and basic type definitions used throughout the project.",
-      "data": ["constants-constants"]
-    },
-    {
-      "name": "Project Documentation",
-      "system_prompt": "This group contains project documentation and configuration files.",
-      "data": ["readme", "project-cargo"]
+      "name": "Core Utilities",
+      "system_prompt": "This group contains utility modules, constants, and time-related functionality used throughout the project.",
+      "data": [
+        "constants-constants",
+        "gps-datetime",
+        "gps-delay",
+        "gps-delay-ionospheric"
+      ]
     },
     {
       "name": "Tests",
-      "system_prompt": "This group contains test files for verifying the functionality of the GPS signal generator.",
+      "system_prompt": "This group contains test files for verifying the functionality of the GPS signal generator and other components.",
       "data": [
         "gps-tests-prepare",
         "gps-tests-generator",
         "rinex-tests",
-        "geometry-tests"
+        "geometry-tests",
+        "libhackrf-tests"
       ]
     },
     {
@@ -157,17 +158,9 @@
       ]
     },
     {
-      "name": "HackRF Integration",
-      "system_prompt": "This group contains modules for interfacing with HackRF software-defined radio devices. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
-      "data": [
-        "libhackrf-lib",
-        "libhackrf-hackrf",
-        "libhackrf-constants",
-        "libhackrf-enums",
-        "libhackrf-error",
-        "libhackrf-prelude",
-        "libhackrf-tests"
-      ]
+      "name": "Project Documentation",
+      "system_prompt": "This group contains project documentation and configuration files.",
+      "data": ["readme", "project-cargo"]
     }
   ],
   "data": {
@@ -199,7 +192,7 @@
     "constants-constants": {
       "type": "symbols",
       "path": "crates/constants/src/constants.rs",
-      "description": "Constants used throughout the GPS signal generation process."
+      "description": "Global constants used throughout the project, including GPS signal parameters, mathematical constants, time conversion values, and data format definitions."
     },
     "gps-datetime": {
       "type": "symbols",
@@ -239,7 +232,7 @@
     "geometry-geometry": {
       "type": "symbols",
       "path": "crates/geometry/src/geometry.rs",
-      "description": "Core geometry module that defines the main geometry types and functions."
+      "description": "Main entry point for the geometry crate, defining module structure and re-exporting coordinate types (Ecef, Location, Azel, Neu) and location math traits."
     },
     "geometry-traits": {
       "type": "symbols",
@@ -259,7 +252,7 @@
     "gps-gps": {
       "type": "symbols",
       "path": "crates/gps/src/gps.rs",
-      "description": "Core GPS functionality and data structures."
+      "description": "Main entry point for the GPS crate, defining module structure and re-exporting key components like SignalGenerator and SignalGeneratorBuilder."
     },
     "gps-ionoutc": {
       "type": "symbols",
@@ -279,22 +272,22 @@
     "gps-signal-builder": {
       "type": "symbols",
       "path": "crates/gps/src/generator/builder.rs",
-      "description": "Builder pattern implementation for GPS signal generation."
+      "description": "SignalGeneratorBuilder implementation providing a fluent API for configuring GPS signal generation parameters with validation."
     },
     "gps-generator": {
       "type": "symbols",
       "path": "crates/gps/src/generator/signal_generator.rs",
-      "description": "Core signal generation functionality for GPS L1 C/A signals."
+      "description": "Core SignalGenerator implementation for GPS L1 C/A signals, handling satellite signal generation, channel allocation, and simulation execution."
     },
     "gps-generator-utils": {
       "type": "symbols",
       "path": "crates/gps/src/generator/utils.rs",
-      "description": "Utility functions for GPS signal generation."
+      "description": "Utility functions and helper types for GPS signal generation, including MotionMode enum for different position input methods."
     },
     "gps-generator-mod": {
       "type": "symbols",
       "path": "crates/gps/src/generator.rs",
-      "description": "Module definition for the generator components."
+      "description": "Module definition for the generator components, re-exporting SignalGenerator, SignalGeneratorBuilder, and MotionMode for public use."
     },
     "parsing-nmea": {
       "type": "symbols",
@@ -309,7 +302,7 @@
     "parsing-mod": {
       "type": "symbols",
       "path": "crates/parsing/src/parsing.rs",
-      "description": "Module definition for the parsing components."
+      "description": "Main entry point for the parsing crate, re-exporting functions for reading NMEA GGA streams and user motion files in different formats."
     },
     "parsing-error": {
       "type": "symbols",
@@ -339,7 +332,7 @@
     "rinex-mod": {
       "type": "symbols",
       "path": "crates/rinex/src/rinex.rs",
-      "description": "Module definition for the RINEX components."
+      "description": "Main entry point for the RINEX crate, defining module structure and re-exporting key components for parsing RINEX navigation files."
     },
     "rinex-utc": {
       "type": "symbols",
@@ -364,7 +357,7 @@
     "gps-tests-generator": {
       "type": "symbols",
       "path": "crates/gps/tests/test-generator.rs",
-      "description": "Tests for the GPS signal generator functionality."
+      "description": "Comprehensive integration tests for the GPS signal generator functionality, comparing outputs with the original C implementation. These tests only run in release mode."
     },
     "rinex-tests": {
       "type": "symbols",
@@ -374,17 +367,17 @@
     "readme": {
       "type": "file",
       "path": "README.md",
-      "description": "Project documentation including features, installation instructions, and usage examples."
+      "description": "Project documentation including features, installation instructions, usage examples, and roadmap for future development. Contains navigation links for each section."
     },
     "project-cargo": {
       "type": "file",
       "path": "Cargo.toml",
-      "description": "Main Cargo configuration file for the workspace."
+      "description": "Main Cargo configuration file for the workspace, defining crate dependencies, workspace settings, and project metadata. Includes clippy lint configurations."
     },
     "libhackrf-lib": {
       "type": "symbols",
       "path": "crates/libhackrf/src/lib.rs",
-      "description": "Main library module for the libhackrf crate, providing a safe and idiomatic Rust interface to HackRF devices."
+      "description": "Main entry point for the libhackrf crate, defining module structure and providing a safe and idiomatic Rust interface to HackRF devices. Modified from libhackrf-rs with nusb replacing rusb."
     },
     "libhackrf-hackrf": {
       "type": "symbols",
@@ -414,7 +407,7 @@
     "libhackrf-tests": {
       "type": "symbols",
       "path": "crates/libhackrf/src/tests.rs",
-      "description": "Tests for the libhackrf crate that require physical HackRF hardware to run, marked with #[ignore]."
+      "description": "Tests for the libhackrf crate that require physical HackRF hardware to run, marked with #[ignore] to prevent automatic execution during normal test runs."
     }
   }
 }
