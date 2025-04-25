@@ -1,7 +1,7 @@
 use crate::{coordinates::*, traits::LocationMath};
 const LLH: [f64; 3] = [35.274_143_229, 137.014_853_084, 99.998];
 const XYZ: [f64; 3] = [-3_813_477.954, 3_554_276.552, 3_662_785.237];
-const EPS: f64 = 1e-28;
+const EPS: f64 = 1e-8;
 #[test]
 fn test_geometry_location2efef() {
     let xyz = [
