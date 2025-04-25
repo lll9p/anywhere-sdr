@@ -328,7 +328,7 @@ The `libhackrf` crate used in this project is a modified version of [libhackrf-r
 [ci-shield]: https://img.shields.io/github/actions/workflow/status/lll9p/anywhere-sdr/ci.yaml?style=for-the-badge
 [ci-url]: https://github.com/lll9p/anywhere-sdr/actions/workflows/ci.yaml
 
-[release-shield]: https://img.shields.io/github/v/release/lll9p/anywhere-release?style=for-the-badge
+[release-shield]: https://img.shields.io/github/v/release/lll9p/anywhere-sdr?include_prereleases&sort=semver&style=for-the-badge
 [release-url]: https://github.com/lll9p/anywhere-sdr/releases
 
 [paypal-shield]: https://img.shields.io/badge/paypal-donate-green.svg?style=for-the-badge
