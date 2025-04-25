@@ -113,6 +113,12 @@ impl IQWriter {
                 }
 
                 // Write the packed bits to the file
+                // SAFETY: We're creating a byte slice from a valid vector of i8
+                // values. The vector is allocated and
+                // initialized above, and we're only reading the
+                // raw bytes to write them to a file. The slice lifetime is
+                // limited to this function call and doesn't
+                // outlive the vector.
                 unsafe {
                     self.writer.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr().cast::<u8>(),
@@ -131,6 +137,12 @@ impl IQWriter {
                 }
 
                 // Write the 8-bit samples to the file
+                // SAFETY: We're creating a byte slice from a valid vector of i8
+                // values. The vector is allocated and
+                // initialized above, and we're only reading the
+                // raw bytes to write them to a file. The slice lifetime is
+                // limited to this function call and doesn't
+                // outlive the vector.
                 unsafe {
                     self.writer.write_all(std::slice::from_raw_parts(
                         iq8_buff.as_ptr().cast::<u8>(),
@@ -140,6 +152,12 @@ impl IQWriter {
             }
             DataFormat::Bits16 => {
                 // For 16-bit format, write samples directly
+                // SAFETY: We're creating a byte slice from the internal i16
+                // buffer. The buffer is allocated and
+                // initialized before this function is called,
+                // and we're only reading the raw bytes to write them to a file.
+                // The slice lifetime is limited to this function call and
+                // doesn't outlive the buffer.
                 let byte_slice = unsafe {
                     std::slice::from_raw_parts(
                         self.buffer.as_ptr().cast::<u8>(),

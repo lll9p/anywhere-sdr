@@ -8,8 +8,11 @@ use crate::traits::LocationMath;
 /// - Height: Meters above WGS84 ellipsoid
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Location {
+    /// Latitude in degrees (-90° to 90°)
     pub latitude: f64,
+    /// Longitude in degrees (-180° to 180°)
     pub longitude: f64,
+    /// Height above WGS84 ellipsoid in meters
     pub height: f64,
 }
 impl Location {
@@ -128,11 +131,23 @@ impl std::fmt::Display for Location {
 /// - Z: Through north pole
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Ecef {
+    /// X coordinate in meters (through equator at 0° longitude)
     pub x: f64,
+    /// Y coordinate in meters (through equator at 90° east)
     pub y: f64,
+    /// Z coordinate in meters (through north pole)
     pub z: f64,
 }
 impl Ecef {
+    /// Creates a new ECEF coordinate with the specified values.
+    ///
+    /// # Arguments
+    /// * `x` - X coordinate in meters
+    /// * `y` - Y coordinate in meters
+    /// * `z` - Z coordinate in meters
+    ///
+    /// # Returns
+    /// A new ECEF coordinate
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
     }
@@ -189,11 +204,24 @@ impl std::ops::Mul<f64> for Ecef {
 /// - Up: Local vertical direction
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Neu {
+    /// North component in meters
     pub north: f64,
+    /// East component in meters
     pub east: f64,
+    /// Up (vertical) component in meters
     pub up: f64,
 }
 impl Neu {
+    /// Converts ECEF coordinates to NEU coordinates using a local tangent plane
+    /// rotation matrix.
+    ///
+    /// # Arguments
+    /// * `ecef` - ECEF coordinates to convert
+    /// * `ltcmat` - Local tangent plane rotation matrix from a reference
+    ///   location
+    ///
+    /// # Returns
+    /// NEU coordinates relative to the reference location
     pub fn from_ecef(ecef: &Ecef, ltcmat: [[f64; 3]; 3]) -> Self {
         let north = ltcmat[0][0] * ecef.x
             + ltcmat[0][1] * ecef.y
@@ -229,15 +257,24 @@ impl LocationMath for Neu {
 /// - Elevation: Angle above horizon (0°-90°)
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Azel {
+    /// Azimuth angle in degrees (0-360°, clockwise from north)
     pub az: f64,
+    /// Elevation angle in degrees (0-90°, above horizon)
     pub el: f64,
 }
 
+/// Represents a navigation target with bearing and location information.
+///
+/// This structure is used for navigation calculations, allowing for
+/// incremental movement along a bearing from a starting location.
 #[derive(Debug)]
 pub struct NavigationTarget {
+    /// Step size in degrees for bearing adjustments
     bearing_step: f64,
-    bearing: f64,       // 0~360°
-    location: Location, // current location
+    /// Current bearing in degrees (0-360°)
+    bearing: f64,
+    /// Current location
+    location: Location,
 }
 impl Default for NavigationTarget {
     fn default() -> Self {
@@ -249,29 +286,63 @@ impl Default for NavigationTarget {
     }
 }
 impl NavigationTarget {
+    /// Creates a new `NavigationTarget` with default values.
+    ///
+    /// # Returns
+    /// A new `NavigationTarget` with bearing step of 1.0 degree, bearing of 0.0
+    /// degrees, and default location.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Normalizes a bearing value to the range [0, 360) degrees.
+    ///
+    /// # Arguments
+    /// * `bearing` - The bearing value to normalize
+    ///
+    /// # Returns
+    /// The normalized bearing in the range [0, 360) degrees
     fn truncate_bearing(bearing: f64) -> f64 {
         (bearing + 360.0) % 360.0
     }
 
+    /// Increments the current bearing by the bearing step.
+    ///
+    /// This method increases the bearing by the bearing step value,
+    /// normalizing the result to the range [0, 360) degrees.
     pub fn inc_bearing(&mut self) {
         let bearing = (self.bearing + self.bearing_step) % 360.0;
         self.bearing = Self::truncate_bearing(bearing);
     }
 
+    /// Decrements the current bearing by the bearing step.
+    ///
+    /// This method decreases the bearing by the bearing step value,
+    /// normalizing the result to the range [0, 360) degrees.
     pub fn dec_bearing(&mut self) {
         let bearing = (self.bearing - self.bearing_step) % 360.0;
         self.bearing = Self::truncate_bearing(bearing);
     }
 
+    /// Sets the current location.
+    ///
+    /// # Arguments
+    /// * `location` - The new location
+    ///
+    /// # Returns
+    /// A mutable reference to self for method chaining
     pub fn set_location(&mut self, location: Location) -> &mut Self {
         self.location = location;
         self
     }
 
+    /// Calculates the bearing from the current location to another location.
+    ///
+    /// # Arguments
+    /// * `location` - The target location
+    ///
+    /// # Returns
+    /// The bearing in degrees from the current location to the target location
     pub fn bearing(&self, location: &Location) -> f64 {
         let lat1 = self.location.latitude.to_radians();
         let lon1 = self.location.longitude.to_radians();
@@ -282,6 +353,14 @@ impl NavigationTarget {
         y.atan2(x).to_degrees()
     }
 
+    /// Moves the current location along the current bearing by the specified
+    /// distance.
+    ///
+    /// # Arguments
+    /// * `distance` - The distance to move in meters
+    ///
+    /// # Returns
+    /// The new location after moving
     pub fn go(&mut self, distance: f64) -> Location {
         let location_rad = self.location.to_rad();
         let lat1 = location_rad.latitude;

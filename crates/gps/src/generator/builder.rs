@@ -57,19 +57,33 @@ type EphemerisRelatedData = (
 /// ```
 #[derive(Default)]
 pub struct SignalGeneratorBuilder {
+    /// Path to the output file for I/Q samples
     output_file: Option<PathBuf>,
+    /// Ephemeris data, ionospheric parameters, and UTC parameters
     ephemerides_data: Option<EphemerisRelatedData>,
+    /// Leap second parameters [week, day, `delta_t`]
     leap: Option<Vec<i32>>,
+    /// Receiver positions (static or dynamic)
     positions: Option<Vec<Ecef>>,
+    /// Sample rate for position updates in seconds
     sample_rate: Option<f64>,
+    /// Motion mode (static or dynamic)
     mode: Option<MotionMode>,
+    /// Simulation duration in seconds
     duration: Option<f64>,
+    /// Sampling frequency in Hz
     frequency: Option<f64>,
+    /// Whether to override ephemeris time with simulation start time
     time_override: Option<bool>,
+    /// GPS time at which the simulation starts
     receiver_gps_time: Option<GpsTime>,
+    /// I/Q sample data format (1, 8, or 16 bits)
     data_format: Option<DataFormat>,
+    /// Fixed gain value to override path loss calculations
     path_loss: Option<i32>,
+    /// Whether to disable ionospheric delay modeling
     ionospheric_disable: Option<bool>,
+    /// Whether to enable verbose output
     verbose: Option<bool>,
 }
 impl SignalGeneratorBuilder {
@@ -238,12 +252,18 @@ impl SignalGeneratorBuilder {
                 let delta_time = leap_values[2];
 
                 // Validate according to the same rules as in gpssim.c
-                if week_number < 0
-                    || !(1..=7).contains(&day_number)
-                    || !(-128..=127).contains(&delta_time)
-                {
-                    // Invalid parameters, but we'll still set them for
-                    // consistency with C version
+                // We'll validate these parameters again in the build method
+                // but we do a preliminary check here for early error detection
+                if week_number < 0 {
+                    println!("WARNING: Invalid GPS week number: {week_number}");
+                }
+                if !(1..=7).contains(&day_number) {
+                    println!("WARNING: Invalid GPS day number: {day_number}");
+                }
+                if !(-128..=127).contains(&delta_time) {
+                    println!(
+                        "WARNING: Invalid delta leap second: {delta_time}"
+                    );
                 }
             }
         }
@@ -600,15 +620,13 @@ impl SignalGeneratorBuilder {
             ionoutc.wnlsf = leap[0];
             ionoutc.day_number = leap[1];
             ionoutc.dtlsf = leap[2];
-            #[allow(clippy::impossible_comparisons)]
-            if ionoutc.day_number < 1 && ionoutc.day_number > 7 {
+            if !(1..=7).contains(&ionoutc.day_number) {
                 return Err(Error::invalid_gps_day());
             }
             if ionoutc.wnlsf < 0 {
                 return Err(Error::invalid_gps_week());
             }
-            #[allow(clippy::impossible_comparisons)]
-            if ionoutc.dtlsf < -128 && ionoutc.dtlsf > 127 {
+            if !(-128..=127).contains(&ionoutc.dtlsf) {
                 return Err(Error::invalid_delta_leap_second());
             }
         }
@@ -677,18 +695,17 @@ impl SignalGeneratorBuilder {
         {
             // Scenario start time has been set.
             if time_override {
+                // Round to nearest 2-hour boundary (7200 seconds)
+                // This matches the C version's behavior exactly: gtmp.sec =
+                // (double)(((int)(g0.sec)) / 7200) * 7200.0;
                 let mut gtmp = GpsTime {
                     week: gps_time_0.week,
-                    sec: f64::from(
-                        gps_time_0.sec as i32 / SECONDS_IN_HOUR as i32 * 2,
-                    ) * SECONDS_IN_HOUR
-                        * 2.0,
+                    sec: f64::from((gps_time_0.sec as i32) / 7200) * 7200.0,
                 };
-                // let mut gtmp: GpsTime = GpsTime::default();
-                // gtmp.week = g0.week;
-                // gtmp.sec = f64::from(g0.sec as i32 / 7200) * 7200.0;
                 // Overwrite the UTC reference week number
                 let dsec = gtmp.diff_secs(&gpstime_min);
+                // In C version, this is setting ionoutc.wnt
+                // Make sure we're setting the correct field in Rust version
                 ionoutc.week_number = gtmp.week;
                 ionoutc.tot = gtmp.sec as i32;
                 // Iono/UTC parameters may no longer valid

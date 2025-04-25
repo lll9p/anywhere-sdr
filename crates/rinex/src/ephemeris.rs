@@ -1,3 +1,11 @@
+//! GPS satellite ephemeris data structures and builders.
+//!
+//! This module provides types for representing GPS satellite ephemeris data
+//! as parsed from RINEX navigation files. It includes structures for the
+//! complete ephemeris data set and a builder pattern for constructing
+//! ephemeris objects incrementally during parsing.
+
+/// Orbital parameter structures for GPS ephemeris
 mod orbit;
 pub use self::orbit::*;
 use crate::error::Error;

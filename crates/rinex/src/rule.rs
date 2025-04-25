@@ -20,10 +20,16 @@ use crate::{
     utc::DeltaUtc,
 };
 
+/// Parser implementation for RINEX files using pest grammar
 #[derive(Parser)]
 #[grammar = "rinex.pest"]
 pub struct RinexParser;
 
+/// Represents a parsed RINEX navigation file with GPS ephemeris data.
+///
+/// This structure contains all the information parsed from a RINEX navigation
+/// file, including header information, ionospheric parameters, UTC conversion
+/// parameters, and satellite ephemerides.
 #[derive(Debug)]
 pub struct Rinex {
     /// Format version
@@ -50,11 +56,34 @@ pub struct Rinex {
     pub ephemerides: Vec<Ephemeris>,
 }
 impl Rinex {
+    /// Reads a RINEX navigation file from the filesystem.
+    ///
+    /// # Arguments
+    /// * `path` - Path to the RINEX navigation file
+    ///
+    /// # Returns
+    /// * `Ok(Rinex)` - Successfully parsed RINEX data
+    /// * `Err(Error)` - If the file cannot be read or parsed
+    ///
+    /// # Errors
+    /// * Returns an error if the file cannot be read or if the RINEX format is
+    ///   invalid
     pub fn read_file(path: &dyn AsRef<Path>) -> Result<Self, Error> {
         let data = fs::read_to_string(path)?;
         Self::read_string(data.as_str())
     }
 
+    /// Parses a RINEX navigation file from a string.
+    ///
+    /// # Arguments
+    /// * `data` - String containing RINEX navigation data
+    ///
+    /// # Returns
+    /// * `Ok(Rinex)` - Successfully parsed RINEX data
+    /// * `Err(Error)` - If the RINEX format is invalid
+    ///
+    /// # Errors
+    /// * Returns an error if the RINEX format is invalid
     pub fn read_string(data: &str) -> Result<Self, Error> {
         let mut parser = RinexParser::parse(Rule::rinex, data)
             .map_err(|e| Error::ParseFile(Box::new(e)))?;
@@ -99,69 +128,145 @@ impl Rinex {
     }
 }
 
+/// Builder for creating Rinex objects incrementally.
+///
+/// This builder pattern implementation allows for the gradual construction
+/// of a Rinex object as data is parsed from a RINEX navigation file.
+/// Each component of the RINEX data can be set individually, and the final
+/// object is created only when all required components are present.
 #[derive(Debug, Default)]
 pub struct RinexBuilder {
+    /// RINEX format version string
     version: Option<String>,
+    /// RINEX file type identifier
     type_: Option<String>,
+    /// Program that created the RINEX file
     program: Option<String>,
+    /// Agency that created the RINEX file
     agency: Option<String>,
+    /// Date of last update to the RINEX file
     update: Option<String>,
+    /// Comments included in the RINEX file header
     comments: Option<String>,
+    /// Ionospheric correction parameters (alpha)
     ion_alpha: Option<[f64; 4]>,
+    /// Ionospheric correction parameters (beta)
     ion_beta: Option<[f64; 4]>,
+    /// UTC time correction parameters
     delta_utc: Option<DeltaUtc>,
+    /// Number of leap seconds between GPS and UTC time
     leap_seconds: Option<i32>,
+    /// Collection of satellite ephemeris data
     ephemerides: Option<Vec<Ephemeris>>,
 }
 impl RinexBuilder {
+    /// Creates a new empty `RinexBuilder`.
+    ///
+    /// # Returns
+    /// A new `RinexBuilder` instance with all fields set to None
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the RINEX format version string.
+    ///
+    /// # Arguments
+    /// * `version` - The RINEX format version string
     pub fn set_version(&mut self, version: String) {
         self.version.replace(version);
     }
 
+    /// Sets the RINEX file type identifier.
+    ///
+    /// # Arguments
+    /// * `type_` - The RINEX file type identifier (e.g., "N" for navigation
+    ///   data)
     pub fn set_type(&mut self, type_: String) {
         self.type_.replace(type_);
     }
 
+    /// Sets the program that created the RINEX file.
+    ///
+    /// # Arguments
+    /// * `program` - The name of the program that created the RINEX file
     pub fn set_program(&mut self, program: String) {
         self.program.replace(program);
     }
 
+    /// Sets the agency that created the RINEX file.
+    ///
+    /// # Arguments
+    /// * `agency` - The name of the agency that created the RINEX file
     pub fn set_agency(&mut self, agency: String) {
         self.agency.replace(agency);
     }
 
+    /// Sets the date of last update to the RINEX file.
+    ///
+    /// # Arguments
+    /// * `update` - The date of the last update to the RINEX file
     pub fn set_update(&mut self, update: String) {
         self.update.replace(update);
     }
 
+    /// Sets the comments included in the RINEX file header.
+    ///
+    /// # Arguments
+    /// * `comments` - The comments from the RINEX file header
     pub fn set_comments(&mut self, comments: String) {
         self.comments.replace(comments);
     }
 
+    /// Sets the ionospheric correction parameters (alpha).
+    ///
+    /// # Arguments
+    /// * `ion_alpha` - The ionospheric correction alpha parameters [a0, a1, a2,
+    ///   a3]
     pub fn set_ion_alpha(&mut self, ion_alpha: [f64; 4]) {
         self.ion_alpha.replace(ion_alpha);
     }
 
+    /// Sets the ionospheric correction parameters (beta).
+    ///
+    /// # Arguments
+    /// * `ion_beta` - The ionospheric correction beta parameters [b0, b1, b2,
+    ///   b3]
     pub fn set_ion_beta(&mut self, ion_beta: [f64; 4]) {
         self.ion_beta.replace(ion_beta);
     }
 
+    /// Sets the UTC time correction parameters.
+    ///
+    /// # Arguments
+    /// * `delta_utc` - The UTC time correction parameters
     pub fn set_delta_utc(&mut self, delta_utc: DeltaUtc) {
         self.delta_utc.replace(delta_utc);
     }
 
+    /// Sets the number of leap seconds between GPS and UTC time.
+    ///
+    /// # Arguments
+    /// * `leap_seconds` - The number of leap seconds
     pub fn set_leap_seconds(&mut self, leap_seconds: i32) {
         self.leap_seconds.replace(leap_seconds);
     }
 
+    /// Sets the collection of satellite ephemeris data.
+    ///
+    /// # Arguments
+    /// * `ephemerides` - The vector of satellite ephemeris data
     pub fn set_ephemerides(&mut self, ephemerides: Vec<Ephemeris>) {
         self.ephemerides.replace(ephemerides);
     }
 
+    /// Builds a Rinex object from the builder's data.
+    ///
+    /// # Returns
+    /// * `Ok(Rinex)` - The constructed Rinex object
+    /// * `Err(Error)` - If any required field is missing
+    ///
+    /// # Errors
+    /// * Returns an error if any required field is not set
     pub fn build(&mut self) -> Result<Rinex, Error> {
         fn take<T>(v: &mut Option<T>, msg: &str) -> Result<T, Error> {
             v.take().ok_or_else(|| Error::RinexBuilder(msg.into()))
@@ -198,17 +303,58 @@ fn next_str<'a>(
     Ok(next_pair(pairs, context)?.as_str())
 }
 
+/// Converts a string to a floating-point number, handling RINEX-specific
+/// format.
+///
+/// RINEX files often use 'D' instead of 'E' for scientific notation exponents.
+/// This function replaces 'D' with 'E' before parsing.
+///
+/// # Arguments
+/// * `num` - The string to convert
+///
+/// # Returns
+/// * `Ok(f64)` - The parsed floating-point value
+/// * `Err(ParseFloatError)` - If the string cannot be parsed as a float
 fn to_float(num: &str) -> Result<f64, ParseFloatError> {
     num.replace('D', "E").trim().parse()
 }
 
+/// Converts a string to a 32-bit integer.
+///
+/// # Arguments
+/// * `num` - The string to convert
+///
+/// # Returns
+/// * `Ok(i32)` - The parsed integer value
+/// * `Err(ParseIntError)` - If the string cannot be parsed as an integer
 fn to_int(num: &str) -> Result<i32, ParseIntError> {
     num.trim().parse()
 }
+
+/// Converts a string to an unsigned size type.
+///
+/// # Arguments
+/// * `num` - The string to convert
+///
+/// # Returns
+/// * `Ok(usize)` - The parsed unsigned size value
+/// * `Err(ParseIntError)` - If the string cannot be parsed as an unsigned size
 fn to_usize(num: &str) -> Result<usize, ParseIntError> {
     num.trim().parse()
 }
 
+/// Parses the header section of a RINEX file and populates the builder.
+///
+/// This function processes the header rules from the pest parser and sets
+/// the corresponding fields in the `RinexBuilder`.
+///
+/// # Arguments
+/// * `header_rules` - Iterator over header section rules from the pest parser
+/// * `builder` - `RinexBuilder` to populate with header data
+///
+/// # Returns
+/// * `Ok(())` - If the header was successfully parsed
+/// * `Err(Error)` - If there was an error parsing the header
 pub fn read_header(
     header_rules: &mut Pairs<Rule>, builder: &mut RinexBuilder,
 ) -> Result<(), Error> {
@@ -271,6 +417,17 @@ pub fn read_header(
     }
     Ok(())
 }
+/// Parses ionospheric correction parameters from RINEX rules.
+///
+/// This function extracts the four ionospheric correction parameters
+/// (either alpha or beta) from the parsed RINEX rules.
+///
+/// # Arguments
+/// * `rule` - Iterator over ionospheric parameter rules from the pest parser
+///
+/// # Returns
+/// * `Ok([f64; 4])` - Array of four ionospheric correction parameters
+/// * `Err(Error)` - If there was an error parsing the parameters
 fn read_ion_values(rule: &mut Pairs<Rule>) -> Result<[f64; 4], Error> {
     let mut values: [f64; 4] = [0.0, 0.0, 0.0, 0.0];
     for (i, line) in rule.enumerate() {
@@ -291,6 +448,18 @@ fn read_ion_values(rule: &mut Pairs<Rule>) -> Result<[f64; 4], Error> {
     }
     Ok(values)
 }
+
+/// Parses UTC time correction parameters from RINEX rules.
+///
+/// This function extracts the UTC time correction parameters from
+/// the parsed RINEX rules and constructs a `DeltaUtc` object.
+///
+/// # Arguments
+/// * `rule` - Iterator over UTC parameter rules from the pest parser
+///
+/// # Returns
+/// * `Ok(DeltaUtc)` - UTC time correction parameters
+/// * `Err(Error)` - If there was an error parsing the parameters
 fn read_delta_utc(rule: &mut Pairs<Rule>) -> Result<DeltaUtc, Error> {
     let a0 = to_float(next_str(rule, "delta_utc a0")?)?;
     let a1 = to_float(next_str(rule, "delta_utc a1")?)?;
@@ -299,6 +468,18 @@ fn read_delta_utc(rule: &mut Pairs<Rule>) -> Result<DeltaUtc, Error> {
     Ok(DeltaUtc::new(a0, a1, time, week))
 }
 
+/// Parses the ephemerides section of a RINEX file and populates the builder.
+///
+/// This function processes the ephemeris rules from the pest parser and sets
+/// the ephemerides field in the `RinexBuilder`.
+///
+/// # Arguments
+/// * `eph_rules` - Iterator over ephemeris section rules from the pest parser
+/// * `builder` - `RinexBuilder` to populate with ephemeris data
+///
+/// # Returns
+/// * `Ok(())` - If the ephemerides were successfully parsed
+/// * `Err(Error)` - If there was an error parsing the ephemerides
 pub fn read_ephemerides(
     eph_rules: &mut Pairs<Rule>, builder: &mut RinexBuilder,
 ) -> Result<(), Error> {
@@ -324,6 +505,19 @@ pub fn read_ephemerides(
     Ok(())
 }
 #[allow(clippy::similar_names)]
+/// Parses a single satellite ephemeris from RINEX rules.
+///
+/// This function processes the rules for a single satellite ephemeris entry
+/// and populates the `EphemerisBuilder` with the extracted data. It handles
+/// the PRN, epoch, satellite clock, and seven orbit parameter lines.
+///
+/// # Arguments
+/// * `rules` - Iterator over ephemeris rules from the pest parser
+/// * `builder` - `EphemerisBuilder` to populate with ephemeris data
+///
+/// # Returns
+/// * `Ok(())` - If the ephemeris was successfully parsed
+/// * `Err(Error)` - If there was an error parsing the ephemeris
 fn read_ephemeris(
     rules: &mut Pairs<Rule>, builder: &mut EphemerisBuilder,
 ) -> Result<(), Error> {
@@ -407,6 +601,22 @@ fn read_ephemeris(
     }
     Ok(())
 }
+/// Parses orbit parameter values from RINEX rules.
+///
+/// This generic function extracts four floating-point values from the rules
+/// and converts them to the specified orbit parameter type.
+///
+/// # Type Parameters
+/// * `O` - The orbit parameter type that can be created from an array of four
+///   f64 values
+///
+/// # Arguments
+/// * `rules` - Iterator over orbit parameter rules from the pest parser
+/// * `context` - Context string for error messages
+///
+/// # Returns
+/// * `Ok(O)` - The parsed orbit parameter object
+/// * `Err(Error)` - If there was an error parsing the parameters
 fn to_orbit_values<O: From<[f64; 4]>>(
     rules: &mut Pairs<Rule>, context: &'static str,
 ) -> Result<O, Error> {

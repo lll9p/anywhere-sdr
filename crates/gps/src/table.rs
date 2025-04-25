@@ -1,3 +1,14 @@
+//! Lookup tables for GPS signal generation.
+//!
+//! This module provides precomputed lookup tables used in the GPS signal
+//! generation process to improve performance. These tables include:
+//! - Sine and cosine tables for carrier generation
+//! - Antenna pattern attenuation values
+
+/// Precomputed sine values scaled by 250 for 512 evenly spaced angles.
+///
+/// This table contains sine values for angles from 0 to 2π in 512 steps,
+/// scaled by 250 to allow for integer arithmetic in signal generation.
 pub static SIN_TABLE512: [i32; 512] = [
     2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, 53, 56,
     59, 62, 65, 68, 71, 74, 77, 80, 83, 86, 89, 91, 94, 97, 100, 103, 105, 108,
@@ -38,6 +49,10 @@ pub static SIN_TABLE512: [i32; 512] = [
     -11, -8, -5, -2,
 ];
 
+/// Precomputed cosine values scaled by 250 for 512 evenly spaced angles.
+///
+/// This table contains cosine values for angles from 0 to 2π in 512 steps,
+/// scaled by 250 to allow for integer arithmetic in signal generation.
 pub static COS_TABLE512: [i32; 512] = [
     250, 250, 250, 250, 250, 249, 249, 249, 249, 248, 248, 248, 247, 247, 246,
     245, 245, 244, 244, 243, 242, 241, 241, 240, 239, 238, 237, 236, 235, 234,
@@ -78,7 +93,11 @@ pub static COS_TABLE512: [i32; 512] = [
     250, 250, 250, 250, 250,
 ];
 
-// Receiver antenna attenuation in dB for boresight angle = 0:5:180 [deg]
+/// Receiver antenna attenuation pattern in dB.
+///
+/// This table contains attenuation values in dB for boresight angles from 0 to
+/// 180 degrees in 5-degree increments. Used to model realistic antenna gain
+/// patterns.
 pub static ANT_PAT_DB: [f64; 37] = [
     0.00f64, 0.00f64, 0.22f64, 0.44f64, 0.67f64, 1.11f64, 1.56f64, 2.00f64,
     2.44f64, 2.89f64, 3.56f64, 4.22f64, 4.89f64, 5.56f64, 6.22f64, 6.89f64,

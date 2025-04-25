@@ -1,3 +1,9 @@
+//! Command-line interface for the GPS signal simulator.
+//!
+//! This module defines the command-line arguments and options for the
+//! application using the clap crate. It provides a compatible interface
+//! with the original gps-sdr-sim tool.
+
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser};
@@ -25,6 +31,11 @@ Options:
   -p [fixed_gain]  Disable path loss and hold power level constant
   -v               Show details about simulated channels
 */
+/// Command-line arguments for the GPS signal simulator.
+///
+/// This struct defines all the command-line options that can be passed to the
+/// application. It is designed to be compatible with the original gps-sdr-sim
+/// tool's command-line interface.
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
 #[command(version, about="gps-sdr-sim compatible", long_about = None)]
@@ -98,6 +109,14 @@ pub struct Args {
 }
 
 impl Args {
+    /// Runs the GPS signal simulation based on the command-line arguments.
+    ///
+    /// This method configures the signal generator with the provided options,
+    /// initializes it, and runs the simulation.
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the simulation completes successfully
+    /// * `Err(Error)` - If an error occurs during simulation
     pub fn run(&self) -> Result<(), Error> {
         let builder = SignalGeneratorBuilder::default()
             .navigation_file(Some(self.ephemerides.clone()))?

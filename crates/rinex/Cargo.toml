@@ -3,23 +3,34 @@ name = "rinex"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description.workspace = true
+description = "RINEX (Receiver Independent Exchange Format) parser for GPS navigation files"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-exclude.workspace = true
+keywords = ["gps", "gnss", "rinex", "navigation", "parser"]
+categories = ["science", "parser-implementations"]
+license.workspace = true
+readme.workspace = true
+exclude = ["tests/data/*.n"]
 
 [lib]
 path = "src/rinex.rs"
+doctest = true
+
+[features]
+# rinex3 = []
+# rinex4 = []
 
 [dependencies]
-jiff.workspace = true
+# Parsing
 pest.workspace = true
 pest_derive.workspace = true
+
+# Error handling
 thiserror.workspace = true
+
+# Utilities
+jiff.workspace = true
 
 [dev-dependencies]
 test-case.workspace = true

@@ -45,10 +45,15 @@
  * ```
  */
 
+/// Constants used throughout the `HackRF` interface
 pub mod constants;
+/// Enumeration types for `HackRF` configuration and status
 pub mod enums;
+/// Error types for `HackRF` operations
 pub mod error;
+/// Core `HackRF` device implementation
 pub mod hackrf;
+/// Convenient imports for working with `HackRF` devices
 pub mod prelude;
 #[cfg(test)]
 mod tests;

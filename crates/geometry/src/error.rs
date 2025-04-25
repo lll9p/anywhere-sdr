@@ -4,27 +4,59 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// Error when geodetic coordinates are outside valid ranges
     #[error("Invalid coordinates: latitude={latitude}, longitude={longitude}")]
-    InvalidCoordinates { latitude: f64, longitude: f64 },
+    InvalidCoordinates {
+        /// Latitude value that caused the error
+        latitude: f64,
+        /// Longitude value that caused the error
+        longitude: f64,
+    },
 
+    /// Error when ECEF coordinates are invalid
     #[error("Invalid ECEF coordinates: x={x}, y={y}, z={z}")]
-    InvalidEcef { x: f64, y: f64, z: f64 },
+    InvalidEcef {
+        /// X coordinate value that caused the error
+        x: f64,
+        /// Y coordinate value that caused the error
+        y: f64,
+        /// Z coordinate value that caused the error
+        z: f64,
+    },
 
+    /// Error when NEU coordinates are invalid
     #[error("Invalid NEU coordinates: north={north}, east={east}, up={up}")]
-    InvalidNeu { north: f64, east: f64, up: f64 },
+    InvalidNeu {
+        /// North coordinate value that caused the error
+        north: f64,
+        /// East coordinate value that caused the error
+        east: f64,
+        /// Up coordinate value that caused the error
+        up: f64,
+    },
 
+    /// Error when azimuth-elevation coordinates are invalid
     #[error("Invalid azimuth-elevation: azimuth={az}, elevation={el}")]
-    InvalidAzel { az: f64, el: f64 },
+    InvalidAzel {
+        /// Azimuth value that caused the error
+        az: f64,
+        /// Elevation value that caused the error
+        el: f64,
+    },
 
+    /// Error during coordinate system conversion
     #[error("Coordinate conversion error: {0}")]
     ConversionError(String),
 
+    /// Error when parsing floating-point values
     #[error("Float parsing error: {0}")]
     ParseFloatError(#[from] std::num::ParseFloatError),
 
+    /// Error when parsing integer values
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
 
+    /// General geometry error with a message
     #[error("Geometry error: {0}")]
     Other(String),
 }

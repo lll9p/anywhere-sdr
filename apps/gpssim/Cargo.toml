@@ -2,30 +2,51 @@
 name = "gpssim"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
+edition.workspace = true
+description = "Command-line GPS L1 C/A signal simulator for software-defined radio applications"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["gps", "gnss", "sdr", "simulation", "cli"]
+categories = ["science", "simulation", "command-line-utilities"]
+license.workspace = true
+readme.workspace = true
+
+
+[[bin]]
+name = "gpssim"
+path = "src/main.rs"
 
 [dependencies]
-# internal dependencies
+# Internal dependencies
 gps.workspace = true
 
-# external dependencies
+# Command line interface
 clap.workspace = true
-jiff.workspace = true
+
+# Error handling
 thiserror.workspace = true
+
+# Logging and diagnostics
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
+
+# Utilities
+jiff.workspace = true
 
 [lints]
 workspace = true
 
 [package.metadata.bundle]
-name = "LaoLilin"
-identifier = "i.laolilin.com"
+name = "Anywhere-SDR"
+identifier = "com.laolilin.anywhere-sdr"
+icon = ["icons/icon.png"]
+version = "0.0.2"
+copyright = "Copyright (c) 2024 Lao Lilin. All rights reserved."
+category = "Developer Tool"
+short_description = "GPS L1 C/A signal simulator"
+long_description = """
+A software-defined GPS signal simulator written in Rust, inspired by gps-sdr-sim.
+Generates GPS L1 C/A signals that can be transmitted through SDR devices.
+"""

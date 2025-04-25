@@ -2,29 +2,27 @@
 name = "geometry"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
+edition.workspace = true
+description = "Geodetic coordinate transformations and navigation calculations for GPS/GNSS applications"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["gps", "gnss", "geodesy", "coordinates", "navigation"]
+categories = ["science", "algorithms"]
+license.workspace = true
+readme.workspace = true
 
 [lib]
 path = "src/geometry.rs"
+doctest = true
 
 [dependencies]
-# internal dependencies
+# Internal dependencies
 constants.workspace = true
 
-# external dependencies
-clap.workspace = true
-csv.workspace = true
-jiff.workspace = true
-log.workspace = true
-rayon.workspace = true
+# Error handling
 thiserror.workspace = true
+
 
 [dev-dependencies]
 test-case.workspace = true

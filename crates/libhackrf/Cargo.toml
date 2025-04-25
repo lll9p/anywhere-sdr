@@ -2,25 +2,31 @@
 name = "libhackrf"
 version.workspace = true
 authors.workspace = true
+edition.workspace = true
 description = "A Rust library for interfacing with HackRF software-defined radio devices (modified from libhackrf-rs)"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["sdr", "hackrf", "radio", "hardware", "usb"]
+categories = ["hardware-support", "embedded", "api-bindings"]
+license.workspace = true
+readme.workspace = true
 
 # This library is a modified version of https://github.com/fl1ckje/libhackrf-rs
-# with the main change being the replacement of rusb with nusb
+# with the main change being the replacement of rusb with nusb for improved USB communication
 
+
+[lib]
+doctest = true
 
 [dependencies]
-# internal dependencies
-
-# external dependencies
+# USB communication
 nusb.workspace = true
+
+# Async support
 futures-lite.workspace = true
+
+# Error handling
 thiserror.workspace = true
 
 [dev-dependencies]

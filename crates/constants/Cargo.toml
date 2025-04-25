@@ -2,18 +2,24 @@
 name = "constants"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
+edition.workspace = true
+description = "GPS and GNSS physical and mathematical constants for signal processing"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["gps", "gnss", "constants", "signal-processing"]
+categories = ["science", "no-std"]
+license.workspace = true
+readme.workspace = true
 
 [lib]
 path = "src/constants.rs"
+doctest = true
 
+[features]
+default = []
+# galileo = []
+# beidou = []
 
 [lints]
 workspace = true

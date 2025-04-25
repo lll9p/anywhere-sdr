@@ -1,3 +1,17 @@
+//! Constants used in GPS signal generation and processing.
+//!
+//! This crate provides a centralized collection of constants used throughout
+//! the GPS signal generation and processing pipeline. It includes physical
+//! constants, mathematical constants, GPS system parameters, and configuration
+//! values.
+//!
+//! The constants are organized into logical groups:
+//! - Physical constants (speed of light, Earth parameters)
+//! - GPS system parameters (frequencies, wavelengths)
+//! - Time conversion constants
+//! - Mathematical constants and precomputed values
+//! - Configuration limits and defaults
+
 #![allow(unused)]
 /// Maximum number of user motion records that can be processed
 pub const USER_MOTION_SIZE: usize = 3000;

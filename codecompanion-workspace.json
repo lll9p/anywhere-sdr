@@ -1,14 +1,14 @@
 {
   "name": "Anywhere-SDR",
-  "version": "0.0.1",
-  "system_prompt": "You are assisting with the development of Anywhere-SDR, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals compatible with gps-sdr-sim, with plans to add support for other systems like BeiDou in the future. The project follows Rust 2024 edition standards and uses thiserror for error handling. The codebase is organized into modular crates (constants, geometry, gps, parsing, rinex, libhackrf) with a CLI application. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
+  "version": "0.0.2",
+  "system_prompt": "You are assisting with the development of Anywhere-SDR, a Rust-based software for GPS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals compatible with gps-sdr-sim, with plans to add support for other GNSS systems like Galileo and BeiDou in the future. The project follows Rust 2024 edition standards and uses thiserror for error handling. The codebase is organized into modular crates with clear separation of concerns: constants (physical/mathematical constants), geometry (coordinate transformations), gps (signal generation), parsing (input formats), rinex (navigation file parsing), and libhackrf (SDR hardware interface). The CLI application provides a user-friendly interface for generating GPS signals. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
   "vars": {
     "project_repo": "https://github.com/lll9p/anywhere-sdr"
   },
   "groups": [
     {
       "name": "All Code",
-      "system_prompt": "This group contains all the code files in the project. Use this when you need a comprehensive overview of the entire codebase.",
+      "system_prompt": "This group contains all the code files in the project. Use this when you need a comprehensive overview of the entire codebase. The project is organized into modular crates with clear separation of concerns: constants (physical/mathematical constants), geometry (coordinate transformations), gps (signal generation), parsing (input formats), rinex (navigation file parsing), and libhackrf (SDR hardware interface).",
       "data": [
         "gpssim-cli",
         "gpssim-main",
@@ -58,7 +58,14 @@
         "libhackrf-prelude",
         "libhackrf-tests",
         "readme",
-        "project-cargo"
+        "project-cargo",
+        "constants-cargo",
+        "geometry-cargo",
+        "parsing-cargo",
+        "rinex-cargo",
+        "gps-cargo",
+        "libhackrf-cargo",
+        "gpssim-cargo"
       ]
     },
     {
@@ -160,7 +167,17 @@
     {
       "name": "Project Documentation",
       "system_prompt": "This group contains project documentation and configuration files.",
-      "data": ["readme", "project-cargo"]
+      "data": [
+        "readme",
+        "project-cargo",
+        "constants-cargo",
+        "geometry-cargo",
+        "parsing-cargo",
+        "rinex-cargo",
+        "gps-cargo",
+        "libhackrf-cargo",
+        "gpssim-cargo"
+      ]
     }
   ],
   "data": {
@@ -372,7 +389,42 @@
     "project-cargo": {
       "type": "file",
       "path": "Cargo.toml",
-      "description": "Main Cargo configuration file for the workspace, defining crate dependencies, workspace settings, and project metadata. Includes clippy lint configurations."
+      "description": "Main Cargo configuration file for the workspace, defining crate dependencies, workspace settings, project metadata, and build profiles. Includes comprehensive clippy lint configurations for code quality."
+    },
+    "constants-cargo": {
+      "type": "file",
+      "path": "crates/constants/Cargo.toml",
+      "description": "Cargo configuration for the constants crate, containing GPS and GNSS physical and mathematical constants."
+    },
+    "geometry-cargo": {
+      "type": "file",
+      "path": "crates/geometry/Cargo.toml",
+      "description": "Cargo configuration for the geometry crate, providing geodetic coordinate transformations and navigation calculations."
+    },
+    "parsing-cargo": {
+      "type": "file",
+      "path": "crates/parsing/Cargo.toml",
+      "description": "Cargo configuration for the parsing crate, implementing parsers for NMEA GGA streams and user motion files."
+    },
+    "rinex-cargo": {
+      "type": "file",
+      "path": "crates/rinex/Cargo.toml",
+      "description": "Cargo configuration for the rinex crate, providing RINEX navigation file parsing capabilities."
+    },
+    "gps-cargo": {
+      "type": "file",
+      "path": "crates/gps/Cargo.toml",
+      "description": "Cargo configuration for the gps crate, implementing GPS L1 C/A signal generation and simulation."
+    },
+    "libhackrf-cargo": {
+      "type": "file",
+      "path": "crates/libhackrf/Cargo.toml",
+      "description": "Cargo configuration for the libhackrf crate, providing a Rust interface to HackRF software-defined radio devices."
+    },
+    "gpssim-cargo": {
+      "type": "file",
+      "path": "apps/gpssim/Cargo.toml",
+      "description": "Cargo configuration for the gpssim application, providing a command-line interface for GPS signal simulation."
     },
     "libhackrf-lib": {
       "type": "symbols",

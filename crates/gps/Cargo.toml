@@ -2,32 +2,33 @@
 name = "gps"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
+edition.workspace = true
+description = "GPS L1 C/A signal generator and simulator for software-defined radio applications"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["gps", "gnss", "sdr", "simulation", "signal-processing"]
+categories = ["science", "simulation", "hardware-support"]
+license.workspace = true
+readme.workspace = true
 
 [lib]
 path = "src/gps.rs"
+doctest = true
 
 [dependencies]
-# internal dependencies
+# Internal dependencies
 geometry.workspace = true
 constants.workspace = true
 parsing.workspace = true
 rinex.workspace = true
 
-# external dependencies
-clap.workspace = true
-csv.workspace = true
-jiff.workspace = true
-log.workspace = true
-rayon.workspace = true
+# Error handling
 thiserror.workspace = true
+
+# Data processing
+jiff.workspace = true
+
 
 [dev-dependencies]
 test-case.workspace = true

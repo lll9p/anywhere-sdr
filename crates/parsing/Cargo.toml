@@ -2,30 +2,31 @@
 name = "parsing"
 version.workspace = true
 authors.workspace = true
-description.workspace = true
+edition.workspace = true
+description = "Parsers for GPS/GNSS data formats including NMEA GGA streams and user motion files"
 documentation.workspace = true
 homepage.workspace = true
 repository.workspace = true
-keywords.workspace = true
-categories.workspace = true
-license-file.workspace = true
-edition.workspace = true
+keywords = ["gps", "gnss", "nmea", "parser", "motion"]
+categories = ["science", "parser-implementations"]
+license.workspace = true
+readme.workspace = true
 
 [lib]
 path = "src/parsing.rs"
+doctest = true
 
 [dependencies]
-# internal dependencies
+# Internal dependencies
 geometry.workspace = true
 constants.workspace = true
 
-# external dependencies
-clap.workspace = true
-csv.workspace = true
-jiff.workspace = true
-log.workspace = true
-rayon.workspace = true
+# Error handling
 thiserror.workspace = true
+
+# Data processing
+csv.workspace = true
+
 
 [dev-dependencies]
 test-case.workspace = true
