@@ -64,7 +64,7 @@ jobs:
       - name: Create output directory
         run: mkdir -p output
       - name: Run tests
-        run: cargo test --release --no-fail-fast --jobs 1
+        run: cargo test --release --no-fail-fast
         env:
           CARGO_INCREMENTAL: 0
           CARGO_PROFILE_DEV_DEBUG: 0
