@@ -4,23 +4,28 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 
 ## Table of Contents
 
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-  - [Command Line Usage](#command-line-usage)
-  - [Library Usage](#library-usage)
-  - [Command Line Options](#command-line-options)
-  - [Usage Examples](#usage-examples)
-- [Direct Sample Access API](#direct-sample-access-api)
-- [Testing](#testing)
-  - [Compatibility Tests](#compatibility-tests)
-  - [Completed Features](#completed-features)
-- [License](#license)
-- [Contributing](#contributing)
-- [Authors](#authors)
-- [Roadmap](#roadmap)
-  - [Upcoming Features](#upcoming-features)
-- [Acknowledgments](#acknowledgments)
+- [GPS Signal Generator](#gps-signal-generator)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Installation](#installation)
+  - [Usage](#usage)
+    - [Command Line Usage](#command-line-usage)
+    - [Library Usage](#library-usage)
+    - [Command Line Options](#command-line-options)
+    - [Usage Examples](#usage-examples)
+  - [Direct Sample Access API](#direct-sample-access-api)
+  - [Testing](#testing)
+    - [Compatibility Tests](#compatibility-tests)
+    - [Completed Features](#completed-features)
+  - [License](#license)
+  - [Contributing](#contributing)
+  - [Authors](#authors)
+  - [Roadmap](#roadmap)
+    - [Upcoming Features](#upcoming-features)
+      - [Signal Generation](#signal-generation)
+      - [Input/Output](#inputoutput)
+      - [Error Handling \& Performance](#error-handling--performance)
+  - [Acknowledgments](#acknowledgments)
 
 > [!NOTE]
 > This project is still under development.
@@ -29,8 +34,6 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 > Future versions will extend beyond [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) as we implement new features and improvements.
 
 ## Features
-
-[Back to Table of Contents](#table-of-contents)
 
 - **Signal Generation**: GPS L1 C/A signals with configurable parameters
 - **Position Modes**:
@@ -51,8 +54,6 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 
 ## Installation
 
-[Back to Table of Contents](#table-of-contents)
-
 This project is not yet published to crates.io. To use it, clone the repository and build it locally:
 
 ```bash
@@ -62,8 +63,6 @@ cargo build --release
 ```
 
 ## Usage
-
-[Back to Table of Contents](#table-of-contents)
 
 ### Command Line Usage
 
@@ -136,8 +135,6 @@ gpssim -e brdc0010.22n -d 30.0 -i -l 35.681298,139.766247,10.0
 
 ## Direct Sample Access API
 
-[Back to Table of Contents](#table-of-contents)
-
 The library provides an API for direct sample access without file I/O. This allows integration with other applications or real-time processing:
 
 ```rust
@@ -163,8 +160,6 @@ for step in 0..num_steps {
 
 ## Testing
 
-[Back to Table of Contents](#table-of-contents)
-
 Run the standard test suite:
 
 ```bash
@@ -185,6 +180,18 @@ cargo test --release -p gps --test test-generator test_data_format_1bit
 
 # Run all tests related to sampling frequency
 cargo test --release -p gps --test test-generator test_sampling_frequency
+```
+
+### Hardware-Dependent Tests
+
+Some tests in the `libhackrf` crate require physical `HackRF` hardware to be connected. These tests are marked with `#[ignore]` to prevent them from running during normal test execution. To run these tests when hardware is available:
+
+```bash
+# Run all hardware-dependent tests
+cargo test -p libhackrf -- --ignored
+
+# Run a specific hardware-dependent test
+cargo test -p libhackrf list_device -- --ignored
 ```
 
 Note: Some tests (like leap second handling and time override) don't compare binary outputs directly due to slight implementation differences between the Rust and C versions.
@@ -219,25 +226,17 @@ All core features have been implemented, including:
 
 ## License
 
-[Back to Table of Contents](#table-of-contents)
-
 See the LICENSE file for details.
 
 ## Contributing
-
-[Back to Table of Contents](#table-of-contents)
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Authors
 
-[Back to Table of Contents](#table-of-contents)
-
 - Lao Lilin <lll9p.china@gmail.com>
 
 ## Roadmap
-
-[Back to Table of Contents](#table-of-contents)
 
 ### Upcoming Features
 
@@ -266,6 +265,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-[Back to Table of Contents](#table-of-contents)
-
 This project is inspired by the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project and aims to provide a modern Rust implementation with improved performance, maintainability, and extensibility.
+
+The `libhackrf` crate used in this project is a modified version of [libhackrf-rs](https://github.com/fl1ckje/libhackrf-rs), with the main change being the replacement of the `rusb` dependency with `nusb` for improved USB communication. Additional improvements include comprehensive documentation, error handling with `thiserror`, and code optimizations.

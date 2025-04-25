@@ -34,3 +34,6 @@ output/
 
 
 /Cargo.lock
+
+# Augment specific files
+.augment-guidelines

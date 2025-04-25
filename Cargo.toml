@@ -24,14 +24,17 @@ exclude = ["target", "dist"]
 constants = { path = "./crates/constants" }
 geometry = { path = "./crates/geometry" }
 gps = { path = "./crates/gps" }
-rinex = { path = "./crates/rinex" }
+libhackrf = { path = "./crates/libhackrf" }
 parsing = { path = "./crates/parsing" }
+rinex = { path = "./crates/rinex" }
 
 # external dependencies
 clap = { version = "4", features = ["derive", "unicode", "wrap_help", "env"] }
 csv = { version = "1" }
+futures-lite = "2.3"
 jiff = { version = "0.2" }
 log = { version = "0.4" }
+nusb = "0.1"
 pest = { version = "2" }
 pest_derive = { version = "2" }
 rayon = { version = "1" }
