@@ -1,10 +1,30 @@
 # GPS Signal Generator
 
-A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim). It generates GPS L1 C/A signals that can be transmitted through SDR devices.
+A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-sim][gps-sdr-sim-url]. It generates GPS L1 C/A signals that can be transmitted through SDR devices.
+
+## Legal Disclaimer
+
+> [!WARNING]
+> **Legal Disclaimer**
+>
+> This project is intended for research and educational purposes only. Users must comply with all applicable laws and regulations in their jurisdiction. Unauthorized transmission of GPS signals may be illegal in certain jurisdictions. It is the user's responsibility to understand and comply with local regulations.
+>
+> The authors and contributors of this project accept no legal liability for any illegal actions or damages resulting from the use of this software.
+
+## Project Status
+
+> [!NOTE]
+> This project is still under development.
+>
+> The project is compatible with [gps-sdr-sim][gps-sdr-sim-url] for all core features, with some parameter handling improvements.
+>
+> Future versions will extend beyond [gps-sdr-sim][gps-sdr-sim-url] as we implement new features and improvements.
 
 ## Table of Contents
 
 - [GPS Signal Generator](#gps-signal-generator)
+  - [Legal Disclaimer](#legal-disclaimer)
+  - [Project Status](#project-status)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Installation](#installation)
@@ -15,6 +35,7 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
     - [Usage Examples](#usage-examples)
   - [Direct Sample Access API](#direct-sample-access-api)
   - [Testing](#testing)
+    - [Hardware-Dependent Tests](#hardware-dependent-tests)
     - [Compatibility Tests](#compatibility-tests)
     - [Completed Features](#completed-features)
   - [License](#license)
@@ -26,12 +47,6 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
       - [Input/Output](#inputoutput)
       - [Error Handling \& Performance](#error-handling--performance)
   - [Acknowledgments](#acknowledgments)
-
-> [!NOTE]
-> This project is still under development.
->
-> The project is compatible with [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) for all core features, with some parameter handling improvements.
-> Future versions will extend beyond [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) as we implement new features and improvements.
 
 ## Features
 
@@ -265,6 +280,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-This project is inspired by the original [gps-sdr-sim](https://github.com/osqzss/gps-sdr-sim) project and aims to provide a modern Rust implementation with improved performance, maintainability, and extensibility.
+This project is inspired by the original [gps-sdr-sim][gps-sdr-sim-url] project and aims to provide a modern Rust implementation with improved performance, maintainability, and extensibility.
 
-The `libhackrf` crate used in this project is a modified version of [libhackrf-rs](https://github.com/fl1ckje/libhackrf-rs), with the main change being the replacement of the `rusb` dependency with `nusb` for improved USB communication. Additional improvements include comprehensive documentation, error handling with `thiserror`, and code optimizations.
+The `libhackrf` crate used in this project is a modified version of [libhackrf-rs][libhackrf-rs-url], with the main change being the replacement of the `rusb` dependency with `nusb` for improved USB communication. Additional improvements include comprehensive documentation, error handling with `thiserror`, and code optimizations.
+
+<!-- markdownlint-disable -->
+<!-- prettier-ignore-end -->
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[gps-sdr-sim-url]: https://github.com/osqzss/gps-sdr-sim
+[libhackrf-rs-url]: https://github.com/fl1ckje/libhackrf-rs
