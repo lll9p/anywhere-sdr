@@ -1,7 +1,7 @@
 {
-  "name": "GPS Signal Generator",
+  "name": "Anywhere-SDR",
   "version": "0.0.1",
-  "system_prompt": "You are assisting with the development of a GPS Signal Generator, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals, with plans to add support for other systems like BeiDou in the future.",
+  "system_prompt": "You are assisting with the development of Anywhere-SDR, a Rust-based software for GNSS signal generation that can be used for SDR transmission. Currently, it implements GPS L1 C/A signals, with plans to add support for other systems like BeiDou in the future. The project includes a modified version of libhackrf-rs for HackRF device integration, with the main change being the replacement of rusb with nusb for improved USB communication.",
   "vars": {
     "project_repo": "https://github.com/lll9p/anywhere-sdr"
   },
@@ -50,6 +50,13 @@
         "gps-tests-prepare",
         "gps-tests-generator",
         "rinex-tests",
+        "libhackrf-lib",
+        "libhackrf-hackrf",
+        "libhackrf-constants",
+        "libhackrf-enums",
+        "libhackrf-error",
+        "libhackrf-prelude",
+        "libhackrf-tests",
         "readme",
         "project-cargo"
       ]
@@ -145,7 +152,21 @@
         "gps-error",
         "geometry-error",
         "parsing-error",
-        "rinex-error"
+        "rinex-error",
+        "libhackrf-error"
+      ]
+    },
+    {
+      "name": "HackRF Integration",
+      "system_prompt": "This group contains modules for interfacing with HackRF software-defined radio devices. The libhackrf crate is a modified version of libhackrf-rs with nusb replacing rusb for improved USB communication.",
+      "data": [
+        "libhackrf-lib",
+        "libhackrf-hackrf",
+        "libhackrf-constants",
+        "libhackrf-enums",
+        "libhackrf-error",
+        "libhackrf-prelude",
+        "libhackrf-tests"
       ]
     }
   ],
@@ -359,6 +380,41 @@
       "type": "file",
       "path": "Cargo.toml",
       "description": "Main Cargo configuration file for the workspace."
+    },
+    "libhackrf-lib": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/lib.rs",
+      "description": "Main library module for the libhackrf crate, providing a safe and idiomatic Rust interface to HackRF devices."
+    },
+    "libhackrf-hackrf": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/hackrf.rs",
+      "description": "Core implementation of the HackRF struct for controlling HackRF software-defined radio devices."
+    },
+    "libhackrf-constants": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/constants.rs",
+      "description": "Constants used in the libhackrf crate, including USB identifiers, endpoint addresses, and buffer sizes."
+    },
+    "libhackrf-enums": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/enums.rs",
+      "description": "Enum definitions for HackRF device modes, synchronization modes, and USB control request codes."
+    },
+    "libhackrf-error": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/error.rs",
+      "description": "Error handling for the libhackrf crate using thiserror, defining specific error types for HackRF operations."
+    },
+    "libhackrf-prelude": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/prelude.rs",
+      "description": "Convenient re-exports of the most commonly used types and functions from the libhackrf crate."
+    },
+    "libhackrf-tests": {
+      "type": "symbols",
+      "path": "crates/libhackrf/src/tests.rs",
+      "description": "Tests for the libhackrf crate that require physical HackRF hardware to run, marked with #[ignore]."
     }
   }
 }
