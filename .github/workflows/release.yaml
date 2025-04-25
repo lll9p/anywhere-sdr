@@ -1,5 +1,9 @@
 name: Release
 
+# Add permissions configuration
+permissions:
+  contents: write # This allows the workflow to create, update, and delete tags and releases
+
 on:
   schedule:
     - cron: "0 0 * * *" # midnight UTC, daily nightly build from master
@@ -105,12 +109,33 @@ jobs:
             echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install GitHub CLI
+        if: steps.release_type.outputs.type == 'nightly'
+        run: |
+          # Install GitHub CLI on Ubuntu
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh -y
+
       - name: Delete previous nightly release
         if: steps.release_type.outputs.type == 'nightly'
-        uses: dev-drprasad/delete-tag-and-release@v1.1
-        with:
-          delete_release: true
-          tag_name: nightly
+        run: |
+          # Check if nightly release exists
+          if gh release view nightly &>/dev/null; then
+            echo "Deleting existing nightly release"
+            gh release delete nightly --yes
+          else
+            echo "No nightly release found"
+          fi
+
+          # Check if nightly tag exists
+          if git ls-remote --tags origin | grep -q "refs/tags/nightly"; then
+            echo "Deleting existing nightly tag"
+            git push --delete origin nightly || true
+          else
+            echo "No nightly tag found"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -122,5 +147,4 @@ jobs:
           files: ./dist/**/*
           prerelease: ${{ steps.release_type.outputs.type == 'nightly' }}
           generate_release_notes: ${{ steps.release_type.outputs.type != 'nightly' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
