@@ -1,10 +1,19 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::PathBuf,
+    process::Command,
+    sync::{Mutex, Once},
+};
 
 use gps::Error;
 pub static WORKSPACE_DIR: &str = env!("CARGO_WORKSPACE_DIR");
 pub static OUTPUT_DIR: &str = concat!(env!("CARGO_WORKSPACE_DIR"), "/output");
 pub static RESOURCES_DIR: &str =
     concat!(env!("CARGO_WORKSPACE_DIR"), "/resources");
+
+// Use a static mutex to ensure only one test accesses gpssim at a time
+static GPSSIM_MUTEX: Mutex<()> = Mutex::new(());
+// Use a Once to ensure we only compile gpssim once
+static COMPILE_ONCE: Once = Once::new();
 
 pub fn check_gpssim() -> Result<PathBuf, Error> {
     // Ensure output directory exists
@@ -17,54 +26,41 @@ pub fn check_gpssim() -> Result<PathBuf, Error> {
     let gps_sim_executable = output_dir
         .join(format!("gpssim{}", if cfg!(windows) { ".exe" } else { "" }));
 
-    // Check if gpssim executable exists
-    if !gps_sim_executable.exists() {
-        // Try to find gpssim.c file in multiple possible locations
-        let possible_paths = vec![
-            PathBuf::from(RESOURCES_DIR).join("gpssim.c"),
-            PathBuf::from(WORKSPACE_DIR)
-                .join("resources")
-                .join("gpssim.c"),
-        ];
+    // Use Once to ensure we only compile gpssim once
+    COMPILE_ONCE.call_once(|| {
+        // Only compile if the executable doesn't exist
+        if !gps_sim_executable.exists() {
+            // Try to find gpssim.c file in multiple possible locations
+            let possible_paths = vec![
+                PathBuf::from(RESOURCES_DIR).join("gpssim.c"),
+                PathBuf::from(WORKSPACE_DIR)
+                    .join("resources")
+                    .join("gpssim.c"),
+            ];
 
-        let mut gpssim_c_path = None;
-        for path in &possible_paths {
-            if path.exists() {
-                gpssim_c_path = Some(path.clone());
-                break;
+            let mut gpssim_c_path = None;
+            for path in &possible_paths {
+                if path.exists() {
+                    gpssim_c_path = Some(path.clone());
+                    break;
+                }
+            }
+
+            if let Some(gpssim_c_path) = gpssim_c_path {
+                // Get source and target paths as strings
+                if let (Some(source_path), Some(target_path)) =
+                    (gpssim_c_path.to_str(), gps_sim_executable.to_str())
+                {
+                    // Compile gpssim
+                    let _ = Command::new("gcc")
+                        .current_dir(WORKSPACE_DIR)
+                        .args([source_path, "-lm", "-O3", "-o", target_path])
+                        .spawn()
+                        .and_then(std::process::Child::wait_with_output);
+                }
             }
         }
-
-        let Some(gpssim_c_path) = gpssim_c_path else {
-            return Err(Error::msg(format!(
-                "Could not find gpssim.c source file, tried paths: \
-                 {possible_paths:?}"
-            )));
-        };
-
-        // Get source and target paths as strings
-        let source_path = gpssim_c_path
-            .to_str()
-            .ok_or_else(|| Error::msg("Invalid source path"))?;
-        let target_path = gps_sim_executable
-            .to_str()
-            .ok_or_else(|| Error::msg("Invalid target path"))?;
-
-        // Compile gpssim
-        let status = Command::new("gcc")
-            .current_dir(WORKSPACE_DIR)
-            .args([source_path, "-lm", "-O3", "-o", target_path])
-            .spawn()?
-            .wait_with_output()?;
-
-        // Check if compilation was successful
-        if !status.status.success() {
-            return Err(Error::msg(format!(
-                "Failed to compile gpssim, error code: {}",
-                status.status
-            )));
-        }
-    }
+    });
 
     // Final check if executable exists
     if !gps_sim_executable.exists() {
@@ -79,8 +75,6 @@ pub fn check_gpssim() -> Result<PathBuf, Error> {
 pub fn prepare_c_bin(
     params: &[Vec<String>], c_bin_file: &str,
 ) -> Result<(), Error> {
-    let gps_sim_executable = check_gpssim()?;
-
     // Get full path
     let c_bin_file_path = PathBuf::from(c_bin_file);
 
@@ -92,6 +86,21 @@ pub fn prepare_c_bin(
     // Ensure output directory exists
     if let Some(parent) = c_bin_file_path.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+
+    // Acquire mutex lock to ensure only one test uses gpssim at a time
+    // This prevents "Text file busy" errors in parallel test execution
+    let _lock = GPSSIM_MUTEX.lock().map_err(|e| {
+        Error::msg(format!("Failed to acquire mutex lock: {e}"))
+    })?;
+
+    // Check gpssim executable after acquiring lock
+    let gps_sim_executable = check_gpssim()?;
+
+    // Check again if file exists (another test might have created it while we
+    // were waiting)
+    if c_bin_file_path.exists() {
+        return Ok(());
     }
 
     // Convert parameters to C-style arguments
@@ -112,7 +121,6 @@ pub fn prepare_c_bin(
     args.push(c_bin_file.to_string());
 
     // Run gpssim command with stdout and stderr redirected to null
-
     let status = Command::new(gps_sim_executable)
         .current_dir(WORKSPACE_DIR)
         .args(&args)
