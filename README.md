@@ -1,6 +1,32 @@
-# GPS Signal Generator
+<!-- markdownlint-disable -->
+<br />
+<div align="center">
+  <h1>
+    Anywhere-SDR, a GPS Signal Generator
+ </h1>
+  <p align="center">
+    <a href="https://github.com/lll9p/anywhere-sdr/discussions/new?category=ideas">Request Feature</a>
+    ·
+    <a href="https://github.com/lll9p/anywhere-sdr/discussions/new?category=q-a">Ask Question</a>
+  </p>
+  <p>
+    <strong>
+A software-defined GPS signal simulator written in <a href="https://www.rust-lang.org/">Rust</a>, inspired by <a href="https://github.com/osqzss/gps-sdr-sim">gps-sdr-sim</a>.
+</strong>
+<br />
+It generates GPS L1 C/A signals that can be transmitted through SDR devices.
+  </p>
+  <p>🦀</p>
 
-A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-sim][gps-sdr-sim-url]. It generates GPS L1 C/A signals that can be transmitted through SDR devices.
+[![Rust][rust-shield]][rust-url]
+[![MIT License][license-shield]][license-url]
+[![Issues][issues-shield]][issues-url]
+[![Build Status][ci-shield]][ci-url]
+[![Latest Release][release-shield]][release-url]
+[![PayPal][paypal-shield]][paypal-donations-url]
+
+</div>
+<!-- markdownlint-restore -->
 
 ## Legal Disclaimer
 
@@ -22,31 +48,30 @@ A software-defined GPS signal simulator written in Rust, inspired by [gps-sdr-si
 
 ## Table of Contents
 
-- [GPS Signal Generator](#gps-signal-generator)
-  - [Legal Disclaimer](#legal-disclaimer)
-  - [Project Status](#project-status)
-  - [Table of Contents](#table-of-contents)
-  - [Features](#features)
-  - [Installation](#installation)
-  - [Usage](#usage)
-    - [Command Line Usage](#command-line-usage)
-    - [Library Usage](#library-usage)
-    - [Command Line Options](#command-line-options)
-    - [Usage Examples](#usage-examples)
-  - [Direct Sample Access API](#direct-sample-access-api)
-  - [Testing](#testing)
-    - [Hardware-Dependent Tests](#hardware-dependent-tests)
-    - [Compatibility Tests](#compatibility-tests)
-    - [Completed Features](#completed-features)
-  - [License](#license)
-  - [Contributing](#contributing)
-  - [Authors](#authors)
-  - [Roadmap](#roadmap)
-    - [Upcoming Features](#upcoming-features)
-      - [Signal Generation](#signal-generation)
-      - [Input/Output](#inputoutput)
-      - [Error Handling \& Performance](#error-handling--performance)
-  - [Acknowledgments](#acknowledgments)
+- [Legal Disclaimer](#legal-disclaimer)
+- [Project Status](#project-status)
+- [Table of Contents](#table-of-contents)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Command Line Usage](#command-line-usage)
+  - [Library Usage](#library-usage)
+  - [Command Line Options](#command-line-options)
+  - [Usage Examples](#usage-examples)
+- [Direct Sample Access API](#direct-sample-access-api)
+- [Testing](#testing)
+  - [Hardware-Dependent Tests](#hardware-dependent-tests)
+  - [Compatibility Tests](#compatibility-tests)
+  - [Completed Features](#completed-features)
+- [License](#license)
+- [Contributing](#contributing)
+- [Authors](#authors)
+- [Roadmap](#roadmap)
+  - [Upcoming Features](#upcoming-features)
+    - [Signal Generation](#signal-generation)
+    - [Input/Output](#inputoutput)
+    - [Error Handling \& Performance](#error-handling--performance)
+- [Acknowledgments](#acknowledgments)
 
 ## Features
 
@@ -290,3 +315,21 @@ The `libhackrf` crate used in this project is a modified version of [libhackrf-r
 <!-- MARKDOWN LINKS & IMAGES -->
 [gps-sdr-sim-url]: https://github.com/osqzss/gps-sdr-sim
 [libhackrf-rs-url]: https://github.com/fl1ckje/libhackrf-rs
+
+[rust-shield]: https://img.shields.io/badge/rustc-1.86.0+-green.svg?style=for-the-badge
+[rust-url]: https://www.rust-lang.org/
+
+[license-shield]: https://img.shields.io/github/license/lll9p/anywhere-sdr.svg?style=for-the-badge
+[license-url]: https://github.com/lll9p/anywhere-sdr/blob/master/LICENSE
+
+[issues-shield]: https://img.shields.io/github/issues/lll9p/anywhere-sdr.svg?style=for-the-badge
+[issues-url]: https://github.com/lll9p/anywhere-sdr/issues
+
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/lll9p/anywhere-sdr/ci.yaml?style=for-the-badge
+[ci-url]: https://github.com/lll9p/anywhere-sdr/actions/workflows/ci.yaml
+
+[release-shield]: https://img.shields.io/github/v/release/lll9p/anywhere-release?style=for-the-badge
+[release-url]: https://github.com/lll9p/anywhere-sdr/releases
+
+[paypal-shield]: https://img.shields.io/badge/paypal-donate-green.svg?style=for-the-badge
+[paypal-donations-url]: https://paypal.me/laolilin
