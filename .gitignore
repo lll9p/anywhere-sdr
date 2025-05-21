@@ -37,3 +37,7 @@ output/
 
 # Augment specific files
 .augment-guidelines
+
+# Roo code memory bank
+/memory-bank
+projectBrief.md
