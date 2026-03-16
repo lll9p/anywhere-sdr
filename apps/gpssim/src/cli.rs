@@ -6,10 +6,20 @@
 
 use std::path::PathBuf;
 
-use clap::{ArgAction, Parser};
-use gps::SignalGeneratorBuilder;
+use clap::{ArgAction, Parser, ValueEnum};
+use gps::{SignalGenerator, SignalGeneratorBuilder};
 
-use crate::Error;
+use crate::{
+    Error,
+    tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, TxSink, TxTee},
+};
+
+/// Transmission output backend selected via `--tx`.
+#[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
+enum TxBackend {
+    /// Transmit generated samples in real time using a `HackRF` device.
+    Hackrf,
+}
 
 /*
 
@@ -87,6 +97,10 @@ pub struct Args {
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
 
+    /// Transmit output backend (repeatable). Example: `--tx hackrf`
+    #[arg(long, value_enum, action = ArgAction::Append)]
+    tx: Vec<TxBackend>,
+
     /// Sampling frequency [Hz] (default: 2600000)
     #[arg(short = 's', long, default_value_t = 2600000)]
     frequency: usize,
@@ -96,7 +110,7 @@ pub struct Args {
     bits: usize,
 
     /// Disable ionospheric delay for spacecraft scenario
-    #[arg(short = 'i', long, default_value_t = false, action = ArgAction::SetFalse)]
+    #[arg(short = 'i', long, default_value_t = false, action = ArgAction::SetTrue)]
     ionospheric_disable: bool,
 
     /// Disable path loss and hold power level constant [`fixed_gain`]
@@ -106,6 +120,42 @@ pub struct Args {
     /// Show details about simulated channels
     #[arg(short = 'v', long,default_value_t = false, action = ArgAction::SetTrue)]
     verbose: bool,
+
+    /// `HackRF` serial number (hex). If omitted, uses the first device.
+    #[arg(long)]
+    hackrf_serial: Option<String>,
+
+    /// `HackRF` RF center frequency in Hz (default: GPS L1)
+    #[arg(long, default_value_t = 1_575_420_000)]
+    hackrf_rf_freq_hz: u64,
+
+    /// `HackRF` TXVGA gain (0..=47)
+    #[arg(long, default_value_t = 20)]
+    hackrf_txvga_gain: u16,
+
+    /// Enable `HackRF` RF amplifier
+    #[arg(long, default_value_t = false, action = ArgAction::SetTrue)]
+    hackrf_amp_enable: bool,
+
+    /// `HackRF` USB bulk transfer size in bytes
+    #[arg(long, default_value_t = 256 * 1024)]
+    hackrf_usb_transfer_bytes: usize,
+
+    /// `HackRF` number of in-flight USB transfers
+    #[arg(long, default_value_t = 16)]
+    hackrf_usb_transfers: usize,
+
+    /// `HackRF` bounded queue depth in generator blocks
+    #[arg(long, default_value_t = 8)]
+    hackrf_queue_blocks: usize,
+
+    /// `HackRF` number of blocks to prefill before TX starts
+    #[arg(long, default_value_t = 2)]
+    hackrf_prefill_blocks: usize,
+
+    /// If set, do not transmit silence on underrun
+    #[arg(long, default_value_t = false, action = ArgAction::SetTrue)]
+    hackrf_drop_on_underrun: bool,
 }
 
 impl Args {
@@ -118,7 +168,62 @@ impl Args {
     /// * `Ok(())` - If the simulation completes successfully
     /// * `Err(Error)` - If an error occurs during simulation
     pub fn run(&self) -> Result<(), Error> {
-        let builder = SignalGeneratorBuilder::default()
+        let tx_enabled = !self.tx.is_empty();
+
+        let output_path = self.resolve_output_path(tx_enabled);
+
+        let mut generator =
+            self.build_generator(tx_enabled, output_path.clone())?;
+        generator.initialize()?;
+
+        if !tx_enabled {
+            generator.run_simulation()?;
+            return Ok(());
+        }
+
+        let mut tee = TxTee::new(self.build_tx_sinks(&generator, output_path)?);
+        if tee.is_empty() {
+            return Err(Error::cli_error(
+                "no output selected: use -o/--output and/or --tx <backend>"
+                    .to_string(),
+            ));
+        }
+
+        let streaming_result = generator
+            .run_streaming::<_, Error>(|block| tee.write_block_i16(block));
+
+        let finish_result = tee.finish();
+
+        streaming_result?;
+        finish_result?;
+        Ok(())
+    }
+
+    /// Resolves the output file path, preserving the legacy file-default
+    /// behavior when no TX backend is selected.
+    fn resolve_output_path(&self, tx_enabled: bool) -> Option<PathBuf> {
+        if tx_enabled {
+            self.output.clone()
+        } else {
+            self.output
+                .clone()
+                .or_else(|| Some(PathBuf::from("gpssim.bin")))
+        }
+    }
+
+    /// Builds and configures the signal generator. In TX mode the generator is
+    /// built without a file output writer.
+    fn build_generator(
+        &self, tx_enabled: bool, output_path: Option<PathBuf>,
+    ) -> Result<SignalGenerator, Error> {
+        if !tx_enabled && output_path.is_none() {
+            return Err(Error::cli_error(
+                "no output selected: use -o/--output or --tx <backend>"
+                    .to_string(),
+            ));
+        }
+
+        SignalGeneratorBuilder::default()
             .navigation_file(Some(self.ephemerides.clone()))?
             .user_motion_file(self.user_motion_ecef.clone())?
             .user_motion_llh_file(self.user_motion_llh.clone())?
@@ -129,15 +234,89 @@ impl Args {
             .time(self.time.clone())?
             .time_override(self.time_override)
             .duration(self.duration)
-            .output_file(self.output.clone())
+            .output_file(if tx_enabled { None } else { output_path })
             .frequency(Some(self.frequency))?
             .data_format(Some(self.bits))?
             .ionospheric_disable(Some(self.ionospheric_disable))
             .path_loss(self.path_loss)
-            .verbose(Some(self.verbose));
-        let mut generator = builder.build()?;
-        generator.initialize()?;
-        generator.run_simulation()?;
+            .verbose(Some(self.verbose))
+            .build()
+            .map_err(Into::into)
+    }
+
+    /// Builds the list of active TX sinks.
+    fn build_tx_sinks(
+        &self, generator: &SignalGenerator, output_path: Option<PathBuf>,
+    ) -> Result<Vec<Box<dyn TxSink>>, Error> {
+        let mut sinks: Vec<Box<dyn TxSink>> = Vec::new();
+
+        if let Some(path) = output_path {
+            sinks.push(Box::new(FileTxSink::new(
+                path,
+                generator.data_format,
+                generator.iq_buffer_size,
+            )?));
+        }
+
+        for backend in &self.tx {
+            match backend {
+                TxBackend::Hackrf => {
+                    sinks.push(Box::new(self.build_hackrf_sink(generator)?));
+                }
+            }
+        }
+
+        Ok(sinks)
+    }
+
+    /// Validates `HackRF`-specific CLI arguments.
+    fn validate_hackrf_args(&self) -> Result<(), Error> {
+        if self.hackrf_usb_transfer_bytes == 0 {
+            return Err(Error::cli_error(
+                "--hackrf-usb-transfer-bytes must be > 0".to_string(),
+            ));
+        }
+        if self.hackrf_usb_transfers == 0 {
+            return Err(Error::cli_error(
+                "--hackrf-usb-transfers must be > 0".to_string(),
+            ));
+        }
+        if self.hackrf_queue_blocks == 0 {
+            return Err(Error::cli_error(
+                "--hackrf-queue-blocks must be > 0".to_string(),
+            ));
+        }
+        if self.hackrf_txvga_gain > 47 {
+            return Err(Error::cli_error(
+                "--hackrf-txvga-gain must be in 0..=47".to_string(),
+            ));
+        }
+
         Ok(())
+    }
+
+    /// Builds a `HackRF` TX sink configured from CLI + generator settings.
+    fn build_hackrf_sink(
+        &self, generator: &SignalGenerator,
+    ) -> Result<HackrfTxSink, Error> {
+        self.validate_hackrf_args()?;
+
+        let config = HackrfTxConfig {
+            serial: self.hackrf_serial.clone(),
+            rf_freq_hz: self.hackrf_rf_freq_hz,
+            sample_frequency_hz: generator.sample_frequency,
+            step_duration: std::time::Duration::from_secs_f64(
+                generator.sample_rate,
+            ),
+            txvga_gain: self.hackrf_txvga_gain,
+            amp_enable: self.hackrf_amp_enable,
+            usb_transfer_bytes: self.hackrf_usb_transfer_bytes,
+            usb_transfers: self.hackrf_usb_transfers,
+            queue_blocks: self.hackrf_queue_blocks,
+            prefill_blocks: self.hackrf_prefill_blocks,
+            silence_on_underrun: !self.hackrf_drop_on_underrun,
+        };
+
+        HackrfTxSink::new(config, 2 * generator.iq_buffer_size)
     }
 }

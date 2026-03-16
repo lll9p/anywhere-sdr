@@ -10,6 +10,8 @@
 mod cli;
 /// Error types for the application
 mod error;
+/// Transmission backends (file / SDR hardware)
+mod tx;
 /// Utility functions for logging and diagnostics
 mod utils;
 

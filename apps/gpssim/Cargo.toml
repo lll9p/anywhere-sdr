@@ -20,6 +20,7 @@ path = "src/main.rs"
 [dependencies]
 # Internal dependencies
 gps.workspace = true
+libhackrf.workspace = true
 
 # Command line interface
 clap.workspace = true
@@ -31,6 +32,9 @@ thiserror.workspace = true
 tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
+
+# Hardware support
+nusb.workspace = true
 
 # Utilities
 jiff.workspace = true

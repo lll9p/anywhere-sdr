@@ -273,36 +273,52 @@ impl SignalGenerator {
             .writer
             .as_mut()
             .ok_or_else(|| Error::msg("IQWriter not initialized"))?;
-        let buffer_size = writer.buffer_size;
+        Self::generate_samples_into(
+            &mut self.channels,
+            &self.antenna_gains,
+            sampling_period,
+            &mut writer.buffer,
+        )?;
+        writer.write_samples()?;
+        Ok(())
+    }
+
+    /// Generates interleaved i16 I/Q samples into `out`.
+    #[inline]
+    fn generate_samples_into(
+        channels: &mut [Channel; MAX_CHAN], antenna_gains: &[i32; MAX_CHAN],
+        sampling_period: f64, out: &mut [i16],
+    ) -> Result<(), Error> {
+        if !out.len().is_multiple_of(2) {
+            return Err(Error::msg("I/Q buffer length must be even"));
+        }
+
+        let buffer_size = out.len() / 2;
         for isamp in 0..buffer_size {
             let mut i_acc: i32 = 0;
             let mut q_acc: i32 = 0;
             // Step 1: Accumulate signal components from all channels
             for i in 0..MAX_CHAN {
-                if self.channels[i].prn != 0 {
-                    let (ip, qp) = self.channels[i]
-                        .generate_iq_contribution(self.antenna_gains[i]);
+                if channels[i].prn != 0 {
+                    let (ip, qp) =
+                        channels[i].generate_iq_contribution(antenna_gains[i]);
                     // Accumulate for all visible satellites
                     // Add to total signal accumulation
                     i_acc += ip;
                     q_acc += qp;
                     // Update code phase
                     // Update code phase (C/A code sequence control)
-                    self.channels[i].update_navigation_bits(sampling_period);
+                    channels[i].update_navigation_bits(sampling_period);
                 }
             }
 
             // Step 2: Quantize and store I/Q samples
             // Scaled by 2^7
-            // i_acc = (i_acc + 64) >> 7;
-            // q_acc = (q_acc + 64) >> 7;
             // Store I/Q samples into buffer
-            writer.buffer[isamp * 2] = ((i_acc + 64) >> 7) as i16; // 8-bit quantization (with rounding)
-            writer.buffer[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
+            out[isamp * 2] = ((i_acc + 64) >> 7) as i16;
+            out[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
         }
 
-        // Step 3: Write I/Q data to output file (handling different formats)
-        writer.write_samples()?;
         Ok(())
     }
 
@@ -503,7 +519,7 @@ impl SignalGenerator {
             self.receiver_gps_time.add_secs(self.sample_rate);
         let time_start = std::time::Instant::now();
         // Main loop: Iterate through each time interval (0.1 seconds)
-        // From 1..num_steps, because step 0 was done in initiallize.
+        // From 1..num_steps, because step 0 was done in initialize.
         for step_index in 1..num_steps {
             // Select receiver position based on static/dynamic mode
             let current_location = match self.mode {
@@ -539,6 +555,70 @@ impl SignalGenerator {
             "Process time = {:.1} [sec]",
             time_start.elapsed().as_secs_f32()
         );
+        Ok(())
+    }
+
+    /// Runs the simulation and streams interleaved I/Q blocks (i16) to a caller
+    /// provided callback.
+    ///
+    /// The streamed blocks match the internal I/Q buffer contents used by the
+    /// file output path (before any bit-depth packing).
+    ///
+    /// # Errors
+    /// Returns an error if the generator was not initialized or if the callback
+    /// returns an error.
+    pub fn run_streaming<F, E>(&mut self, mut on_block: F) -> Result<(), E>
+    where
+        F: FnMut(&[i16]) -> Result<(), E>,
+        E: From<Error>,
+    {
+        if !self.initialized {
+            return Err(Error::NotInitialized.into());
+        }
+
+        // Determine the total number of simulation steps
+        let num_steps = match self.mode {
+            MotionMode::Static => self.simulation_step_count.max(1),
+            MotionMode::Dynamic => self.simulation_step_count,
+        };
+
+        if num_steps == 0 {
+            return Ok(());
+        }
+
+        let mut iq_buffer: Vec<i16> = vec![0; 2 * self.iq_buffer_size];
+        let sampling_period = self.sample_frequency.recip();
+
+        // Generate baseband signals
+        self.receiver_gps_time =
+            self.receiver_gps_time.add_secs(self.sample_rate);
+
+        // Main loop: Iterate through each time interval (0.1 seconds)
+        // From 1..num_steps, because step 0 was done in initialize.
+        for step_index in 1..num_steps {
+            let current_location = match self.mode {
+                MotionMode::Static => self.positions[0],
+                MotionMode::Dynamic => self
+                    .positions
+                    .get(step_index)
+                    .copied()
+                    .unwrap_or(self.positions[0]),
+            };
+
+            self.update_channel_parameters(current_location);
+            Self::generate_samples_into(
+                &mut self.channels,
+                &self.antenna_gains,
+                sampling_period,
+                &mut iq_buffer,
+            )?;
+            on_block(&iq_buffer)?;
+            self.handle_periodic_tasks(current_location);
+
+            self.receiver_gps_time =
+                self.receiver_gps_time.add_secs(self.sample_rate);
+        }
+
         Ok(())
     }
 

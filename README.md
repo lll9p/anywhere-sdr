@@ -171,6 +171,17 @@ gpssim -e brdc0010.22n -d 30.0 -L 2347,3,17 -l 42.3569048,-71.2564075,0
 
 # Generate signal with ionospheric delay correction disabled
 gpssim -e brdc0010.22n -d 30.0 -i -l 35.681298,139.766247,10.0
+
+# Transmit in real time via HackRF (SC8)
+# Note (Windows): HackRF must be bound to WinUSB (e.g. via Zadig) for `nusb`.
+gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30 \
+  --tx hackrf \
+  --hackrf-rf-freq-hz 1575420000 \
+  --hackrf-txvga-gain 20
+
+# Transmit via HackRF and also write an 8-bit SC8 file
+gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30 -b 8 -o gpssim_sc8.bin \
+  --tx hackrf
 ```
 
 ## Direct Sample Access API
@@ -232,6 +243,12 @@ cargo test -p libhackrf -- --ignored
 
 # Run a specific hardware-dependent test
 cargo test -p libhackrf list_device -- --ignored
+```
+
+The `gpssim` application also includes an ignored HackRF TX smoke test. To run it:
+
+```bash
+cargo test -p gpssim -- --ignored
 ```
 
 ### Compatibility Tests
