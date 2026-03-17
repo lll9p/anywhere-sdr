@@ -23,6 +23,9 @@ constants.workspace = true
 parsing.workspace = true
 rinex.workspace = true
 
+# Logging
+tracing.workspace = true
+
 # Error handling
 thiserror.workspace = true
 

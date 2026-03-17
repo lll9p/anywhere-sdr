@@ -16,7 +16,7 @@ use crate::{
 
 /// Transmission output backend selected via `--tx`.
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
-enum TxBackend {
+pub(crate) enum TxBackend {
     /// Transmit generated samples in real time using a `HackRF` device.
     Hackrf,
     /// Discard generated blocks (CPU-only benchmark mode).
@@ -53,111 +53,120 @@ Options:
 #[command(version, about="gps-sdr-sim compatible", long_about = None)]
 #[command(propagate_version = true)]
 pub struct Args {
-    /// RINEX navigation file for GPS ephemerides (required)
-    #[arg(short, long, value_hint = clap::ValueHint::FilePath)]
-    ephemerides: std::path::PathBuf,
+    /// Enter interactive terminal UI (CLI args prefill the UI config).
+    #[arg(long, default_value_t = false, action = ArgAction::SetTrue)]
+    pub(crate) tui: bool,
+
+    /// RINEX navigation file for GPS ephemerides (required unless --tui)
+    #[arg(
+        short,
+        long,
+        value_hint = clap::ValueHint::FilePath,
+        required_unless_present = "tui"
+    )]
+    pub(crate) ephemerides: Option<std::path::PathBuf>,
 
     /// User motion file in ECEF x, y, z format (dynamic mode)
     #[arg(short = 'u', long, value_hint = clap::ValueHint::FilePath)]
-    user_motion_ecef: Option<PathBuf>,
+    pub(crate) user_motion_ecef: Option<PathBuf>,
 
     /// User motion file in lat, lon, height format (dynamic mode)
     #[arg(short = 'x', long, value_hint = clap::ValueHint::FilePath)]
-    user_motion_llh: Option<PathBuf>,
+    pub(crate) user_motion_llh: Option<PathBuf>,
 
     /// NMEA GGA stream (dynamic mode)
     #[arg(short = 'g', long, value_hint = clap::ValueHint::FilePath)]
-    nmea_gga: Option<PathBuf>,
+    pub(crate) nmea_gga: Option<PathBuf>,
 
     /// ECEF X,Y,Z in meters (static mode) e.g.
     /// 3967283.154,1022538.181,4872414.484
     #[arg(short = 'c', long, value_parser, value_delimiter = ',')]
-    location_ecef: Option<Vec<f64>>,
+    pub(crate) location_ecef: Option<Vec<f64>>,
 
     /// Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
     #[arg(short = 'l', long, value_parser, value_delimiter = ',')]
-    location: Option<Vec<f64>>,
+    pub(crate) location: Option<Vec<f64>>,
 
     /// User leap future event in GPS week number, day number, next leap second
     /// e.g. 2347,3,19
     #[arg(short = 'L', long, value_parser, value_delimiter = ',')]
-    leap: Option<Vec<i32>>,
+    pub(crate) leap: Option<Vec<i32>>,
 
     /// Scenario start time YYYY-MM-DDTHH:MM:SSZ
     #[arg(short = 't', long)]
-    time: Option<String>,
+    pub(crate) time: Option<String>,
 
     /// Overwrite TOC and TOE to scenario start time
     #[arg(short = 'T', long)]
-    time_override: Option<bool>,
+    pub(crate) time_override: Option<bool>,
 
     /// Duration [sec] (dynamic mode max: {}, static mode max: {})
     #[arg(short = 'd', long)]
-    duration: Option<f64>,
+    pub(crate) duration: Option<f64>,
 
     /// I/Q sampling data file (default: gpssim.bin)
     #[arg(short = 'o', long)]
-    output: Option<PathBuf>,
+    pub(crate) output: Option<PathBuf>,
 
     /// Transmit output backend (repeatable). Example: `--tx hackrf`
     #[arg(long, value_enum, action = ArgAction::Append)]
-    tx: Vec<TxBackend>,
+    pub(crate) tx: Vec<TxBackend>,
 
     /// Sampling frequency [Hz] (default: 2600000)
     #[arg(short = 's', long, default_value_t = 2600000)]
-    frequency: usize,
+    pub(crate) frequency: usize,
 
     /// I/Q data format [1/8/16] (default: 16)
     #[arg(short = 'b', long, default_value_t = 16)]
-    bits: usize,
+    pub(crate) bits: usize,
 
     /// Disable ionospheric delay for spacecraft scenario
     #[arg(short = 'i', long, default_value_t = false, action = ArgAction::SetTrue)]
-    ionospheric_disable: bool,
+    pub(crate) ionospheric_disable: bool,
 
     /// Disable path loss and hold power level constant [`fixed_gain`]
     #[arg(short = 'p', long)]
-    path_loss: Option<i32>,
+    pub(crate) path_loss: Option<i32>,
 
     /// Show details about simulated channels
     #[arg(short = 'v', long,default_value_t = false, action = ArgAction::SetTrue)]
-    verbose: bool,
+    pub(crate) verbose: bool,
 
     /// `HackRF` serial number (hex). If omitted, uses the first device.
     #[arg(long)]
-    hackrf_serial: Option<String>,
+    pub(crate) hackrf_serial: Option<String>,
 
     /// `HackRF` RF center frequency in Hz (default: GPS L1)
     #[arg(long, default_value_t = 1_575_420_000)]
-    hackrf_rf_freq_hz: u64,
+    pub(crate) hackrf_rf_freq_hz: u64,
 
     /// `HackRF` TXVGA gain (0..=47)
     #[arg(long, default_value_t = 20)]
-    hackrf_txvga_gain: u16,
+    pub(crate) hackrf_txvga_gain: u16,
 
     /// Enable `HackRF` RF amplifier
     #[arg(long, default_value_t = false, action = ArgAction::SetTrue)]
-    hackrf_amp_enable: bool,
+    pub(crate) hackrf_amp_enable: bool,
 
     /// `HackRF` USB bulk transfer size in bytes
     #[arg(long, default_value_t = 256 * 1024)]
-    hackrf_usb_transfer_bytes: usize,
+    pub(crate) hackrf_usb_transfer_bytes: usize,
 
     /// `HackRF` number of in-flight USB transfers
     #[arg(long, default_value_t = 16)]
-    hackrf_usb_transfers: usize,
+    pub(crate) hackrf_usb_transfers: usize,
 
     /// `HackRF` bounded queue depth in generator blocks
     #[arg(long, default_value_t = 8)]
-    hackrf_queue_blocks: usize,
+    pub(crate) hackrf_queue_blocks: usize,
 
     /// `HackRF` number of blocks to prefill before TX starts
     #[arg(long, default_value_t = 2)]
-    hackrf_prefill_blocks: usize,
+    pub(crate) hackrf_prefill_blocks: usize,
 
     /// If set, do not transmit silence on underrun
     #[arg(long, default_value_t = false, action = ArgAction::SetTrue)]
-    hackrf_drop_on_underrun: bool,
+    pub(crate) hackrf_drop_on_underrun: bool,
 }
 
 impl Args {
@@ -261,7 +270,7 @@ impl Args {
         }
 
         SignalGeneratorBuilder::default()
-            .navigation_file(Some(self.ephemerides.clone()))?
+            .navigation_file(self.ephemerides.clone())?
             .user_motion_file(self.user_motion_ecef.clone())?
             .user_motion_llh_file(self.user_motion_llh.clone())?
             .user_motion_nmea_gga_file(self.nmea_gga.clone())?
@@ -358,8 +367,41 @@ impl Args {
             queue_blocks: self.hackrf_queue_blocks,
             prefill_blocks: self.hackrf_prefill_blocks,
             silence_on_underrun: !self.hackrf_drop_on_underrun,
+            underrun_counter: None,
         };
 
         HackrfTxSink::new(config, 2 * generator.iq_buffer_size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::{Args, TxBackend};
+    use crate::tui_config::TuiConfig;
+
+    #[test]
+    fn parses_tui_without_ephemerides() {
+        let args = Args::try_parse_from(["gpssim", "--tui"]).unwrap();
+        assert!(args.tui);
+        assert!(args.ephemerides.is_none());
+
+        assert!(Args::try_parse_from(["gpssim"]).is_err());
+    }
+
+    #[test]
+    fn applies_cli_overrides_to_tui_config() {
+        let args = Args::try_parse_from([
+            "gpssim", "--tui", "--tx", "null", "-s", "123", "-b", "8",
+        ])
+        .unwrap();
+
+        let mut config = TuiConfig::default();
+        config.apply_overrides_from_args(&args);
+
+        assert_eq!(config.tx, vec![TxBackend::Null]);
+        assert_eq!(config.frequency, 123);
+        assert_eq!(config.bits, 8);
     }
 }

@@ -80,16 +80,15 @@ pub fn read_navigation_data(
         // PRN (Pseudo-Random Noise) code number, often 1-based in RINEX
         let Some(sv) = rinex_record.prn.checked_sub(1) else {
             // Log or handle PRN 0 case if necessary
-            eprintln!(
-                "Warning: Encountered RINEX record with PRN 0, skipping."
-            );
+            tracing::warn!("encountered RINEX record with PRN 0, skipping");
             continue;
         };
         if sv >= MAX_SAT {
-            eprintln!(
-                "Warning: Skipping ephemeris for SV PRN {} (index {}) as it \
-                 exceeds MAX_SAT {}",
-                rinex_record.prn, sv, MAX_SAT
+            tracing::warn!(
+                prn = rinex_record.prn,
+                index = sv,
+                max_sat = MAX_SAT,
+                "skipping ephemeris: SV index exceeds MAX_SAT"
             );
             continue;
         }
@@ -119,9 +118,9 @@ pub fn read_navigation_data(
             current_set_index += 1;
             // Check if new set index exceeds bounds
             if current_set_index >= EPHEM_ARRAY_SIZE {
-                println!(
-                    "Warning: Reached maximum ephemeris sets \
-                     ({EPHEM_ARRAY_SIZE}). Stopping processing."
+                tracing::warn!(
+                    max_sets = EPHEM_ARRAY_SIZE,
+                    "reached maximum ephemeris sets; stopping processing"
                 );
                 break; // Stop processing more records
             }

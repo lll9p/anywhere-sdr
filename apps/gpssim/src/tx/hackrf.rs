@@ -3,7 +3,11 @@
 use std::{
     collections::VecDeque,
     io::Write,
-    sync::mpsc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -43,6 +47,9 @@ pub struct HackrfTxConfig {
     pub prefill_blocks: usize,
     /// If `true`, transmit silence (zeros) on underrun.
     pub silence_on_underrun: bool,
+
+    /// Shared underrun counter incremented by the writer thread.
+    pub underrun_counter: Option<Arc<AtomicU64>>,
 }
 
 /// A TX sink that streams SC8 samples to a `HackRF` device.
@@ -241,6 +248,7 @@ impl TxSink for HackrfTxSink {
         }
 
         if let Some(mut hackrf) = self.hackrf.take() {
+            tracing::info!(context = %self.backend_context(), "stopping hackrf tx");
             hackrf.stop_tx().map_err(|err| {
                 Error::tx_backend_with_source(
                     self.backend(),
@@ -248,6 +256,7 @@ impl TxSink for HackrfTxSink {
                     err,
                 )
             })?;
+            tracing::info!(context = %self.backend_context(), "hackrf tx stopped");
         }
         Ok(())
     }
@@ -321,21 +330,27 @@ fn writer_thread_main(
             })?;
             bytes_sent_since_log += block.len() as u64;
             bytes_sent_total += block.len() as u64;
-        } else if config.silence_on_underrun {
-            underruns += 1;
-            if silence.is_empty() {
-                // Can't fill until we know the block size; keep waiting.
-                continue;
+        } else {
+            underruns = underruns.wrapping_add(1);
+            if let Some(counter) = &config.underrun_counter {
+                counter.fetch_add(1, Ordering::Relaxed);
             }
-            writer.write_all(&silence).map_err(|err| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    config_context(&config),
-                    err,
-                )
-            })?;
-            bytes_sent_since_log += silence.len() as u64;
-            bytes_sent_total += silence.len() as u64;
+
+            if config.silence_on_underrun {
+                if silence.is_empty() {
+                    // Can't fill until we know the block size; keep waiting.
+                    continue;
+                }
+                writer.write_all(&silence).map_err(|err| {
+                    Error::tx_backend_with_source(
+                        "hackrf",
+                        config_context(&config),
+                        err,
+                    )
+                })?;
+                bytes_sent_since_log += silence.len() as u64;
+                bytes_sent_total += silence.len() as u64;
+            }
         }
 
         if last_log.elapsed() >= log_interval {
@@ -409,6 +424,7 @@ mod tests {
             queue_blocks: 8,
             prefill_blocks: 2,
             silence_on_underrun: true,
+            underrun_counter: None,
         };
 
         let mut sink = HackrfTxSink::new(config, 2 * 1024)?;

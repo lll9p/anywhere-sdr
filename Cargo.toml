@@ -55,6 +55,10 @@ tracing = { version = "0.1" }
 tracing-appender = { version = "0.2" }
 tracing-subscriber = { version = "0.3" }
 
+# Terminal UI
+ratatui = { version = "0.28", default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.28" }
+
 # Testing
 test-case = { version = "3.3" }
 

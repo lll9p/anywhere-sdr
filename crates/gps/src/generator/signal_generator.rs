@@ -124,26 +124,34 @@ impl SignalGenerator {
     pub fn initialize(&mut self) -> Result<(), Error> {
         // Initialize channels
         match self.mode {
-            MotionMode::Static => eprintln!("Using static location mode."),
-            MotionMode::Dynamic => eprintln!("Using dynamic location mode."),
+            MotionMode::Static => {
+                tracing::info!("using static location mode");
+            }
+            MotionMode::Dynamic => {
+                tracing::info!("using dynamic location mode");
+            }
         }
 
-        eprintln!(
-            "xyz = {}, {}, {}",
-            self.positions[0].x, self.positions[0].y, self.positions[0].z,
-        );
+        if let Some(first_position) = self.positions.first() {
+            tracing::info!(
+                x = first_position.x,
+                y = first_position.y,
+                z = first_position.z,
+                "initial receiver position (ECEF)"
+            );
+        }
         let gps_time_start = self.receiver_gps_time.clone();
         let date_time_start = DateTime::from(&gps_time_start);
-        eprintln!(
-            "Start time = {:4}/{:02}/{:02},{:02}:{:02}:{:0>2.0} ({}:{:.0})",
-            date_time_start.y,
-            date_time_start.m,
-            date_time_start.d,
-            date_time_start.hh,
-            date_time_start.mm,
-            date_time_start.sec,
-            gps_time_start.week,
-            gps_time_start.sec,
+        tracing::info!(
+            year = date_time_start.y,
+            month = date_time_start.m,
+            day = date_time_start.d,
+            hour = date_time_start.hh,
+            minute = date_time_start.mm,
+            second = date_time_start.sec,
+            gps_week = gps_time_start.week,
+            gps_seconds = gps_time_start.sec,
+            "start time"
         );
         // Clear all channels
         self.channels
@@ -159,7 +167,9 @@ impl SignalGenerator {
         self.receiver_gps_time = self.receiver_gps_time.add_secs(0.0);
         // Allocate visible satellites
         self.allocate_channel(self.positions[0]);
-        Self::print_channel_status(&self.channels);
+        if self.verbose {
+            Self::log_channel_status(&self.channels);
+        }
 
         ////////////////////////////////////////////////////////////
         // Receiver antenna gain pattern
@@ -437,9 +447,9 @@ impl SignalGenerator {
                         // Use absolute diff
                         self.valid_ephemerides_index = next_ephemeris_set_index;
                         refreshed_eph = true;
-                        eprintln!(
-                            "\nSwitched to ephemeris set index \
-                             {next_ephemeris_set_index}"
+                        tracing::info!(
+                            next_ephemeris_set_index,
+                            "switched to ephemeris set"
                         );
                     }
                 }
@@ -474,7 +484,7 @@ impl SignalGenerator {
 
             // Show details about simulated channels
             if self.verbose {
-                Self::print_channel_status(&self.channels);
+                Self::log_channel_status(&self.channels);
             }
         }
     }
@@ -511,11 +521,11 @@ impl SignalGenerator {
         };
 
         if num_steps == 0 {
-            eprintln!("Warning: No simulation steps requested.");
+            tracing::warn!("no simulation steps requested");
             return Ok(());
         }
 
-        eprintln!("Starting signal generation for {num_steps} steps...");
+        tracing::info!(num_steps, "starting signal generation");
         // Generate baseband signals
         self.receiver_gps_time =
             self.receiver_gps_time.add_secs(self.sample_rate);
@@ -546,16 +556,17 @@ impl SignalGenerator {
             // Update receiver time
             self.receiver_gps_time =
                 self.receiver_gps_time.add_secs(self.sample_rate);
-            eprint!(
-                "\rTime into run = {:4.1}\0",
-                (step_index + 1) as f64 / 10.0
-            );
+            if self.verbose && step_index % 100 == 0 {
+                let time_into_run_seconds =
+                    (step_index + 1) as f64 * self.sample_rate;
+                tracing::debug!(time_into_run_seconds, "simulation progress");
+            }
         }
 
-        eprintln!("\nDone!");
-        eprintln!(
-            "Process time = {:.1} [sec]",
-            time_start.elapsed().as_secs_f32()
+        tracing::info!("done");
+        tracing::info!(
+            process_seconds = time_start.elapsed().as_secs_f32(),
+            "process time"
         );
         Ok(())
     }
@@ -636,18 +647,33 @@ impl SignalGenerator {
     ///
     /// # Arguments
     /// * `channels` - Array of satellite channels
-    fn print_channel_status(channels: &[Channel; MAX_CHAN]) {
-        eprintln!("PRN Az(deg) El(deg)  Range(m) Iono(m)");
+    fn log_channel_status(channels: &[Channel; MAX_CHAN]) {
+        use std::fmt::Write as _;
+
+        let mut output = String::new();
+        if writeln!(&mut output, "PRN Az(deg) El(deg)  Range(m) Iono(m)")
+            .is_err()
+        {
+            tracing::warn!("failed to format channel status header");
+            return;
+        }
         for ichan in channels.iter().filter(|ch| ch.prn != 0) {
-            eprintln!(
+            if writeln!(
+                &mut output,
                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                 ichan.prn,
                 ichan.azel().az * R2D,
                 ichan.azel().el * R2D,
-                ichan.rho0().distance, /* Using rho0 which is updated in
-                                        * channel.update_state */
+                ichan.rho0().distance,
                 ichan.rho0().iono_delay,
-            );
+            )
+            .is_err()
+            {
+                tracing::warn!("failed to format channel status row");
+                return;
+            }
         }
+
+        tracing::info!("channel status\n{output}");
     }
 }

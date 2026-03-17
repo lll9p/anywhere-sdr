@@ -255,16 +255,20 @@ impl SignalGeneratorBuilder {
                 // We'll validate these parameters again in the build method
                 // but we do a preliminary check here for early error detection
                 if week_number < 0 {
-                    println!("WARNING: Invalid GPS week number: {week_number}");
+                    tracing::warn!(week_number, "invalid GPS week number");
                 }
                 if !(1..=7).contains(&day_number) {
-                    println!("WARNING: Invalid GPS day number: {day_number}");
+                    tracing::warn!(day_number, "invalid GPS day number");
                 }
                 if !(-128..=127).contains(&delta_time) {
-                    println!(
-                        "WARNING: Invalid delta leap second: {delta_time}"
-                    );
+                    tracing::warn!(delta_time, "invalid delta leap second");
                 }
+            } else {
+                tracing::warn!(
+                    leap_values_len = leap_values.len(),
+                    "leap second parameters must have 3 values: [week, day, \
+                     delta]"
+                );
             }
         }
         self.leap = leap;
@@ -616,6 +620,9 @@ impl SignalGeneratorBuilder {
         // check and set defaults
         // leap setting
         if let Some(leap) = self.leap {
+            if leap.len() < 3 {
+                return Err(Error::invalid_leap_second_parameters());
+            }
             ionoutc.leapen = 1;
             ionoutc.wnlsf = leap[0];
             ionoutc.day_number = leap[1];
@@ -808,7 +815,7 @@ impl SignalGeneratorBuilder {
             data_format,
             fixed_gain: self.path_loss,
             output_file: self.output_file,
-            verbose: false,
+            verbose: self.verbose.unwrap_or(false),
             ..Default::default()
         };
         Ok(generator)

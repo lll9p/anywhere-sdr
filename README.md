@@ -135,6 +135,7 @@ generator.run_simulation().unwrap();
 
 ### Command Line Options
 
+- `--tui`: Launch interactive terminal UI. Other flags prefill the UI config and can be edited before starting.
 - `-e <gps_nav>`: RINEX navigation file for GPS ephemerides (required)
 - `-u <user_motion>`: User motion file in ECEF x,y,z format (dynamic mode)
 - `-x <user_motion>`: User motion file in lat,lon,height format (dynamic mode)
@@ -156,6 +157,9 @@ generator.run_simulation().unwrap();
 ```bash
 # Generate signal with 8-bit I/Q format for a static location
 gpssim -e brdc0010.22n -b 8 -d 60.0 -l 35.681298,139.766247,10.0 -o output.bin
+
+# Interactive mode (CLI flags prefill the UI config)
+gpssim --tui -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30
 
 # Generate signal using NMEA GGA stream for dynamic motion
 gpssim -e brdc0010.22n -d 120.0 -g nmea_data.txt -s 2600000

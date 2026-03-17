@@ -1,3 +1,4 @@
+#![allow(clippy::missing_docs_in_private_items)]
 //! Command-line GPS L1 C/A signal simulator for software-defined radio
 //! applications.
 //!
@@ -10,6 +11,10 @@
 mod cli;
 /// Error types for the application
 mod error;
+/// Interactive terminal UI
+mod tui;
+/// TUI configuration model
+mod tui_config;
 /// Transmission backends (file / SDR hardware)
 mod tx;
 /// Utility functions for logging and diagnostics
@@ -27,8 +32,15 @@ pub use error::Error;
 /// * `Ok(())` - If the simulation completes successfully
 /// * `Err(Error)` - If an error occurs during simulation
 pub fn main() -> Result<(), Error> {
+    let cli = cli::Args::parse();
+
+    if cli.tui {
+        let log_buffer = utils::LogBuffer::new(2000);
+        let _guard = utils::tracing_init_tui(log_buffer.clone());
+        return tui::run(&cli, log_buffer);
+    }
+
     let _guard = utils::tracing_init();
 
-    let cli = cli::Args::parse();
     cli.run()
 }

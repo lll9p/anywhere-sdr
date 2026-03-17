@@ -33,6 +33,10 @@ tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 
+# Terminal UI
+ratatui.workspace = true
+crossterm.workspace = true
+
 # Hardware support
 nusb.workspace = true
 

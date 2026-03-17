@@ -53,6 +53,12 @@ pub enum Error {
     #[error("Invalid delta leap second")]
     InvalidDeltaLeapSecond,
 
+    /// Error when leap second parameters are incomplete or malformed
+    #[error(
+        "Invalid leap second parameters (expected 3 values: week, day, delta)"
+    )]
+    InvalidLeapSecondParameters,
+
     /// Error when incorrect position data is provided
     #[error("Wrong positions")]
     WrongPositions,
@@ -161,6 +167,12 @@ impl Error {
     #[inline]
     pub fn invalid_delta_leap_second() -> Self {
         Error::InvalidDeltaLeapSecond
+    }
+
+    /// Create a new error for invalid leap second parameters
+    #[inline]
+    pub fn invalid_leap_second_parameters() -> Self {
+        Error::InvalidLeapSecondParameters
     }
 
     /// Create a new error for wrong positions
