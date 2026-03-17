@@ -32,7 +32,10 @@ mod propagation;
 mod table;
 
 pub use error::Error;
-pub use generator::{MotionMode, SignalGenerator, SignalGeneratorBuilder};
+pub use generator::{
+    MotionCommand, MotionMode, MotionSnapshot, RuntimeMotionControl,
+    SignalGenerator, SignalGeneratorBuilder,
+};
 pub use io::{
     DataFormat, IQWriter, as_bytes_i16, pack_bits1_into, pack_bits8_into,
 };

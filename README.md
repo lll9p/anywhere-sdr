@@ -59,6 +59,7 @@ It generates GPS L1 C/A signals that can be transmitted through SDR devices.
   - [Command Line Options](#command-line-options)
   - [Usage Examples](#usage-examples)
 - [Direct Sample Access API](#direct-sample-access-api)
+- [Runtime Motion Control API](#runtime-motion-control-api)
 - [Testing](#testing)
   - [Hardware-Dependent Tests](#hardware-dependent-tests)
   - [Compatibility Tests](#compatibility-tests)
@@ -79,6 +80,7 @@ It generates GPS L1 C/A signals that can be transmitted through SDR devices.
 - **Position Modes**:
   - Static positioning with ECEF or LLH coordinates
   - Dynamic trajectories from motion files or NMEA streams
+  - Runtime motion control (library API)
 - **Input Formats**:
   - RINEX navigation files for GPS ephemerides
   - User motion in ECEF (X,Y,Z) format
@@ -212,6 +214,74 @@ for step in 0..num_steps {
     // Process samples as needed...
 }
 ```
+
+## Runtime Motion Control API
+
+The library supports a runtime motion controller that lets you change receiver
+motion while streaming (heading/speed/acceleration, stop/start, and
+target-tracking with limits).
+
+```rust
+use std::path::PathBuf;
+
+use geometry::Ecef;
+use gps::{Error, MotionCommand, RuntimeMotionControl, SignalGeneratorBuilder};
+
+fn main() -> Result<(), Error> {
+    // Pick an initial receiver position.
+    let origin = Ecef::new(-3_813_477.954, 3_554_276.552, 3_662_785.237);
+    let control = RuntimeMotionControl::new(origin);
+
+    let mut generator = SignalGeneratorBuilder::default()
+        .navigation_file(Some(PathBuf::from("brdc0010.22n")))?
+        .runtime_motion_control(Some(control.clone()))?
+        .build()?;
+    generator.initialize()?;
+
+    control.submit(MotionCommand::SetHeadingSpeed {
+        heading_deg: 90.0, // 0=North, 90=East, clockwise
+        speed_mps: 10.0,
+        climb_mps: 0.0,
+    });
+
+    let mut blocks: usize = 0;
+    let _ = generator.run_streaming_user_control::<_, Error>(|_iq| {
+        blocks += 1;
+
+        // Read an instantaneous snapshot (may skip if the generator is busy).
+        let _snapshot = control.try_snapshot();
+
+        if blocks >= 3 {
+            // Stop the streaming loop by returning an error.
+            return Err(Error::msg("stop"));
+        }
+
+        Ok(())
+    });
+
+    Ok(())
+}
+```
+
+Notes and constraints:
+
+- Commands are applied at the next simulation step boundary (`dt = sample_rate`,
+  default 0.1s).
+- This change provides the library API only; wiring it into a TUI or a network
+  control surface is out of scope.
+- Some parts of the codebase still assume a ~10 Hz step rate; changing
+  `sample_rate` may require additional work.
+- The streaming loop runs until the callback returns an error (use this as a
+  cancellation mechanism).
+- The generator hot path uses non-blocking reads for pending commands and
+  snapshots; if you submit updates faster than the step rate, it is
+  “latest-wins”.
+
+Extension points:
+
+- Timestamped commands (apply at a specific simulation time)
+- Waypoint / autopilot commands (drive `SetTargetHeading`/`SetTargetSpeed`)
+- Jerk-limited motion models and alternative integrators
 
 ## Testing
 

@@ -357,6 +357,7 @@ mod tests {
         let num_steps = match gen_b.mode {
             MotionMode::Static => gen_b.simulation_step_count.max(1),
             MotionMode::Dynamic => gen_b.simulation_step_count,
+            MotionMode::UserControl => todo!(),
         };
         let expected_blocks = num_steps.saturating_sub(1);
 

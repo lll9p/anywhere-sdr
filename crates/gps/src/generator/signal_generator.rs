@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use constants::*;
 use geometry::Ecef;
 
+use super::motion_control::{MotionIntegrator, RuntimeMotionControl};
 use crate::{
     Error,
     channel::Channel,
@@ -52,6 +53,8 @@ pub struct SignalGenerator {
     pub antenna_pattern: [f64; 37],
     /// Simulation mode (static or dynamic position)
     pub mode: MotionMode,
+    /// Optional runtime motion controller (`UserControl` mode)
+    pub runtime_motion_control: Option<RuntimeMotionControl>,
     /// Elevation mask angle in radians (satellites below this are not visible)
     pub elevation_mask: f64,
     /// Sampling frequency in Hz (typically 2.6MHz)
@@ -87,6 +90,7 @@ impl Default for SignalGenerator {
             antenna_gains: [0; MAX_CHAN],
             antenna_pattern: [0.0; 37],
             mode: MotionMode::Static,
+            runtime_motion_control: None,
             elevation_mask: f64::default(),
             sample_frequency: 0.0,
             sample_rate: 0.0,
@@ -129,6 +133,14 @@ impl SignalGenerator {
             }
             MotionMode::Dynamic => {
                 tracing::info!("using dynamic location mode");
+            }
+            MotionMode::UserControl => {
+                tracing::info!("using runtime motion control mode");
+                if self.runtime_motion_control.is_none() {
+                    return Err(Error::msg(
+                        "runtime motion control not configured",
+                    ));
+                }
             }
         }
 
@@ -514,10 +526,18 @@ impl SignalGenerator {
         if !self.initialized {
             return Err(Error::msg("Not initialized!"));
         }
+
+        if matches!(self.mode, MotionMode::UserControl) {
+            return Err(Error::msg(
+                "run_simulation is not supported in runtime motion control \
+                 mode",
+            ));
+        }
         // Determine the total number of simulation steps
         let num_steps = match self.mode {
             MotionMode::Static => self.simulation_step_count.max(1), /* Ensure at least one step for static */
             MotionMode::Dynamic => self.simulation_step_count,
+            MotionMode::UserControl => 0,
         };
 
         if num_steps == 0 {
@@ -541,6 +561,9 @@ impl SignalGenerator {
                     .get(step_index)
                     .copied()
                     .unwrap_or(self.positions[0]),
+                MotionMode::UserControl => unreachable!(
+                    "UserControl mode is rejected at function entry"
+                ),
             };
             // Step 1: Update satellite parameters (pseudorange, phase, and
             // gain)
@@ -589,10 +612,18 @@ impl SignalGenerator {
             return Err(Error::NotInitialized.into());
         }
 
+        if matches!(self.mode, MotionMode::UserControl) {
+            return Err(Error::msg(
+                "run_streaming is not supported in runtime motion control mode",
+            )
+            .into());
+        }
+
         // Determine the total number of simulation steps
         let num_steps = match self.mode {
             MotionMode::Static => self.simulation_step_count.max(1),
             MotionMode::Dynamic => self.simulation_step_count,
+            MotionMode::UserControl => 0,
         };
 
         if num_steps == 0 {
@@ -615,6 +646,9 @@ impl SignalGenerator {
                     .get(step_index)
                     .copied()
                     .unwrap_or(self.positions[0]),
+                MotionMode::UserControl => unreachable!(
+                    "UserControl mode is rejected at function entry"
+                ),
             };
 
             self.update_channel_parameters(current_location);
@@ -631,6 +665,51 @@ impl SignalGenerator {
         }
 
         Ok(())
+    }
+
+    /// Runs streaming with runtime motion control, producing blocks until the
+    /// callback returns an error.
+    pub fn run_streaming_user_control<F, E>(
+        &mut self, mut on_block: F,
+    ) -> Result<(), E>
+    where
+        F: FnMut(&[i16]) -> Result<(), E>,
+        E: From<Error>,
+    {
+        if !self.initialized {
+            return Err(Error::NotInitialized.into());
+        }
+        if !matches!(self.mode, MotionMode::UserControl) {
+            return Err(Error::msg(
+                "generator is not in runtime motion control mode",
+            )
+            .into());
+        }
+        let Some(control) = self.runtime_motion_control.clone() else {
+            return Err(
+                Error::msg("runtime motion control not configured").into()
+            );
+        };
+
+        let mut iq_buffer: Vec<i16> = vec![0; 2 * self.iq_buffer_size];
+        self.receiver_gps_time =
+            self.receiver_gps_time.add_secs(self.sample_rate);
+
+        let mut integrator = MotionIntegrator::new(self.positions[0]);
+
+        loop {
+            let current_location = integrator.step(self.sample_rate, &control);
+            self.update_channel_parameters(current_location);
+            Self::generate_samples_into(
+                &mut self.channels,
+                &self.antenna_gains,
+                &mut iq_buffer,
+            )?;
+            on_block(&iq_buffer)?;
+            self.handle_periodic_tasks(current_location);
+            self.receiver_gps_time =
+                self.receiver_gps_time.add_secs(self.sample_rate);
+        }
     }
 
     /// Prints detailed status information about active satellite channels.

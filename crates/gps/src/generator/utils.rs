@@ -14,13 +14,15 @@ use crate::{
 /// This enum specifies how the receiver position changes during simulation:
 /// - In Static mode, the receiver remains at a fixed position
 /// - In Dynamic mode, the receiver moves according to a predefined trajectory
+/// - In `UserControl` mode, the receiver position is provided at runtime
 #[derive(Debug)]
 pub enum MotionMode {
     /// Receiver remains at a fixed position throughout the simulation
     Static,
     /// Receiver moves according to a trajectory defined in a motion file
     Dynamic,
-    // UserControl - Future feature for real-time user-controlled motion
+    /// Receiver motion is controlled at runtime (e.g. heading/speed commands)
+    UserControl,
 }
 /// Type alias for the data returned by the `read_navigation_data` function.
 ///

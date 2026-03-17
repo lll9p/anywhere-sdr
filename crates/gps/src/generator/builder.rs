@@ -9,6 +9,7 @@ use crate::{
     datetime::{DateTime, GpsTime},
     ephemeris::Ephemeris,
     generator::{
+        RuntimeMotionControl,
         signal_generator::SignalGenerator,
         utils::{MotionMode, read_navigation_data},
     },
@@ -69,6 +70,8 @@ pub struct SignalGeneratorBuilder {
     sample_rate: Option<f64>,
     /// Motion mode (static or dynamic)
     mode: Option<MotionMode>,
+    /// Optional runtime motion controller (`UserControl` mode)
+    runtime_motion_control: Option<RuntimeMotionControl>,
     /// Simulation duration in seconds
     duration: Option<f64>,
     /// Sampling frequency in Hz
@@ -568,6 +571,29 @@ impl SignalGeneratorBuilder {
         Ok(self)
     }
 
+    /// Enables runtime motion control mode.
+    ///
+    /// When set, the generator runs in [`MotionMode::UserControl`] and obtains
+    /// receiver positions at runtime from a [`RuntimeMotionControl`].
+    ///
+    /// This is mutually exclusive with `location(_ecef)` and motion file
+    /// inputs.
+    pub fn runtime_motion_control(
+        mut self, control: Option<RuntimeMotionControl>,
+    ) -> Result<Self, Error> {
+        let Some(control) = control else {
+            return Ok(self);
+        };
+        if self.positions.is_some() {
+            return Err(Error::duplicate_position());
+        }
+
+        self.mode = Some(MotionMode::UserControl);
+        self.positions = Some(vec![control.snapshot().position_ecef]);
+        self.runtime_motion_control = Some(control);
+        Ok(self)
+    }
+
     /// Sets the time step between simulation updates.
     ///
     /// This method specifies the time interval in seconds between position
@@ -639,7 +665,9 @@ impl SignalGeneratorBuilder {
         }
         // positions
         let positions = if let Some(positions) = self.positions {
-            if positions.len() == 1 {
+            if positions.len() == 1
+                && !matches!(self.mode, Some(MotionMode::UserControl))
+            {
                 self.mode = Some(MotionMode::Static);
             } else if positions.is_empty() {
                 return Err(Error::wrong_positions());
@@ -809,6 +837,7 @@ impl SignalGeneratorBuilder {
             antenna_gains,
             antenna_pattern,
             mode,
+            runtime_motion_control: self.runtime_motion_control,
             elevation_mask: 0.0, // Default elevation mask
             sample_frequency,
             sample_rate,
