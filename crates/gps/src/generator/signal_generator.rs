@@ -268,7 +268,6 @@ impl SignalGenerator {
     /// * Returns an error if writing to the output file fails
     #[inline]
     fn generate_and_write_samples(&mut self) -> Result<(), Error> {
-        let sampling_period = self.sample_frequency.recip();
         let writer = self
             .writer
             .as_mut()
@@ -276,7 +275,6 @@ impl SignalGenerator {
         Self::generate_samples_into(
             &mut self.channels,
             &self.antenna_gains,
-            sampling_period,
             &mut writer.buffer,
         )?;
         writer.write_samples()?;
@@ -287,36 +285,40 @@ impl SignalGenerator {
     #[inline]
     fn generate_samples_into(
         channels: &mut [Channel; MAX_CHAN], antenna_gains: &[i32; MAX_CHAN],
-        sampling_period: f64, out: &mut [i16],
+        out: &mut [i16],
     ) -> Result<(), Error> {
         if !out.len().is_multiple_of(2) {
             return Err(Error::msg("I/Q buffer length must be even"));
         }
 
-        let buffer_size = out.len() / 2;
-        for isamp in 0..buffer_size {
+        // Build a compact list of active channels once per block.
+        let mut active: [(usize, i32); MAX_CHAN] = [(0, 0); MAX_CHAN];
+        let mut active_count: usize = 0;
+        for channel_index in 0..MAX_CHAN {
+            if channels[channel_index].prn != 0 {
+                active[active_count] =
+                    (channel_index, antenna_gains[channel_index]);
+                active_count += 1;
+            }
+        }
+
+        for iq in out.chunks_exact_mut(2) {
             let mut i_acc: i32 = 0;
             let mut q_acc: i32 = 0;
-            // Step 1: Accumulate signal components from all channels
-            for i in 0..MAX_CHAN {
-                if channels[i].prn != 0 {
-                    let (ip, qp) =
-                        channels[i].generate_iq_contribution(antenna_gains[i]);
-                    // Accumulate for all visible satellites
-                    // Add to total signal accumulation
-                    i_acc += ip;
-                    q_acc += qp;
-                    // Update code phase
-                    // Update code phase (C/A code sequence control)
-                    channels[i].update_navigation_bits(sampling_period);
-                }
+
+            // Step 1: Accumulate signal components from all active channels.
+            for &(channel_index, antenna_gain) in &active[..active_count] {
+                let (ip, qp) = channels[channel_index]
+                    .generate_iq_contribution(antenna_gain);
+                i_acc += ip;
+                q_acc += qp;
+                channels[channel_index].update_navigation_bits();
             }
 
-            // Step 2: Quantize and store I/Q samples
-            // Scaled by 2^7
-            // Store I/Q samples into buffer
-            out[isamp * 2] = ((i_acc + 64) >> 7) as i16;
-            out[isamp * 2 + 1] = ((q_acc + 64) >> 7) as i16;
+            // Step 2: Quantize and store I/Q samples.
+            // Scaled by 2^7.
+            iq[0] = ((i_acc + 64) >> 7) as i16;
+            iq[1] = ((q_acc + 64) >> 7) as i16;
         }
 
         Ok(())
@@ -587,7 +589,6 @@ impl SignalGenerator {
         }
 
         let mut iq_buffer: Vec<i16> = vec![0; 2 * self.iq_buffer_size];
-        let sampling_period = self.sample_frequency.recip();
 
         // Generate baseband signals
         self.receiver_gps_time =
@@ -609,7 +610,6 @@ impl SignalGenerator {
             Self::generate_samples_into(
                 &mut self.channels,
                 &self.antenna_gains,
-                sampling_period,
                 &mut iq_buffer,
             )?;
             on_block(&iq_buffer)?;

@@ -96,6 +96,55 @@ pub struct FileTxSink {
     writer: IQWriter,
 }
 
+/// A sink that discards blocks but touches a few samples to keep generation
+/// from being optimized away in CPU-only benchmark runs.
+pub struct NullTxSink {
+    /// Number of generator-produced blocks observed.
+    blocks: u64,
+    /// Best-effort accumulator used to keep the benchmark loop from being
+    /// optimized away.
+    checksum: i64,
+}
+
+impl NullTxSink {
+    /// Creates a new null sink.
+    pub fn new() -> Self {
+        Self {
+            blocks: 0,
+            checksum: 0,
+        }
+    }
+}
+
+impl TxSink for NullTxSink {
+    fn backend(&self) -> &'static str {
+        "null"
+    }
+
+    fn write_block_i16(
+        &mut self, interleaved_iq_i16: &[i16],
+    ) -> Result<(), Error> {
+        self.blocks = self.blocks.wrapping_add(1);
+
+        let mut sample: i64 = 0;
+        if !interleaved_iq_i16.is_empty() {
+            sample ^= i64::from(interleaved_iq_i16[0]);
+            sample ^=
+                i64::from(interleaved_iq_i16[interleaved_iq_i16.len() / 2]);
+            sample ^=
+                i64::from(interleaved_iq_i16[interleaved_iq_i16.len() - 1]);
+        }
+        self.checksum = self.checksum.wrapping_add(sample);
+        std::hint::black_box(self.checksum);
+
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
 impl FileTxSink {
     /// Creates a file sink writing blocks with the given format and block size.
     pub fn new(

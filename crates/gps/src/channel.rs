@@ -33,34 +33,45 @@ use crate::{
 pub struct Channel {
     /// Satellite PRN (Pseudorandom Noise) number (1-32)
     pub prn: usize,
-    /// C/A code sequence chips for this satellite (1023 chips)
-    ca_sequence: [i32; CA_SEQ_LEN],
-    /// Current carrier frequency with Doppler shift (Hz)
-    carrier_frequency: f64,
-    /// Current code frequency with Doppler effect (Hz)
-    code_frequency: f64,
+
     /// Current carrier phase accumulator (fixed-point representation)
     carrier_phase: u32,
     /// Carrier phase step per sample (fixed-point representation)
     carrier_phase_step: i32,
+
     /// Current code phase position within C/A sequence (0.0 to 1022.999...)
     code_phase: f64,
-    /// GPS time at the start of the navigation message frame
-    nav_message_start_time: GpsTime,
-    /// Navigation message subframes (5 subframes of 10 words each)
-    subframes: [[u32; N_DWRD_SBF]; 5],
-    /// Complete navigation message data words (50 words total)
-    data_words: [u32; N_DWRD],
+    /// Code phase step per sample (chips/sample)
+    code_phase_step: f64,
+
     /// Current word index in navigation message (0-49)
     word_index: i32,
     /// Current bit index within the current word (0-29)
     bit_index: i32,
     /// Current code epoch index within the current bit (0-19)
     code_epoch_index: i32,
+
     /// Current navigation data bit value (+1 or -1)
     current_data_bit: i32,
     /// Current C/A code chip value (+1 or -1)
     current_code_chip: i32,
+
+    /// C/A code sequence chips for this satellite (1023 chips), stored as
+    /// -1/+1.
+    ca_sequence: [i8; CA_SEQ_LEN],
+
+    /// Current carrier frequency with Doppler shift (Hz)
+    carrier_frequency: f64,
+    /// Current code frequency with Doppler effect (Hz)
+    code_frequency: f64,
+
+    /// GPS time at the start of the navigation message frame
+    nav_message_start_time: GpsTime,
+    /// Navigation message subframes (5 subframes of 10 words each)
+    subframes: [[u32; N_DWRD_SBF]; 5],
+    /// Complete navigation message data words (50 words total)
+    data_words: [u32; N_DWRD],
+
     /// Satellite azimuth and elevation angles
     azel: Azel,
     /// Previous pseudorange measurement and associated data
@@ -73,6 +84,7 @@ impl Default for Channel {
             ca_sequence: [0; CA_SEQ_LEN],
             carrier_frequency: 0.0,
             code_frequency: 0.0,
+            code_phase_step: 0.0,
             carrier_phase: 0,
             carrier_phase_step: 0,
             code_phase: 0.0,
@@ -172,6 +184,7 @@ impl Channel {
         self.azel = rho1.azel;
         // Calculate code phase (C/A code offset)
         self.compute_code_phase(rho1, dt);
+        self.code_phase_step = self.code_frequency * sampling_period;
         self.carrier_phase_step = (512.0
             * 65536.0
             * self.carrier_frequency
@@ -211,7 +224,7 @@ impl Channel {
         ims -= self.bit_index * 20;
         self.code_epoch_index = ims; // 1 code = 1 ms
         self.current_code_chip =
-            self.ca_sequence[self.code_phase as usize] * 2 - 1;
+            i32::from(self.ca_sequence[self.code_phase as usize]);
         self.current_data_bit = (self.data_words[self.word_index as usize]
             >> (29 - self.bit_index)
             & 0x1) as i32
@@ -275,7 +288,7 @@ impl Channel {
 
         let mut j = CA_SEQ_LEN - delay[self.prn - 1];
         for (ica, ig1) in self.ca_sequence.iter_mut().zip(g1) {
-            *ica = (1 - ig1 * g2[j % CA_SEQ_LEN]) / 2;
+            *ica = (-(ig1 * g2[j % CA_SEQ_LEN])) as i8;
             j += 1;
         }
     }
@@ -466,34 +479,34 @@ impl Channel {
         D
     }
 
-    /// Updates the navigation bit state based on the elapsed sampling period.
+    /// Advances this channel by exactly one complex sample.
     ///
-    /// Increments the code phase. If a code epoch rolls over (every 1ms),
-    /// it increments the code counter (`icode`). If the code counter rolls over
-    /// (every 20ms), it increments the bit counter (`ibit`) and updates the
-    /// current data bit (`data_bit`). If the bit counter rolls over (every
-    /// 600ms), it increments the word counter (`iword`). It also updates
-    /// the current C/A code chip (`code_ca`) and carrier phase
-    /// (`carr_phase`).
+    /// This is on the hot path: it updates the C/A code phase/chip, the
+    /// navigation message counters (1ms code epochs -> 20ms nav bits -> 600ms
+    /// nav words), and the carrier phase accumulator.
     ///
-    /// # Arguments
-    /// * `sampling_period` - The receiver sampling period in seconds.
-    pub fn update_navigation_bits(&mut self, sampling_period: f64) {
-        // Update code phase
-        // Step 4: Update code phase (C/A code sequence control)
-        // Increment phase by instantaneous freq * dt
-        self.code_phase += self.code_frequency * sampling_period;
+    /// Notes:
+    /// - `code_phase_step` and `carrier_phase_step` are per-sample increments
+    ///   computed in `update_state(..., sampling_period)` to keep this method
+    ///   free of floating point multiplications.
+    /// - If the sample rate (and thus `sampling_period`) changes at runtime,
+    ///   callers must refresh the step values before calling this again.
+    pub fn update_navigation_bits(&mut self) {
+        // Advance one sample worth of C/A code phase.
+        self.code_phase += self.code_phase_step;
 
         // --- Handle Code Epoch Rollover (every 1ms / 1023 chips) ---
         if self.code_phase >= CA_SEQ_LEN_FLOAT {
             self.code_phase -= CA_SEQ_LEN_FLOAT; // Wrap code phase
             self.code_epoch_index += 1; // Increment ms counter
+
             // Check for code rollover (20 codes per bit)
             // 20 C/A codes = 1 navigation data bit
             // Process navigation data bit (every 20 C/A code periods)
             if self.code_epoch_index >= 20 {
                 self.code_epoch_index = 0;
                 self.bit_index += 1;
+
                 // Check for bit rollover (30 bits per word)
                 // Process navigation word (every 30 data bits)
                 if self.bit_index >= 30 {
@@ -504,6 +517,7 @@ impl Channel {
                     // fprintf(stderr, "\nWARNING: Subframe word buffer
                     // overflow.\n");
                 }
+
                 // Extract current navigation data bit
                 // Update data bit based on new word/bit index
                 // Set new navigation data bit
@@ -515,14 +529,12 @@ impl Channel {
                     - 1;
             }
         }
-        // Update current C/A code chip
-        // Set current code chip
-        // this is slower: self.current_code_chip =
-        // self.ca_sequence[self.code_phase as usize] * 2 - 1;
+        // Update current C/A code chip.
+        // `ca_sequence` stores -1/+1 chips as i8 so we can just widen here.
         self.current_code_chip =
-            self.ca_sequence[self.code_phase as i32 as usize] * 2 - 1;
+            i32::from(self.ca_sequence[self.code_phase as i32 as usize]);
 
-        // Update carrier phase
+        // Advance one sample worth of carrier phase (fixed-point accumulator).
         // #ifdef FLOAT_CARR_PHASE
         //                     chan[i].carrier_phase +=
         // chan[i].carrier_frequency

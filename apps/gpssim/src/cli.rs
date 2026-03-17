@@ -11,7 +11,7 @@ use gps::{SignalGenerator, SignalGeneratorBuilder};
 
 use crate::{
     Error,
-    tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, TxSink, TxTee},
+    tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, NullTxSink, TxSink, TxTee},
 };
 
 /// Transmission output backend selected via `--tx`.
@@ -19,6 +19,8 @@ use crate::{
 enum TxBackend {
     /// Transmit generated samples in real time using a `HackRF` device.
     Hackrf,
+    /// Discard generated blocks (CPU-only benchmark mode).
+    Null,
 }
 
 /*
@@ -172,6 +174,11 @@ impl Args {
 
         let output_path = self.resolve_output_path(tx_enabled);
 
+        let cpu_only_bench = tx_enabled
+            && output_path.is_none()
+            && !self.tx.is_empty()
+            && self.tx.iter().all(|b| matches!(b, TxBackend::Null));
+
         let mut generator =
             self.build_generator(tx_enabled, output_path.clone())?;
         generator.initialize()?;
@@ -189,13 +196,43 @@ impl Args {
             ));
         }
 
-        let streaming_result = generator
-            .run_streaming::<_, Error>(|block| tee.write_block_i16(block));
+        let time_start = std::time::Instant::now();
+        let mut blocks: u64 = 0;
+        let streaming_result = generator.run_streaming::<_, Error>(|block| {
+            blocks = blocks.wrapping_add(1);
+            tee.write_block_i16(block)
+        });
+
+        let elapsed = time_start.elapsed();
 
         let finish_result = tee.finish();
 
         streaming_result?;
         finish_result?;
+
+        if cpu_only_bench {
+            let samples_per_block = generator.iq_buffer_size as u64;
+            let total_samples = samples_per_block.saturating_mul(blocks);
+            let elapsed_seconds = elapsed.as_secs_f64();
+            let samples_per_second = if elapsed_seconds > 0.0 {
+                total_samples as f64 / elapsed_seconds
+            } else {
+                0.0
+            };
+
+            println!(
+                "cpu_bench sample_frequency_hz={} step_seconds={:.6} \
+                 blocks={} samples_per_block={} total_samples={} \
+                 elapsed_seconds={:.3} throughput_msps={:.3}",
+                generator.sample_frequency,
+                generator.sample_rate,
+                blocks,
+                samples_per_block,
+                total_samples,
+                elapsed_seconds,
+                samples_per_second / 1_000_000.0,
+            );
+        }
         Ok(())
     }
 
@@ -262,6 +299,12 @@ impl Args {
             match backend {
                 TxBackend::Hackrf => {
                     sinks.push(Box::new(self.build_hackrf_sink(generator)?));
+                }
+                TxBackend::Null => {
+                    // Avoid duplicating null sinks if the flag is repeated.
+                    if !sinks.iter().any(|s| s.backend() == "null") {
+                        sinks.push(Box::new(NullTxSink::new()));
+                    }
                 }
             }
         }
