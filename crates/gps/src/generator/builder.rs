@@ -102,8 +102,7 @@ impl SignalGeneratorBuilder {
     /// # Returns
     /// A Result containing either the parsed timestamp or a parsing error
     fn parse_datetime(value: &str) -> Result<jiff::Timestamp, jiff::Error> {
-        let time: jiff::Timestamp = value.parse()?;
-        Ok(time)
+        value.parse()
     }
 
     /// Sets the RINEX navigation file for GPS ephemerides.

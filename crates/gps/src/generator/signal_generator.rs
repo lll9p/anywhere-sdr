@@ -239,13 +239,13 @@ impl SignalGenerator {
                     // Visible but not allocated
                     //
                     // Allocated new satellite
-                    let mut channel_index = 0;
-                    for (i, ichan) in
+                    let mut allocated_channel_index: Option<usize> = None;
+                    for (channel_index, channel) in
                         self.channels.iter_mut().take(MAX_CHAN).enumerate()
                     {
-                        if ichan.prn == 0 {
+                        if channel.prn == 0 {
                             // Initialize channel
-                            ichan.update_for_satellite(
+                            channel.update_for_satellite(
                                 sv + 1,
                                 eph,
                                 &self.ionoutc,
@@ -253,12 +253,12 @@ impl SignalGenerator {
                                 &xyz,
                                 azel,
                             );
+                            allocated_channel_index = Some(channel_index);
                             break;
                         }
-                        channel_index = i + 1;
                     }
                     // Set satellite allocation channel
-                    if channel_index < MAX_CHAN {
+                    if let Some(channel_index) = allocated_channel_index {
                         self.allocated_satellite[sv] = channel_index as i32;
                     }
                 }

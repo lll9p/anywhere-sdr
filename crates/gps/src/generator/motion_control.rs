@@ -188,14 +188,15 @@ impl RuntimeMotionControl {
     }
 
     pub fn try_snapshot(&self) -> Option<MotionSnapshot> {
-        match self.shared.snapshot.try_lock() {
-            Ok(guard) => Some(*guard),
-            Err(TryLockError::WouldBlock) => None,
+        let guard = match self.shared.snapshot.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return None,
             Err(TryLockError::Poisoned(poisoned)) => {
                 tracing::warn!("motion snapshot lock poisoned; recovering");
-                Some(*poisoned.into_inner())
+                poisoned.into_inner()
             }
-        }
+        };
+        Some(*guard)
     }
 
     /// Non-blocking take of all pending updates.
@@ -203,32 +204,32 @@ impl RuntimeMotionControl {
     /// If the generator cannot acquire the pending lock immediately, this
     /// returns an empty update set.
     pub(crate) fn try_take_pending(&self) -> PendingMotionUpdates {
-        match self.shared.pending.try_lock() {
-            Ok(mut guard) => std::mem::take(&mut *guard),
-            Err(TryLockError::WouldBlock) => PendingMotionUpdates::default(),
+        let mut guard = match self.shared.pending.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                return PendingMotionUpdates::default();
+            }
             Err(TryLockError::Poisoned(poisoned)) => {
                 tracing::warn!("motion pending lock poisoned; recovering");
-                let mut guard = poisoned.into_inner();
-                std::mem::take(&mut *guard)
+                poisoned.into_inner()
             }
-        }
+        };
+        std::mem::take(&mut *guard)
     }
 
     /// Non-blocking publish of a new snapshot.
     ///
     /// If the snapshot lock is contended, the publish is skipped.
     pub(crate) fn try_publish_snapshot(&self, snapshot: MotionSnapshot) {
-        match self.shared.snapshot.try_lock() {
-            Ok(mut guard) => {
-                *guard = snapshot;
-            }
-            Err(TryLockError::WouldBlock) => {}
+        let mut guard = match self.shared.snapshot.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return,
             Err(TryLockError::Poisoned(poisoned)) => {
                 tracing::warn!("motion snapshot lock poisoned; recovering");
-                let mut guard = poisoned.into_inner();
-                *guard = snapshot;
+                poisoned.into_inner()
             }
-        }
+        };
+        *guard = snapshot;
     }
 }
 
@@ -358,13 +359,11 @@ impl MotionIntegrator {
         }
 
         if pending.start {
-            let speed_mps = pending.start_speed_mps.unwrap_or(
-                if self.resume_speed_mps > 0.0 {
-                    self.resume_speed_mps
-                } else {
-                    1.0
-                },
-            );
+            let speed_mps = match pending.start_speed_mps {
+                Some(speed_mps) => speed_mps,
+                None if self.resume_speed_mps > 0.0 => self.resume_speed_mps,
+                None => 1.0,
+            };
             self.set_heading_speed(self.heading_deg, speed_mps, 0.0);
             self.acceleration_neu = Neu::default();
             self.clear_targets();
@@ -375,6 +374,14 @@ impl MotionIntegrator {
     fn apply_targets(&mut self, dt: f64) {
         let horizontal_speed = horizontal_speed_mps(self.velocity_neu);
 
+        let apply_limited_delta = |delta: f64, max_delta: f64| -> f64 {
+            if max_delta == 0.0 {
+                delta
+            } else {
+                delta.clamp(-max_delta, max_delta)
+            }
+        };
+
         if let Some(target_heading) = self.target_heading {
             let current_heading = normalize_heading_deg(self.heading_deg);
             let delta = shortest_heading_delta_deg(
@@ -383,22 +390,14 @@ impl MotionIntegrator {
             );
             let max_delta =
                 (target_heading.turn_rate_limit_dps.abs() * dt).max(0.0);
-            let applied = if max_delta == 0.0 {
-                delta
-            } else {
-                delta.clamp(-max_delta, max_delta)
-            };
+            let applied = apply_limited_delta(delta, max_delta);
             self.heading_deg = normalize_heading_deg(current_heading + applied);
         }
 
         if let Some(target_speed) = self.target_speed {
             let delta = target_speed.speed_mps - horizontal_speed;
             let max_delta = (target_speed.accel_limit_mps2.abs() * dt).max(0.0);
-            let applied = if max_delta == 0.0 {
-                delta
-            } else {
-                delta.clamp(-max_delta, max_delta)
-            };
+            let applied = apply_limited_delta(delta, max_delta);
             let new_speed = (horizontal_speed + applied).max(0.0);
             let climb_mps = self.velocity_neu.up;
             self.set_heading_speed(self.heading_deg, new_speed, climb_mps);
