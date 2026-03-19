@@ -16,4 +16,4 @@ mod utils;
 pub use builder::SignalGeneratorBuilder;
 pub use motion_control::{MotionCommand, MotionSnapshot, RuntimeMotionControl};
 pub use signal_generator::SignalGenerator;
-pub use utils::MotionMode;
+pub use utils::{MotionMode, read_navigation_data};

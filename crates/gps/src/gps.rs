@@ -31,11 +31,15 @@ mod propagation;
 /// Lookup tables for signal generation
 mod table;
 
+pub use datetime::{DateTime, GpsTime, TimeRange};
+pub use ephemeris::Ephemeris as BroadcastEphemeris;
 pub use error::Error;
 pub use generator::{
     MotionCommand, MotionMode, MotionSnapshot, RuntimeMotionControl,
-    SignalGenerator, SignalGeneratorBuilder,
+    SignalGenerator, SignalGeneratorBuilder, read_navigation_data,
 };
 pub use io::{
     DataFormat, IQWriter, as_bytes_i16, pack_bits1_into, pack_bits8_into,
 };
+pub use ionoutc::IonoUtc;
+pub use propagation::compute_range;

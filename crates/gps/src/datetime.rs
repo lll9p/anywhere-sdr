@@ -12,7 +12,7 @@ use geometry::Azel;
 /// The GPS week number rolls over every 1024 weeks (approximately 19.7 years),
 /// with the first rollover occurring on August 21, 1999, and the second on
 /// April 6, 2019.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct GpsTime {
     /// GPS week number (since January 6, 1980)
     pub week: i32,
@@ -116,7 +116,7 @@ impl From<&DateTime> for GpsTime {
 /// This structure stores a calendar date and time with components for year,
 /// month, day, hour, minute, and second. It is used for representing UTC
 /// (Coordinated Universal Time) dates in the simulation.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct DateTime {
     /// Calendar year (e.g., 2023)
     pub y: i32,
@@ -213,7 +213,7 @@ impl From<jiff::Zoned> for DateTime {
 /// distance, azimuth/elevation, and ionospheric delay for a satellite
 /// measurement. It is used for tracking satellite positions and calculating
 /// signal parameters.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TimeRange {
     /// GPS time of the measurement
     pub time: GpsTime,

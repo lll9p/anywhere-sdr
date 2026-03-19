@@ -11,7 +11,7 @@
 /// caused by the ionosphere, which varies with time of day, receiver location,
 /// and satellite elevation angle.
 #[allow(non_snake_case)]
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct IonoUtc {
     /// Flag to enable/disable ionospheric corrections
     pub enable: bool,

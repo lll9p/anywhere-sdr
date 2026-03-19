@@ -19,7 +19,7 @@ use crate::datetime::{DateTime, GpsTime};
 /// variables that are pre-computed to improve performance during position
 /// calculations.
 #[allow(non_snake_case)]
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Ephemeris {
     /// Flag indicating whether this ephemeris data is valid
     pub vflg: bool,
