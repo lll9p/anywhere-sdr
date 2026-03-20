@@ -201,10 +201,10 @@ fn recover_subframes(
         if !(1..=5).contains(&subframe_id) {
             break;
         }
-        if let Some(previous_tow_count) = previous_tow_count {
-            if tow_count != previous_tow_count + 1 {
-                break;
-            }
+        if previous_tow_count.is_some_and(|previous_tow_count| {
+            tow_count != previous_tow_count + 1
+        }) {
+            break;
         }
         if let Some(previous_subframe_id) = previous_subframe_id {
             let expected_subframe_id = (previous_subframe_id % 5) + 1;
@@ -274,10 +274,10 @@ fn compute_checksum(source: u32, nib: i32) -> u32 {
     let d29 = (source >> 31) & 0x1;
     let d30 = (source >> 30) & 0x1;
     if nib != 0 {
-        if (d30 + (parity_masks[4] & data).count_ones()) % 2 != 0 {
+        if !(d30 + (parity_masks[4] & data).count_ones()).is_multiple_of(2) {
             data ^= 0x1 << 6;
         }
-        if (d29 + (parity_masks[5] & data).count_ones()) % 2 != 0 {
+        if !(d29 + (parity_masks[5] & data).count_ones()).is_multiple_of(2) {
             data ^= 0x1 << 7;
         }
     }

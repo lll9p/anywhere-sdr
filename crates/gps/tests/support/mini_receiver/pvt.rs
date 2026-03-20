@@ -17,7 +17,7 @@ pub struct Observation {
 pub fn observation_from_tracking(
     tracked_satellite: &TrackedSatellite, subframe: &RecoveredSubframe,
     reference_week: i32,
-) -> Result<Observation, Error> {
+) -> Observation {
     let receive_time = subframe.start_time.clone();
     let transmit_seconds =
         f64::from(subframe.tow_count.saturating_sub(1)) * 6.0;
@@ -28,12 +28,12 @@ pub fn observation_from_tracking(
     let pseudorange_m =
         receive_time.diff_secs(&transmit_time).abs() * SPEED_OF_LIGHT;
 
-    Ok(Observation {
+    Observation {
         prn: tracked_satellite.prn,
         receive_time,
         transmit_time,
         pseudorange_m,
-    })
+    }
 }
 
 pub fn solve_pvt(
@@ -102,8 +102,8 @@ pub fn solve_pvt(
             }
         }
 
-        for diagonal_index in 0..4 {
-            normal[diagonal_index][diagonal_index] += 1.0e-6;
+        for (diagonal_index, row) in normal.iter_mut().enumerate() {
+            row[diagonal_index] += 1.0e-6;
         }
 
         let delta = solve_linear_system(normal, rhs)?;
@@ -213,19 +213,21 @@ fn solve_linear_system(
         }
 
         let pivot = matrix[pivot_index][pivot_index];
-        for column_index in pivot_index..4 {
-            matrix[pivot_index][column_index] /= pivot;
+        for value in matrix[pivot_index].iter_mut().skip(pivot_index) {
+            *value /= pivot;
         }
         rhs[pivot_index] /= pivot;
 
+        let pivot_row = matrix[pivot_index];
         for row_index in 0..4 {
             if row_index == pivot_index {
                 continue;
             }
             let factor = matrix[row_index][pivot_index];
-            for column_index in pivot_index..4 {
-                matrix[row_index][column_index] -=
-                    factor * matrix[pivot_index][column_index];
+            for (column_index, value) in
+                matrix[row_index].iter_mut().enumerate().skip(pivot_index)
+            {
+                *value -= factor * pivot_row[column_index];
             }
             rhs[row_index] -= factor * rhs[pivot_index];
         }

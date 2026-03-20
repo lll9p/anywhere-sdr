@@ -3,6 +3,12 @@ use std::path::PathBuf;
 use geometry::Ecef;
 use gps::{Error, MotionCommand, RuntimeMotionControl, SignalGeneratorBuilder};
 
+fn assert_ecef_matches(actual: &Ecef, expected: &Ecef) {
+    assert!((actual.x - expected.x).abs() <= f64::EPSILON);
+    assert!((actual.y - expected.y).abs() <= f64::EPSILON);
+    assert!((actual.z - expected.z).abs() <= f64::EPSILON);
+}
+
 #[test]
 fn runtime_streaming_produces_blocks_and_setposition_applies_next_step()
 -> Result<(), Error> {
@@ -48,14 +54,8 @@ fn runtime_streaming_produces_blocks_and_setposition_applies_next_step()
     }
 
     assert_eq!(positions.len(), 3);
-    assert_eq!(positions[0].x, origin.x);
-    assert_eq!(positions[0].y, origin.y);
-    assert_eq!(positions[0].z, origin.z);
-    assert_eq!(positions[1].x, origin.x);
-    assert_eq!(positions[1].y, origin.y);
-    assert_eq!(positions[1].z, origin.z);
-    assert_eq!(positions[2].x, new_pos.x);
-    assert_eq!(positions[2].y, new_pos.y);
-    assert_eq!(positions[2].z, new_pos.z);
+    assert_ecef_matches(&positions[0], &origin);
+    assert_ecef_matches(&positions[1], &origin);
+    assert_ecef_matches(&positions[2], &new_pos);
     Ok(())
 }

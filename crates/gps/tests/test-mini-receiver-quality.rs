@@ -541,21 +541,27 @@ fn navigation_payload_bit_flips_in_subframes_2_and_3_are_classified_as_ephemeris
         case.sf1_start_time_text,
         params.subframe_window_seconds,
     )?;
-    let (sf2_tracked, sf2_navigation) = recover_navigation_window(
-        case,
-        good_navigation.prn,
-        case.sf2_start_time_text,
-        params.subframe_window_seconds,
-    )?;
-    let (sf3_tracked, sf3_navigation) = recover_navigation_window(
-        case,
-        good_navigation.prn,
-        case.sf3_start_time_text,
-        params.subframe_window_seconds,
-    )?;
     let subframe_1 = recover_subframe(&sf1_navigation, 1)?;
-    let subframe_2 = recover_subframe(&sf2_navigation, 2)?;
-    let subframe_3 = recover_subframe(&sf3_navigation, 3)?;
+    let (subframe_2, mutated_subframe_2) =
+        recover_original_and_mutated_subframe(
+            case,
+            good_navigation.prn,
+            case.sf2_start_time_text,
+            params.subframe_window_seconds,
+            2,
+            9,
+            15,
+        )?;
+    let (subframe_3, mutated_subframe_3) =
+        recover_original_and_mutated_subframe(
+            case,
+            good_navigation.prn,
+            case.sf3_start_time_text,
+            params.subframe_window_seconds,
+            3,
+            6,
+            15,
+        )?;
     let reference_scenario = build_reference_scenario(case)?;
     let reference_week = reference_scenario.start_time().week;
     let rinex_record = select_rinex_record(
@@ -565,26 +571,6 @@ fn navigation_payload_bit_flips_in_subframes_2_and_3_are_classified_as_ephemeris
     )?;
     let expected = quantize_rinex_record(&rinex_record, reference_week)?;
 
-    let mut subframe_2_payload_mutation = sf2_tracked.clone();
-    flip_tracked_navigation_bit(
-        &mut subframe_2_payload_mutation,
-        &subframe_2,
-        9,
-        15,
-    )?;
-    let subframe_2_mutated_navigation = decode_navigation(
-        subframe_2_payload_mutation.prn,
-        &subframe_2_payload_mutation.prompt_epochs,
-    )
-    .map_err(|error| {
-        Error::msg(format!(
-            "{}: subframe 2 payload mutation unexpectedly invalidated \
-             navigation: {error}",
-            case.name,
-        ))
-    })?;
-    let mutated_subframe_2 =
-        recover_subframe(&subframe_2_mutated_navigation, 2)?;
     let subframe_2_mutated = decode_ephemeris(
         good_navigation.prn,
         &[subframe_1.clone(), mutated_subframe_2, subframe_3.clone()],
@@ -602,29 +588,9 @@ fn navigation_payload_bit_flips_in_subframes_2_and_3_are_classified_as_ephemeris
         MutationFailurePath::EphemerisMismatch
     );
 
-    let mut subframe_3_payload_mutation = sf3_tracked.clone();
-    flip_tracked_navigation_bit(
-        &mut subframe_3_payload_mutation,
-        &subframe_3,
-        6,
-        15,
-    )?;
-    let subframe_3_mutated_navigation = decode_navigation(
-        subframe_3_payload_mutation.prn,
-        &subframe_3_payload_mutation.prompt_epochs,
-    )
-    .map_err(|error| {
-        Error::msg(format!(
-            "{}: subframe 3 payload mutation unexpectedly invalidated \
-             navigation: {error}",
-            case.name,
-        ))
-    })?;
-    let mutated_subframe_3 =
-        recover_subframe(&subframe_3_mutated_navigation, 3)?;
     let subframe_3_mutated = decode_ephemeris(
         good_navigation.prn,
-        &[subframe_1, subframe_2.clone(), mutated_subframe_3],
+        &[subframe_1, subframe_2, mutated_subframe_3],
         reference_week,
     )?;
     let subframe_3_diagnostics =
@@ -712,12 +678,13 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
 
     let (first_block, good_assists, sample_frequency_hz) =
         acquisition_fixture(case, params.visible_satellites)?;
-    let correct_metric =
-        assisted_acquisition(&first_block, sample_frequency_hz, &[
-            good_assists[0].clone(),
-        ])?
-        .pop()
-        .ok_or_else(|| Error::msg("missing correct acquisition metric"))?;
+    let correct_metric = assisted_acquisition(
+        &first_block,
+        sample_frequency_hz,
+        &[good_assists[0].clone()],
+    )?
+    .pop()
+    .ok_or_else(|| Error::msg("missing correct acquisition metric"))?;
 
     let mut wrong_assist = good_assists[0].clone();
     wrong_assist.prn = (1..=32)
@@ -726,12 +693,13 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
     wrong_assist.predicted_carrier_hz += 6_000.0;
     wrong_assist.predicted_code_phase_chips =
         (wrong_assist.predicted_code_phase_chips + 400.0) % 1023.0;
-    let wrong_metric =
-        assisted_acquisition(&first_block, sample_frequency_hz, &[
-            wrong_assist,
-        ])?
-        .pop()
-        .ok_or_else(|| Error::msg("missing wrong-PRN acquisition metric"))?;
+    let wrong_metric = assisted_acquisition(
+        &first_block,
+        sample_frequency_hz,
+        &[wrong_assist],
+    )?
+    .pop()
+    .ok_or_else(|| Error::msg("missing wrong-PRN acquisition metric"))?;
     assert!(
         wrong_metric.peak_ratio < correct_metric.peak_ratio / 10.0,
         "{}: wrong PRN acquisition was not sufficiently degraded: wrong={}, \
@@ -743,14 +711,15 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
 
     let mut wrong_frequency_assist = good_assists[0].clone();
     wrong_frequency_assist.predicted_carrier_hz += 2_000.0;
-    let wrong_frequency_metric =
-        assisted_acquisition(&first_block, sample_frequency_hz, &[
-            wrong_frequency_assist,
-        ])?
-        .pop()
-        .ok_or_else(|| {
-            Error::msg("missing large-frequency-offset acquisition metric")
-        })?;
+    let wrong_frequency_metric = assisted_acquisition(
+        &first_block,
+        sample_frequency_hz,
+        &[wrong_frequency_assist],
+    )?
+    .pop()
+    .ok_or_else(|| {
+        Error::msg("missing large-frequency-offset acquisition metric")
+    })?;
     assert!(
         wrong_frequency_metric.peak_ratio < correct_metric.peak_ratio / 4.0,
         "{}: large acquisition frequency error was not rejected strongly \
@@ -806,14 +775,16 @@ fn pvt_requires_four_satellites() -> Result<(), Error> {
             .or_insert_with(|| observation.clone());
     }
     let three: Vec<Observation> = unique.values().take(3).cloned().collect();
-    let error = solve_pvt(
+    let result = solve_pvt(
         &three,
         &pipeline.rinex_ephemerides,
         &pipeline.ionoutc,
         pipeline.truth_position,
-    )
-    .expect_err("three satellites must not produce a PVT fix");
-    assert!(error.to_string().contains("at least four satellites"));
+    );
+    assert!(matches!(
+        result,
+        Err(ref error) if error.to_string().contains("at least four satellites")
+    ));
     Ok(())
 }
 
@@ -913,6 +884,39 @@ fn recover_navigation_window(
     Ok((tracked_satellite, navigation))
 }
 
+fn recover_original_and_mutated_subframe(
+    case: ScenarioCase, prn: usize, start_time_text: &str,
+    duration_seconds: f64, subframe_id: u8, word_index: usize,
+    bit_index: usize,
+) -> Result<(RecoveredSubframe, RecoveredSubframe), Error> {
+    let (mut tracked_satellite, navigation) = recover_navigation_window(
+        case,
+        prn,
+        start_time_text,
+        duration_seconds,
+    )?;
+    let original_subframe = recover_subframe(&navigation, subframe_id)?;
+    flip_tracked_navigation_bit(
+        &mut tracked_satellite,
+        &original_subframe,
+        word_index,
+        bit_index,
+    )?;
+    let mutated_navigation = decode_navigation(
+        tracked_satellite.prn,
+        &tracked_satellite.prompt_epochs,
+    )
+    .map_err(|error| {
+        Error::msg(format!(
+            "{}: subframe {subframe_id} payload mutation unexpectedly \
+             invalidated navigation: {error}",
+            case.name,
+        ))
+    })?;
+    let mutated_subframe = recover_subframe(&mutated_navigation, subframe_id)?;
+    Ok((original_subframe, mutated_subframe))
+}
+
 fn recover_subframe(
     navigation: &RecoveredNavigation, expected_subframe_id: u8,
 ) -> Result<RecoveredSubframe, Error> {
@@ -929,6 +933,115 @@ fn recover_subframe(
         })
 }
 
+fn sort_acquisitions_by_quality(acquisitions: &mut [AcquisitionMetric]) {
+    acquisitions.sort_by(|left, right| {
+        right
+            .peak_ratio
+            .total_cmp(&left.peak_ratio)
+            .then_with(|| left.prn.cmp(&right.prn))
+    });
+}
+
+fn recover_navigation_triplet(
+    case: ScenarioCase, prn: usize, duration_seconds: f64,
+) -> Option<[(TrackedSatellite, RecoveredNavigation); 3]> {
+    Some([
+        recover_navigation_window(
+            case,
+            prn,
+            case.sf1_start_time_text,
+            duration_seconds,
+        )
+        .ok()?,
+        recover_navigation_window(
+            case,
+            prn,
+            case.sf2_start_time_text,
+            duration_seconds,
+        )
+        .ok()?,
+        recover_navigation_window(
+            case,
+            prn,
+            case.sf3_start_time_text,
+            duration_seconds,
+        )
+        .ok()?,
+    ])
+}
+
+fn build_combined_navigation(
+    prn: usize, navigations: [&RecoveredNavigation; 3], min_valid_words: usize,
+) -> Option<RecoveredNavigation> {
+    let subframe_1 = recover_subframe(navigations[0], 1).ok()?;
+    let subframe_2 = recover_subframe(navigations[1], 2).ok()?;
+    let subframe_3 = recover_subframe(navigations[2], 3).ok()?;
+
+    let mut diagnostics = navigations[0].diagnostics.clone();
+    diagnostics.valid_word_count = navigations
+        .iter()
+        .map(|navigation| navigation.diagnostics.valid_word_count)
+        .sum();
+    if diagnostics.valid_word_count < min_valid_words {
+        return None;
+    }
+
+    Some(RecoveredNavigation {
+        prn,
+        diagnostics,
+        subframes: vec![subframe_1, subframe_2, subframe_3],
+    })
+}
+
+fn build_verified_ephemeris_pair(
+    prn: usize, navigation: &RecoveredNavigation,
+    reference_scenario: &FixedScenario, reference_week: i32,
+) -> Result<Option<(BroadcastEphemeris, BroadcastEphemeris)>, Error> {
+    let Ok(decoded) =
+        decode_ephemeris(prn, &navigation.subframes, reference_week)
+    else {
+        return Ok(None);
+    };
+    let rinex_record = select_rinex_record(
+        reference_scenario.navigation_path(),
+        prn,
+        reference_scenario.start_time(),
+    )?;
+    let expected = quantize_rinex_record(&rinex_record, reference_week)?;
+    if !compare_ephemeris(&decoded, &expected)
+        .differences
+        .is_empty()
+    {
+        return Ok(None);
+    }
+
+    Ok(Some((
+        build_ephemeris_from_decoded(&decoded, reference_week),
+        build_ephemeris_from_decoded(&expected, reference_week),
+    )))
+}
+
+fn collect_navigation_observations(
+    prn: usize, tracked_satellite: &TrackedSatellite,
+    navigation: &RecoveredNavigation,
+    observations_by_key: &mut BTreeMap<(usize, u32), Observation>,
+    reference_week: i32,
+) {
+    for subframe in &navigation.subframes {
+        let observation = observation_from_tracking(
+            tracked_satellite,
+            subframe,
+            reference_week,
+        );
+        if !(10_000_000.0..=30_000_000.0).contains(&observation.pseudorange_m) {
+            continue;
+        }
+        observations_by_key
+            .entry((prn, subframe.tow_count))
+            .or_insert(observation);
+    }
+}
+
 fn run_quality_pipeline(
     case: ScenarioCase, params: PipelineParams,
 ) -> Result<PipelineResult, Error> {
@@ -936,12 +1049,7 @@ fn run_quality_pipeline(
         acquisition_fixture(case, params.visible_satellites)?;
     let mut acquisitions =
         assisted_acquisition(&first_block, sample_frequency_hz, &assists)?;
-    acquisitions.sort_by(|left, right| {
-        right
-            .peak_ratio
-            .total_cmp(&left.peak_ratio)
-            .then_with(|| left.prn.cmp(&right.prn))
-    });
+    sort_acquisitions_by_quality(&mut acquisitions);
 
     let used_acquisitions: Vec<AcquisitionMetric> = acquisitions
         .iter()
@@ -970,109 +1078,54 @@ fn run_quality_pipeline(
     let mut navigations = Vec::new();
 
     for prn in selected_prns {
-        let Ok((sf1_tracked, sf1_navigation)) = recover_navigation_window(
-            case,
-            prn,
-            case.sf1_start_time_text,
-            params.subframe_window_seconds,
-        ) else {
-            continue;
-        };
-        let Ok((sf2_tracked, sf2_navigation)) = recover_navigation_window(
-            case,
-            prn,
-            case.sf2_start_time_text,
-            params.subframe_window_seconds,
-        ) else {
-            continue;
-        };
-        let Ok((sf3_tracked, sf3_navigation)) = recover_navigation_window(
-            case,
-            prn,
-            case.sf3_start_time_text,
-            params.subframe_window_seconds,
-        ) else {
-            continue;
-        };
-
-        let Ok(subframe_1) = recover_subframe(&sf1_navigation, 1) else {
-            continue;
-        };
-        let Ok(subframe_2) = recover_subframe(&sf2_navigation, 2) else {
-            continue;
-        };
-        let Ok(subframe_3) = recover_subframe(&sf3_navigation, 3) else {
-            continue;
-        };
-
-        let mut diagnostics = sf1_navigation.diagnostics.clone();
-        diagnostics.valid_word_count =
-            sf1_navigation.diagnostics.valid_word_count
-                + sf2_navigation.diagnostics.valid_word_count
-                + sf3_navigation.diagnostics.valid_word_count;
-        if diagnostics.valid_word_count < params.min_valid_words {
-            continue;
-        }
-
-        let navigation = RecoveredNavigation {
-            prn,
-            diagnostics,
-            subframes: vec![
-                subframe_1.clone(),
-                subframe_2.clone(),
-                subframe_3.clone(),
+        let Some(
+            [
+                (sf1_tracked, sf1_navigation),
+                (sf2_tracked, sf2_navigation),
+                (sf3_tracked, sf3_navigation),
             ],
+        ) = recover_navigation_triplet(
+            case,
+            prn,
+            params.subframe_window_seconds,
+        )
+        else {
+            continue;
+        };
+        let Some(navigation) = build_combined_navigation(
+            prn,
+            [&sf1_navigation, &sf2_navigation, &sf3_navigation],
+            params.min_valid_words,
+        ) else {
+            continue;
         };
         navigations.push(navigation.clone());
 
-        let decoded = match decode_ephemeris(
-            prn,
-            &navigation.subframes,
-            reference_week,
-        ) {
-            Ok(decoded) => decoded,
-            Err(_) => continue,
-        };
-        let rinex_record = select_rinex_record(
-            reference_scenario.navigation_path(),
-            prn,
-            reference_scenario.start_time(),
-        )?;
-        let expected = quantize_rinex_record(&rinex_record, reference_week)?;
-        let diagnostics = compare_ephemeris(&decoded, &expected);
-        if !diagnostics.differences.is_empty() {
+        let Some((decoded_ephemeris, rinex_ephemeris)) =
+            build_verified_ephemeris_pair(
+                prn,
+                &navigation,
+                &reference_scenario,
+                reference_week,
+            )?
+        else {
             continue;
-        }
+        };
+        decoded_ephemerides.insert(prn, decoded_ephemeris);
+        rinex_ephemerides.insert(prn, rinex_ephemeris);
 
-        decoded_ephemerides.insert(
-            prn,
-            build_ephemeris_from_decoded(&decoded, reference_week),
-        );
-        rinex_ephemerides.insert(
-            prn,
-            build_ephemeris_from_decoded(&expected, reference_week),
-        );
-
-        for (tracked, navigation) in [
+        for (tracked_satellite, navigation) in [
             (&sf1_tracked, &sf1_navigation),
             (&sf2_tracked, &sf2_navigation),
             (&sf3_tracked, &sf3_navigation),
         ] {
-            for subframe in &navigation.subframes {
-                let observation = observation_from_tracking(
-                    tracked,
-                    subframe,
-                    reference_week,
-                )?;
-                if !(10_000_000.0..=30_000_000.0)
-                    .contains(&observation.pseudorange_m)
-                {
-                    continue;
-                }
-                observations_by_key
-                    .entry((prn, subframe.tow_count))
-                    .or_insert(observation);
-            }
+            collect_navigation_observations(
+                prn,
+                tracked_satellite,
+                navigation,
+                &mut observations_by_key,
+                reference_week,
+            );
         }
 
         if decoded_ephemerides.len() >= params.target_fully_recovered {
@@ -1099,9 +1152,7 @@ fn run_quality_pipeline(
     })
 }
 
-fn assert_pipeline_quality(
-    case: ScenarioCase, params: PipelineParams, pipeline: &PipelineResult,
-) -> Result<(), Error> {
+fn assert_acquisition_quality(case: ScenarioCase, pipeline: &PipelineResult) {
     assert!(
         pipeline.used_acquisitions.len() >= MIN_ACQUIRED_SATELLITES,
         "{}: need at least four acquired satellites, got {}",
@@ -1138,6 +1189,11 @@ fn assert_pipeline_quality(
             code_phase_error_chips,
         );
     }
+}
+
+fn assert_navigation_quality(
+    case: ScenarioCase, params: PipelineParams, pipeline: &PipelineResult,
+) -> Result<(), Error> {
     assert!(
         pipeline.decoded_ephemerides.len() >= MIN_ACQUIRED_SATELLITES
             && pipeline.rinex_ephemerides.len() >= MIN_ACQUIRED_SATELLITES,
@@ -1154,6 +1210,7 @@ fn assert_pipeline_quality(
         case.name,
         pipeline.navigations.len(),
     );
+
     for navigation in &pipeline.navigations {
         assert!(
             navigation.diagnostics.valid_word_count >= params.min_valid_words,
@@ -1173,36 +1230,26 @@ fn assert_pipeline_quality(
                 expected_subframe_id,
             );
         }
-        let subframe_1 = navigation
-            .subframes
-            .iter()
-            .find(|subframe| subframe.subframe_id == 1)
-            .ok_or_else(|| {
-                Error::msg(format!(
-                    "{}: PRN {} missing subframe 1 after validation",
-                    case.name, navigation.prn
-                ))
-            })?;
-        let subframe_2 = navigation
-            .subframes
-            .iter()
-            .find(|subframe| subframe.subframe_id == 2)
-            .ok_or_else(|| {
-                Error::msg(format!(
-                    "{}: PRN {} missing subframe 2 after validation",
-                    case.name, navigation.prn
-                ))
-            })?;
-        let subframe_3 = navigation
-            .subframes
-            .iter()
-            .find(|subframe| subframe.subframe_id == 3)
-            .ok_or_else(|| {
-                Error::msg(format!(
-                    "{}: PRN {} missing subframe 3 after validation",
-                    case.name, navigation.prn
-                ))
-            })?;
+
+        let subframe_1 = recover_subframe(navigation, 1).map_err(|_| {
+            Error::msg(format!(
+                "{}: PRN {} missing subframe 1 after validation",
+                case.name, navigation.prn
+            ))
+        })?;
+        let subframe_2 = recover_subframe(navigation, 2).map_err(|_| {
+            Error::msg(format!(
+                "{}: PRN {} missing subframe 2 after validation",
+                case.name, navigation.prn
+            ))
+        })?;
+        let subframe_3 = recover_subframe(navigation, 3).map_err(|_| {
+            Error::msg(format!(
+                "{}: PRN {} missing subframe 3 after validation",
+                case.name, navigation.prn
+            ))
+        })?;
+
         assert!(
             subframe_1.tow_count % 5 == 1
                 && subframe_2.tow_count % 5 == 2
@@ -1217,6 +1264,10 @@ fn assert_pipeline_quality(
         );
     }
 
+    Ok(())
+}
+
+fn assert_observation_quality(case: ScenarioCase, pipeline: &PipelineResult) {
     let unique_prns: BTreeSet<usize> =
         pipeline.observations.iter().map(|obs| obs.prn).collect();
     assert!(
@@ -1232,6 +1283,7 @@ fn assert_pipeline_quality(
         case.name,
         pipeline.observations.len(),
     );
+
     let mut observations_per_prn = BTreeMap::new();
     for observation in &pipeline.observations {
         assert!(
@@ -1254,6 +1306,7 @@ fn assert_pipeline_quality(
             .entry(observation.prn)
             .or_insert(0usize) += 1;
     }
+
     for prn in pipeline.decoded_ephemerides.keys() {
         let observation_count =
             observations_per_prn.get(prn).copied().unwrap_or(0);
@@ -1265,6 +1318,14 @@ fn assert_pipeline_quality(
             observation_count,
         );
     }
+}
+
+fn assert_pipeline_quality(
+    case: ScenarioCase, params: PipelineParams, pipeline: &PipelineResult,
+) -> Result<(), Error> {
+    assert_acquisition_quality(case, pipeline);
+    assert_navigation_quality(case, params, pipeline)?;
+    assert_observation_quality(case, pipeline);
 
     Ok(())
 }

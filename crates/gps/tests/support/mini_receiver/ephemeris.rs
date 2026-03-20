@@ -46,28 +46,25 @@ pub fn select_rinex_record(
     navigation_path: &Path, prn: usize, reference_time: &GpsTime,
 ) -> Result<rinex::ephemeris::Ephemeris, Error> {
     let rinex = rinex::Rinex::read_file(&navigation_path)?;
-    rinex
-        .ephemerides
-        .iter()
-        .filter(|record| record.prn == prn)
-        .min_by(|left, right| {
-            let left_time = GpsTime::from(&DateTime::from(
-                left.time_of_clock
-                    .in_tz("UTC")
-                    .expect("UTC timezone conversion should succeed"),
-            ));
-            let right_time = GpsTime::from(&DateTime::from(
-                right
-                    .time_of_clock
-                    .in_tz("UTC")
-                    .expect("UTC timezone conversion should succeed"),
-            ));
-            left_time
-                .diff_secs(reference_time)
-                .abs()
-                .total_cmp(&right_time.diff_secs(reference_time).abs())
-        })
-        .cloned()
+    let mut best_match: Option<(&rinex::ephemeris::Ephemeris, GpsTime)> = None;
+
+    for record in rinex.ephemerides.iter().filter(|record| record.prn == prn) {
+        let record_time = record_time_of_clock(record)?;
+        let should_replace =
+            best_match.as_ref().is_none_or(|(_, best_time)| {
+                record_time
+                    .diff_secs(reference_time)
+                    .abs()
+                    .total_cmp(&best_time.diff_secs(reference_time).abs())
+                    .is_lt()
+            });
+        if should_replace {
+            best_match = Some((record, record_time));
+        }
+    }
+
+    best_match
+        .map(|(record, _)| record.clone())
         .ok_or(Error::NoEphemeris)
 }
 
@@ -109,7 +106,7 @@ pub fn quantize_rinex_record(
 }
 
 pub fn decode_ephemeris(
-    prn: usize, subframes: &[RecoveredSubframe], reference_week: i32,
+    prn: usize, subframes: &[RecoveredSubframe], _reference_week: i32,
 ) -> Result<DecodedEphemeris, Error> {
     let subframe_1 = subframes
         .iter()
@@ -131,8 +128,7 @@ pub fn decode_ephemeris(
     let week = ((sf1[2] >> 14) & 0x03ff) as u16;
     let code_l2 = ((sf1[2] >> 12) & 0x03) as u8;
     let sv_health = ((sf1[2] >> 2) & 0x3f) as u8;
-    let iodc =
-        ((((sf1[2] & 0x3) as u16) << 8) | ((sf1[7] >> 16) as u16)) as u16;
+    let iodc = (((sf1[2] & 0x3) as u16) << 8) | ((sf1[7] >> 16) as u16);
     let tgd = sign_extend(sf1[6] & 0xff, 8) as i8;
     let toc = (sf1[7] & 0xffff) as u16;
     let af2 = sign_extend((sf1[8] >> 16) & 0xff, 8) as i8;
@@ -157,8 +153,6 @@ pub fn decode_ephemeris(
     let aop = combine_signed_32(sf3[6] & 0xff, sf3[7]);
     let omgdot = sign_extend(sf3[8], 24);
     let idot = sign_extend((sf3[9] >> 2) & 0x3fff, 14) as i16;
-
-    let _ = reference_week;
     Ok(DecodedEphemeris {
         prn,
         week,
@@ -190,168 +184,43 @@ pub fn decode_ephemeris(
     })
 }
 
+macro_rules! compare_ephemeris_fields {
+    ($differences:expr, $decoded:expr, $expected:expr, [$($field:ident),+ $(,)?]) => {
+        $(
+            compare_field(
+                $differences,
+                stringify!($field),
+                i64::from($decoded.$field),
+                i64::from($expected.$field),
+            );
+        )+
+    };
+}
+
 pub fn compare_ephemeris(
     decoded: &DecodedEphemeris, expected: &QuantizedEphemeris,
 ) -> EphemerisDiagnostics {
     let mut differences = Vec::new();
-    compare_field(
+    compare_ephemeris_fields!(
         &mut differences,
-        "week",
-        decoded.week as i64,
-        expected.week as i64,
-    );
-    compare_field(
-        &mut differences,
-        "code_l2",
-        decoded.code_l2 as i64,
-        expected.code_l2 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "sv_health",
-        decoded.sv_health as i64,
-        expected.sv_health as i64,
-    );
-    compare_field(
-        &mut differences,
-        "iodc",
-        decoded.iodc as i64,
-        expected.iodc as i64,
-    );
-    compare_field(
-        &mut differences,
-        "iode",
-        decoded.iode as i64,
-        expected.iode as i64,
-    );
-    compare_field(
-        &mut differences,
-        "toc",
-        decoded.toc as i64,
-        expected.toc as i64,
-    );
-    compare_field(
-        &mut differences,
-        "toe",
-        decoded.toe as i64,
-        expected.toe as i64,
-    );
-    compare_field(
-        &mut differences,
-        "tgd",
-        decoded.tgd as i64,
-        expected.tgd as i64,
-    );
-    compare_field(
-        &mut differences,
-        "af2",
-        decoded.af2 as i64,
-        expected.af2 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "af1",
-        decoded.af1 as i64,
-        expected.af1 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "af0",
-        decoded.af0 as i64,
-        expected.af0 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "crs",
-        decoded.crs as i64,
-        expected.crs as i64,
-    );
-    compare_field(
-        &mut differences,
-        "deltan",
-        decoded.deltan as i64,
-        expected.deltan as i64,
-    );
-    compare_field(
-        &mut differences,
-        "m0",
-        decoded.m0 as i64,
-        expected.m0 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "cuc",
-        decoded.cuc as i64,
-        expected.cuc as i64,
-    );
-    compare_field(
-        &mut differences,
-        "ecc",
-        decoded.ecc as i64,
-        expected.ecc as i64,
-    );
-    compare_field(
-        &mut differences,
-        "cus",
-        decoded.cus as i64,
-        expected.cus as i64,
-    );
-    compare_field(
-        &mut differences,
-        "sqrta",
-        decoded.sqrta as i64,
-        expected.sqrta as i64,
-    );
-    compare_field(
-        &mut differences,
-        "cic",
-        decoded.cic as i64,
-        expected.cic as i64,
-    );
-    compare_field(
-        &mut differences,
-        "omg0",
-        decoded.omg0 as i64,
-        expected.omg0 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "cis",
-        decoded.cis as i64,
-        expected.cis as i64,
-    );
-    compare_field(
-        &mut differences,
-        "inc0",
-        decoded.inc0 as i64,
-        expected.inc0 as i64,
-    );
-    compare_field(
-        &mut differences,
-        "crc",
-        decoded.crc as i64,
-        expected.crc as i64,
-    );
-    compare_field(
-        &mut differences,
-        "aop",
-        decoded.aop as i64,
-        expected.aop as i64,
-    );
-    compare_field(
-        &mut differences,
-        "omgdot",
-        decoded.omgdot as i64,
-        expected.omgdot as i64,
-    );
-    compare_field(
-        &mut differences,
-        "idot",
-        decoded.idot as i64,
-        expected.idot as i64,
+        decoded,
+        expected,
+        [
+            week, code_l2, sv_health, iodc, iode, toc, toe, tgd, af2, af1, af0,
+            crs, deltan, m0, cuc, ecc, cus, sqrta, cic, omg0, cis, inc0, crc,
+            aop, omgdot, idot,
+        ]
     );
 
     EphemerisDiagnostics { differences }
+}
+
+fn record_time_of_clock(
+    record: &rinex::ephemeris::Ephemeris,
+) -> Result<GpsTime, Error> {
+    Ok(GpsTime::from(&DateTime::from(
+        record.time_of_clock.in_tz("UTC")?,
+    )))
 }
 
 #[allow(non_snake_case)]

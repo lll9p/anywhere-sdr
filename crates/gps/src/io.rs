@@ -92,47 +92,6 @@ pub struct IQWriter {
     pub buffer_size: usize,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn pack_bits8_matches_i8_write_semantics() -> Result<(), Error> {
-        let iq: [i16; 13] = [
-            -32768, -2049, -2048, -17, -16, -1, 0, 1, 15, 16, 2047, 2048, 32767,
-        ];
-        let mut out = vec![0u8; iq.len()];
-        pack_bits8_into(&iq, &mut out)?;
-
-        let expected: Vec<u8> = iq
-            .iter()
-            .map(|&s| ((i32::from(s) >> 4) as i8) as u8)
-            .collect();
-        assert_eq!(out, expected);
-
-        assert_eq!(out[5], 255); // -1 >> 4 == -1
-        assert_eq!(out[3], 254); // -17 >> 4 == -2
-        assert_eq!(out[11], 128); // 2048 >> 4 == 128 (wraps in i8)
-        assert_eq!(out[12], 255); // 32767 >> 4 == 2047 (wraps in i8)
-        Ok(())
-    }
-
-    #[test]
-    fn pack_bits8_output_length_mismatch_is_error() {
-        let mut out = [0u8; 1];
-        let err = pack_bits8_into(&[0i16, 1i16], &mut out).unwrap_err();
-        assert!(err.to_string().contains("Bits8 output length mismatch"));
-    }
-
-    #[test]
-    fn pack_bits1_bit_order_and_sign() -> Result<(), Error> {
-        let iq: [i16; 8] = [1, -1, 1, -1, 1, -1, 1, -1];
-        let mut out = [0u8; 1];
-        pack_bits1_into(&iq, &mut out)?;
-        assert_eq!(out[0], 0b1010_1010);
-        Ok(())
-    }
-}
 impl IQWriter {
     /// Creates a new I/Q sample writer.
     ///
@@ -202,6 +161,54 @@ impl IQWriter {
                 self.writer.write_all(as_bytes_i16(&self.buffer))?;
             }
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_bits8_matches_i8_write_semantics() -> Result<(), Error> {
+        let iq: [i16; 13] = [
+            -32768, -2049, -2048, -17, -16, -1, 0, 1, 15, 16, 2047, 2048, 32767,
+        ];
+        let mut out = vec![0u8; iq.len()];
+        pack_bits8_into(&iq, &mut out)?;
+
+        let expected: Vec<u8> = iq
+            .iter()
+            .map(|&s| ((i32::from(s) >> 4) as i8) as u8)
+            .collect();
+        assert_eq!(out, expected);
+
+        assert_eq!(out[5], 255); // -1 >> 4 == -1
+        assert_eq!(out[3], 254); // -17 >> 4 == -2
+        assert_eq!(out[11], 128); // 2048 >> 4 == 128 (wraps in i8)
+        assert_eq!(out[12], 255); // 32767 >> 4 == 2047 (wraps in i8)
+        Ok(())
+    }
+
+    #[test]
+    fn pack_bits8_output_length_mismatch_is_error() {
+        let mut out = [0u8; 1];
+        let result = pack_bits8_into(&[0i16, 1i16], &mut out);
+        assert!(matches!(
+            result,
+            Err(ref error)
+                if error
+                    .to_string()
+                    .contains("Bits8 output length mismatch")
+        ));
+    }
+
+    #[test]
+    fn pack_bits1_bit_order_and_sign() -> Result<(), Error> {
+        let iq: [i16; 8] = [1, -1, 1, -1, 1, -1, 1, -1];
+        let mut out = [0u8; 1];
+        pack_bits1_into(&iq, &mut out)?;
+        assert_eq!(out[0], 0b1010_1010);
         Ok(())
     }
 }

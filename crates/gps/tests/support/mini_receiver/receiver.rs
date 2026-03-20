@@ -368,7 +368,7 @@ pub fn track_satellites(
 }
 
 fn aligned_navigation_start(time: &GpsTime) -> GpsTime {
-    let aligned_seconds = ((time.sec + 0.5) as u32 / 30) as f64 * 30.0;
+    let aligned_seconds = f64::from((time.sec + 0.5) as u32 / 30) * 30.0;
     GpsTime {
         week: time.week,
         sec: aligned_seconds,

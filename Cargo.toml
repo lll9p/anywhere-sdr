@@ -31,7 +31,7 @@ parsing = { path = "./crates/parsing" }
 rinex = { path = "./crates/rinex" }
 
 # Command line argument parsing
-clap = { version = "4.5", features = ["derive", "unicode", "wrap_help", "env"] }
+clap = { version = "4.6", features = ["derive", "unicode", "wrap_help", "env"] }
 
 # Data processing and parsing
 csv = { version = "1.4" }
@@ -44,7 +44,7 @@ nusb = { version = "0.2" }
 futures-lite = { version = "2.6" }
 
 # Concurrency and performance
-rayon = { version = "1.8" }
+rayon = { version = "1.11" }
 
 # Error handling
 thiserror = { version = "2.0" }
@@ -56,8 +56,8 @@ tracing-appender = { version = "0.2" }
 tracing-subscriber = { version = "0.3" }
 
 # Terminal UI
-ratatui = { version = "0.28", default-features = false, features = ["crossterm"] }
-crossterm = { version = "0.28" }
+ratatui = { version = "0.30", default-features = false, features = ["crossterm"] }
+crossterm = { version = "0.29" }
 
 # Testing
 test-case = { version = "3.3" }
