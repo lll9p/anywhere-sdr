@@ -1,9 +1,57 @@
 use std::path::PathBuf;
 
+use geometry::{Ecef, Location};
+
 use crate::cli::{Args, TxBackend};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum MotionSource {
+    #[default]
+    Preconfigured,
+    Manual,
+}
+
+impl MotionSource {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Preconfigured => "preconfigured",
+            Self::Manual => "manual",
+        }
+    }
+
+    pub(crate) fn toggle(self) -> Self {
+        match self {
+            Self::Preconfigured => Self::Manual,
+            Self::Manual => Self::Preconfigured,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ManualMotionConfig {
+    pub(crate) initial_llh: Option<[f64; 3]>,
+    pub(crate) initial_heading_deg: f64,
+    pub(crate) cruise_speed_mps: f64,
+    pub(crate) accel_limit_mps2: f64,
+    pub(crate) turn_rate_limit_dps: f64,
+}
+
+impl Default for ManualMotionConfig {
+    fn default() -> Self {
+        Self {
+            initial_llh: None,
+            initial_heading_deg: 0.0,
+            cruise_speed_mps: 1.0,
+            accel_limit_mps2: 1.0,
+            turn_rate_limit_dps: 45.0,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct TuiConfig {
+    pub(crate) motion_source: MotionSource,
+    pub(crate) manual_motion: ManualMotionConfig,
     pub(crate) ephemerides: Option<PathBuf>,
     pub(crate) user_motion_ecef: Option<PathBuf>,
     pub(crate) user_motion_llh: Option<PathBuf>,
@@ -36,6 +84,8 @@ pub(crate) struct TuiConfig {
 impl Default for TuiConfig {
     fn default() -> Self {
         Self {
+            motion_source: MotionSource::Preconfigured,
+            manual_motion: ManualMotionConfig::default(),
             ephemerides: None,
             user_motion_ecef: None,
             user_motion_llh: None,
@@ -96,5 +146,120 @@ impl TuiConfig {
         self.hackrf_queue_blocks = args.hackrf_queue_blocks;
         self.hackrf_prefill_blocks = args.hackrf_prefill_blocks;
         self.hackrf_drop_on_underrun = args.hackrf_drop_on_underrun;
+
+        self.manual_motion.initial_llh = args
+            .location
+            .as_ref()
+            .and_then(|values| triplet_from_vec(values))
+            .or_else(|| {
+                args.location_ecef.as_ref().and_then(|location_ecef| {
+                    let ecef = Ecef::from(&triplet_from_vec(location_ecef)?);
+                    let location = Location::from(&ecef);
+                    Some([
+                        location.latitude.to_degrees(),
+                        location.longitude.to_degrees(),
+                        location.height,
+                    ])
+                })
+            });
     }
+
+    pub(crate) fn uses_manual_motion(&self) -> bool {
+        self.motion_source == MotionSource::Manual
+    }
+
+    pub(crate) fn effective_duration(&self) -> Option<f64> {
+        if self.uses_manual_motion() {
+            None
+        } else {
+            self.duration
+        }
+    }
+
+    pub(crate) fn validate_for_run(&self) -> Result<(), String> {
+        if self.ephemerides.is_none() {
+            return Err("ephemerides is required".to_string());
+        }
+
+        if self
+            .tx
+            .iter()
+            .any(|backend| matches!(backend, TxBackend::Hackrf))
+        {
+            if self.hackrf_usb_transfer_bytes == 0 {
+                return Err("hackrf_usb_transfer_bytes must be > 0".to_string());
+            }
+            if self.hackrf_usb_transfers == 0 {
+                return Err("hackrf_usb_transfers must be > 0".to_string());
+            }
+            if self.hackrf_queue_blocks == 0 {
+                return Err("hackrf_queue_blocks must be > 0".to_string());
+            }
+            if self.hackrf_txvga_gain > 47 {
+                return Err("hackrf_txvga_gain must be in 0..=47".to_string());
+            }
+        }
+
+        if self.uses_manual_motion() {
+            self.validate_manual_motion()?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_manual_motion(&self) -> Result<(), String> {
+        let Some(initial_llh) = self.manual_motion.initial_llh else {
+            return Err("manual mode requires initial LLH position".to_string());
+        };
+
+        let [latitude_deg, longitude_deg, height_m] = initial_llh;
+        if !latitude_deg.is_finite()
+            || !longitude_deg.is_finite()
+            || !height_m.is_finite()
+        {
+            return Err("manual mode initial LLH must be finite".to_string());
+        }
+        if !(-90.0..=90.0).contains(&latitude_deg) {
+            return Err("manual mode latitude must be in -90..=90".to_string());
+        }
+        if !(-180.0..=180.0).contains(&longitude_deg) {
+            return Err(
+                "manual mode longitude must be in -180..=180".to_string()
+            );
+        }
+
+        if !self.manual_motion.initial_heading_deg.is_finite() {
+            return Err("manual mode heading must be finite".to_string());
+        }
+        if !self.manual_motion.cruise_speed_mps.is_finite()
+            || self.manual_motion.cruise_speed_mps < 0.0
+        {
+            return Err("manual mode cruise speed must be >= 0".to_string());
+        }
+        if !self.manual_motion.accel_limit_mps2.is_finite()
+            || self.manual_motion.accel_limit_mps2 <= 0.0
+        {
+            return Err("manual mode accel limit must be > 0".to_string());
+        }
+        if !self.manual_motion.turn_rate_limit_dps.is_finite()
+            || self.manual_motion.turn_rate_limit_dps <= 0.0
+        {
+            return Err("manual mode turn rate limit must be > 0".to_string());
+        }
+
+        if self.user_motion_ecef.is_some()
+            || self.user_motion_llh.is_some()
+            || self.nmea_gga.is_some()
+        {
+            return Err("manual mode cannot be combined with \
+                        user_motion_ecef, user_motion_llh, or nmea_gga"
+                .to_string());
+        }
+
+        Ok(())
+    }
+}
+
+fn triplet_from_vec(values: &[f64]) -> Option<[f64; 3]> {
+    (values.len() == 3).then(|| [values[0], values[1], values[2]])
 }

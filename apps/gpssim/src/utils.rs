@@ -233,7 +233,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn log_buffer_writer_splits_lines() {
+    fn log_buffer_writer_splits_lines() -> std::io::Result<()> {
         use std::io::Write as _;
 
         let log_buffer = LogBuffer::new(10);
@@ -242,16 +242,15 @@ mod tests {
             buffer: String::new(),
         };
 
-        writer
-            .write_all(b"hello\nworld\n")
-            .expect("write to log buffer");
+        writer.write_all(b"hello\nworld\n")?;
 
         drop(writer);
 
-        assert_eq!(log_buffer.snapshot(), vec![
-            "hello".to_string(),
-            "world".to_string()
-        ]);
+        assert_eq!(
+            log_buffer.snapshot(),
+            vec!["hello".to_string(), "world".to_string()]
+        );
+        Ok(())
     }
 
     #[test]

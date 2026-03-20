@@ -1,0 +1,150 @@
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::Duration,
+};
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use super::*;
+use crate::{
+    cli::TxBackend,
+    tui::{manual_control::ManualControlSession, worker::WorkerHandle},
+    tui_config::{ManualMotionConfig, MotionSource, TuiConfig},
+    utils::LogBuffer,
+};
+
+fn manual_config() -> TuiConfig {
+    TuiConfig {
+        ephemerides: Some(navigation_path()),
+        tx: vec![TxBackend::Null],
+        motion_source: MotionSource::Manual,
+        manual_motion: ManualMotionConfig {
+            initial_llh: Some([35.681_298, 139.766_247, 10.0]),
+            initial_heading_deg: 90.0,
+            cruise_speed_mps: 4.0,
+            accel_limit_mps2: 1.5,
+            turn_rate_limit_dps: 30.0,
+        },
+        ..TuiConfig::default()
+    }
+}
+
+fn navigation_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../resources/brdc0010.22n")
+}
+
+fn new_app(config: TuiConfig) -> App {
+    let (worker_events_tx, worker_events_rx) = mpsc::channel();
+    App::new(
+        config,
+        LogBuffer::new(64),
+        worker_events_rx,
+        worker_events_tx,
+    )
+}
+
+fn key(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+}
+
+fn assert_close(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < 1e-9,
+        "expected {expected}, got {actual}"
+    );
+}
+
+#[test]
+fn manual_mode_requires_initial_position_before_start() {
+    let mut app = new_app(manual_config());
+    app.config.manual_motion.initial_llh = None;
+
+    start_run(&mut app);
+
+    assert_eq!(
+        app.message.as_deref(),
+        Some("manual mode requires initial LLH position")
+    );
+    assert!(app.worker.is_none());
+}
+
+#[test]
+fn manual_mode_rejects_motion_file_conflicts_before_start() {
+    let mut app = new_app(manual_config());
+    app.config.user_motion_llh = Some(PathBuf::from("motion.csv"));
+
+    start_run(&mut app);
+
+    assert_eq!(
+        app.message.as_deref(),
+        Some(
+            "manual mode cannot be combined with user_motion_ecef, \
+             user_motion_llh, or nmea_gga"
+        )
+    );
+    assert!(app.worker.is_none());
+}
+
+#[test]
+fn manual_mode_hotkeys_update_targets() -> Result<(), String> {
+    let mut app = new_app(manual_config());
+    app.tab = ActiveTab::Run;
+    app.run_state = RunState::Running;
+    app.manual_session = Some(ManualControlSession::from_config(
+        &app.config.manual_motion,
+    )?);
+
+    handle_key_event(&mut app, key(KeyCode::Right));
+    handle_key_event(&mut app, key(KeyCode::Up));
+    handle_key_event(&mut app, key(KeyCode::Char(' ')));
+    handle_key_event(&mut app, key(KeyCode::Enter));
+
+    let session = app
+        .manual_session
+        .as_ref()
+        .ok_or_else(|| "manual session remains active".to_string())?;
+    assert_close(session.target_heading_deg, 95.0);
+    assert_close(session.target_speed_mps, 5.0);
+    assert_close(session.cruise_speed_mps, 5.0);
+    Ok(())
+}
+
+#[test]
+fn cancel_event_resets_state_and_joins_worker() {
+    let mut app = new_app(TuiConfig::default());
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_thread = cancel.clone();
+    app.worker = Some(WorkerHandle {
+        cancel: cancel.clone(),
+        join: thread::spawn(move || {
+            while !cancel_for_thread.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }),
+    });
+    app.run_state = RunState::Running;
+
+    app.request_cancel();
+
+    assert_eq!(app.run_state, RunState::Stopping);
+    assert!(cancel.load(Ordering::Relaxed));
+
+    app.handle_worker_event(WorkerEvent::Cancelled(Progress {
+        blocks: 1,
+        elapsed: Duration::from_millis(50),
+        sim_seconds: 0.1,
+        throughput_msps: 0.2,
+        hackrf_underruns: None,
+    }));
+
+    assert_eq!(app.run_state, RunState::Idle);
+    assert!(app.worker.is_none());
+    assert!(matches!(app.last_run, Some(LastRun::Cancelled)));
+}

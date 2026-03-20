@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn tee_dispatches_to_all_sinks() {
+    fn tee_dispatches_to_all_sinks() -> Result<(), Error> {
         let writes_a = Arc::new(AtomicUsize::new(0));
         let writes_b = Arc::new(AtomicUsize::new(0));
 
@@ -279,15 +279,16 @@ mod tests {
         ]);
 
         let block: [i16; 4] = [1, -1, 2, -2];
-        tee.write_block_i16(&block).unwrap();
-        tee.write_block_i16(&block).unwrap();
+        tee.write_block_i16(&block)?;
+        tee.write_block_i16(&block)?;
 
         assert_eq!(writes_a.load(Ordering::SeqCst), 2);
         assert_eq!(writes_b.load(Ordering::SeqCst), 2);
+        Ok(())
     }
 
     #[test]
-    fn tee_finishes_other_sinks_on_error() {
+    fn tee_finishes_other_sinks_on_error() -> Result<(), Error> {
         let finished_ok = Arc::new(AtomicBool::new(false));
         let writes_ok = Arc::new(AtomicUsize::new(0));
 
@@ -307,11 +308,19 @@ mod tests {
         ]);
 
         let block: [i16; 2] = [1, -1];
-        let err = tee.write_block_i16(&block).unwrap_err();
+        let err = match tee.write_block_i16(&block) {
+            Ok(()) => {
+                return Err(Error::msg(
+                    "expected tee write to fail for the failing sink",
+                ));
+            }
+            Err(err) => err,
+        };
         assert!(finished_ok.load(Ordering::SeqCst));
 
         let error_string = err.to_string();
         assert!(error_string.contains("fail"));
+        Ok(())
     }
 
     #[test]
@@ -357,7 +366,11 @@ mod tests {
         let num_steps = match gen_b.mode {
             MotionMode::Static => gen_b.simulation_step_count.max(1),
             MotionMode::Dynamic => gen_b.simulation_step_count,
-            MotionMode::UserControl => todo!(),
+            MotionMode::UserControl => {
+                return Err(Error::msg(
+                    "unexpected user-control mode in tee golden-path test",
+                ));
+            }
         };
         let expected_blocks = num_steps.saturating_sub(1);
 

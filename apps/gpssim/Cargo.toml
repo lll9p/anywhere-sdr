@@ -19,6 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Internal dependencies
+geometry.workspace = true
 gps.workspace = true
 libhackrf.workspace = true
 

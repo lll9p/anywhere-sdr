@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gps::{SignalGenerator, SignalGeneratorBuilder};
+use gps::{RuntimeMotionControl, SignalGenerator, SignalGeneratorBuilder};
 
 use crate::{
     Error,
@@ -43,12 +43,13 @@ pub(super) struct WorkerHandle {
 }
 
 pub(super) fn spawn_worker(
-    config: TuiConfig, event_tx: mpsc::Sender<WorkerEvent>,
+    config: TuiConfig, manual_control: Option<RuntimeMotionControl>,
+    event_tx: mpsc::Sender<WorkerEvent>,
 ) -> WorkerHandle {
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_thread = cancel.clone();
     let join = thread::spawn(move || {
-        worker_thread_main(config, cancel_for_thread, event_tx);
+        worker_thread_main(config, manual_control, cancel_for_thread, event_tx);
     });
 
     WorkerHandle { cancel, join }
@@ -90,8 +91,8 @@ pub(super) fn describe_sinks(config: &TuiConfig) -> String {
 }
 
 fn worker_thread_main(
-    config: TuiConfig, cancel: Arc<AtomicBool>,
-    event_tx: mpsc::Sender<WorkerEvent>,
+    config: TuiConfig, manual_control: Option<RuntimeMotionControl>,
+    cancel: Arc<AtomicBool>, event_tx: mpsc::Sender<WorkerEvent>,
 ) {
     let sinks = describe_sinks(&config);
     if event_tx.send(WorkerEvent::Started { sinks }).is_err() {
@@ -105,7 +106,7 @@ fn worker_thread_main(
         return;
     }
 
-    match run_streaming_worker(&config, &cancel, &event_tx) {
+    match run_streaming_worker(&config, manual_control, &cancel, &event_tx) {
         Ok(WorkerCompletion::Finished(progress)) => {
             if event_tx.send(WorkerEvent::Finished(progress)).is_err() {
                 tracing::debug!("ui disconnected before finished event");
@@ -130,8 +131,8 @@ enum WorkerCompletion {
 }
 
 fn run_streaming_worker(
-    config: &TuiConfig, cancel: &AtomicBool,
-    event_tx: &mpsc::Sender<WorkerEvent>,
+    config: &TuiConfig, manual_control: Option<RuntimeMotionControl>,
+    cancel: &AtomicBool, event_tx: &mpsc::Sender<WorkerEvent>,
 ) -> Result<WorkerCompletion, Error> {
     let output_path = resolve_output_path(config);
 
@@ -141,7 +142,7 @@ fn run_streaming_worker(
         .any(|backend| matches!(backend, TxBackend::Hackrf))
         .then(|| Arc::new(AtomicU64::new(0)));
 
-    let mut generator = build_generator(config)?;
+    let mut generator = build_generator(config, manual_control)?;
     generator.initialize()?;
 
     let sinks = build_sinks(
@@ -166,7 +167,7 @@ fn run_streaming_worker(
     let mut blocks: u64 = 0;
     let mut cancelled = false;
 
-    let streaming_result = generator.run_streaming::<_, Error>(|block| {
+    let mut on_block = |block: &[i16]| -> Result<(), Error> {
         if cancel.load(Ordering::Relaxed) {
             cancelled = true;
             return Err(Error::msg("cancelled"));
@@ -193,7 +194,13 @@ fn run_streaming_worker(
         }
 
         tee.write_block_i16(block)
-    });
+    };
+
+    let streaming_result = if config.uses_manual_motion() {
+        generator.run_streaming_user_control::<_, Error>(&mut on_block)
+    } else {
+        generator.run_streaming::<_, Error>(&mut on_block)
+    };
 
     tee.finish()?;
 
@@ -241,26 +248,40 @@ fn compute_progress(
     }
 }
 
-fn build_generator(config: &TuiConfig) -> Result<SignalGenerator, Error> {
-    SignalGeneratorBuilder::default()
+fn build_generator(
+    config: &TuiConfig, manual_control: Option<RuntimeMotionControl>,
+) -> Result<SignalGenerator, Error> {
+    let mut builder = SignalGeneratorBuilder::default()
         .navigation_file(config.ephemerides.clone())?
-        .user_motion_file(config.user_motion_ecef.clone())?
-        .user_motion_llh_file(config.user_motion_llh.clone())?
-        .user_motion_nmea_gga_file(config.nmea_gga.clone())?
-        .location_ecef(config.location_ecef.clone())?
-        .location(config.location.clone())?
         .leap(config.leap.clone())
         .time(config.time.clone())?
         .time_override(config.time_override)
-        .duration(config.duration)
+        .duration(config.effective_duration())
         .output_file(None)
         .frequency(Some(config.frequency))?
         .data_format(Some(config.bits))?
         .ionospheric_disable(Some(config.ionospheric_disable))
         .path_loss(config.path_loss)
-        .verbose(Some(config.verbose))
-        .build()
-        .map_err(Into::into)
+        .verbose(Some(config.verbose));
+
+    if config.uses_manual_motion() {
+        let Some(control) = manual_control else {
+            return Err(Error::cli_error(
+                "manual mode requires a runtime motion control handle"
+                    .to_string(),
+            ));
+        };
+        builder = builder.runtime_motion_control(Some(control))?;
+    } else {
+        builder = builder
+            .user_motion_file(config.user_motion_ecef.clone())?
+            .user_motion_llh_file(config.user_motion_llh.clone())?
+            .user_motion_nmea_gga_file(config.nmea_gga.clone())?
+            .location_ecef(config.location_ecef.clone())?
+            .location(config.location.clone())?;
+    }
+
+    builder.build().map_err(Into::into)
 }
 
 fn build_sinks(
@@ -319,3 +340,7 @@ fn build_hackrf_sink(
 
     HackrfTxSink::new(tx_config, 2 * generator.iq_buffer_size)
 }
+
+#[cfg(test)]
+#[path = "worker_tests.rs"]
+mod tests;

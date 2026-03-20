@@ -382,20 +382,20 @@ mod tests {
     use crate::tui_config::TuiConfig;
 
     #[test]
-    fn parses_tui_without_ephemerides() {
-        let args = Args::try_parse_from(["gpssim", "--tui"]).unwrap();
+    fn parses_tui_without_ephemerides() -> Result<(), clap::Error> {
+        let args = Args::try_parse_from(["gpssim", "--tui"])?;
         assert!(args.tui);
         assert!(args.ephemerides.is_none());
 
         assert!(Args::try_parse_from(["gpssim"]).is_err());
+        Ok(())
     }
 
     #[test]
-    fn applies_cli_overrides_to_tui_config() {
+    fn applies_cli_overrides_to_tui_config() -> Result<(), clap::Error> {
         let args = Args::try_parse_from([
             "gpssim", "--tui", "--tx", "null", "-s", "123", "-b", "8",
-        ])
-        .unwrap();
+        ])?;
 
         let mut config = TuiConfig::default();
         config.apply_overrides_from_args(&args);
@@ -403,5 +403,6 @@ mod tests {
         assert_eq!(config.tx, vec![TxBackend::Null]);
         assert_eq!(config.frequency, 123);
         assert_eq!(config.bits, 8);
+        Ok(())
     }
 }
