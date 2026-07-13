@@ -678,13 +678,12 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
 
     let (first_block, good_assists, sample_frequency_hz) =
         acquisition_fixture(case, params.visible_satellites)?;
-    let correct_metric = assisted_acquisition(
-        &first_block,
-        sample_frequency_hz,
-        &[good_assists[0].clone()],
-    )?
-    .pop()
-    .ok_or_else(|| Error::msg("missing correct acquisition metric"))?;
+    let correct_metric =
+        assisted_acquisition(&first_block, sample_frequency_hz, &[
+            good_assists[0].clone(),
+        ])?
+        .pop()
+        .ok_or_else(|| Error::msg("missing correct acquisition metric"))?;
 
     let mut wrong_assist = good_assists[0].clone();
     wrong_assist.prn = (1..=32)
@@ -693,13 +692,12 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
     wrong_assist.predicted_carrier_hz += 6_000.0;
     wrong_assist.predicted_code_phase_chips =
         (wrong_assist.predicted_code_phase_chips + 400.0) % 1023.0;
-    let wrong_metric = assisted_acquisition(
-        &first_block,
-        sample_frequency_hz,
-        &[wrong_assist],
-    )?
-    .pop()
-    .ok_or_else(|| Error::msg("missing wrong-PRN acquisition metric"))?;
+    let wrong_metric =
+        assisted_acquisition(&first_block, sample_frequency_hz, &[
+            wrong_assist,
+        ])?
+        .pop()
+        .ok_or_else(|| Error::msg("missing wrong-PRN acquisition metric"))?;
     assert!(
         wrong_metric.peak_ratio < correct_metric.peak_ratio / 10.0,
         "{}: wrong PRN acquisition was not sufficiently degraded: wrong={}, \
@@ -711,15 +709,14 @@ fn acquisition_rejects_wrong_prn_and_navigation_rejects_prompt_corruption()
 
     let mut wrong_frequency_assist = good_assists[0].clone();
     wrong_frequency_assist.predicted_carrier_hz += 2_000.0;
-    let wrong_frequency_metric = assisted_acquisition(
-        &first_block,
-        sample_frequency_hz,
-        &[wrong_frequency_assist],
-    )?
-    .pop()
-    .ok_or_else(|| {
-        Error::msg("missing large-frequency-offset acquisition metric")
-    })?;
+    let wrong_frequency_metric =
+        assisted_acquisition(&first_block, sample_frequency_hz, &[
+            wrong_frequency_assist,
+        ])?
+        .pop()
+        .ok_or_else(|| {
+            Error::msg("missing large-frequency-offset acquisition metric")
+        })?;
     assert!(
         wrong_frequency_metric.peak_ratio < correct_metric.peak_ratio / 4.0,
         "{}: large acquisition frequency error was not rejected strongly \

@@ -323,7 +323,7 @@ pub fn assisted_acquisition(
         });
     }
 
-    metrics.sort_by(|left, right| left.prn.cmp(&right.prn));
+    metrics.sort_by_key(|left| left.prn);
     Ok(metrics)
 }
 
@@ -363,7 +363,7 @@ pub fn track_satellites(
             prompt_epochs: tracker_state.prompt_epochs,
         });
     }
-    tracked.sort_by(|left, right| left.prn.cmp(&right.prn));
+    tracked.sort_by_key(|left| left.prn);
     Ok(tracked)
 }
 

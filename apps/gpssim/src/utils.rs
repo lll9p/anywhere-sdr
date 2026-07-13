@@ -246,10 +246,10 @@ mod tests {
 
         drop(writer);
 
-        assert_eq!(
-            log_buffer.snapshot(),
-            vec!["hello".to_string(), "world".to_string()]
-        );
+        assert_eq!(log_buffer.snapshot(), vec![
+            "hello".to_string(),
+            "world".to_string()
+        ]);
         Ok(())
     }
 

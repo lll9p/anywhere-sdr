@@ -2,9 +2,6 @@ use std::sync::{atomic::Ordering, mpsc};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use super::worker::{
-    Progress, WorkerEvent, WorkerHandle, describe_sinks, spawn_worker,
-};
 use super::{
     config_edit::{
         EditField, begin_edit, handle_edit_key, toggle_motion_source,
@@ -12,6 +9,9 @@ use super::{
     },
     manual_control::{
         MANUAL_HEADING_STEP_DEG, MANUAL_SPEED_STEP_MPS, ManualControlSession,
+    },
+    worker::{
+        Progress, WorkerEvent, WorkerHandle, describe_sinks, spawn_worker,
     },
 };
 use crate::{cli::TxBackend, tui_config::TuiConfig, utils::LogBuffer};

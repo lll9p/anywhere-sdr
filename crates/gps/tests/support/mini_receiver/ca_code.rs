@@ -38,10 +38,11 @@ pub fn ca_code(prn: usize) -> Result<[i8; CA_SEQ_LEN], String> {
     }
 
     let mut code = [0i8; CA_SEQ_LEN];
-    let mut delayed_index = CA_SEQ_LEN - DELAYS[prn - 1];
-    for (chip, g1_value) in code.iter_mut().zip(g1) {
-        *chip = (-(g1_value * g2[delayed_index % CA_SEQ_LEN])) as i8;
-        delayed_index += 1;
+    let sequence_start = CA_SEQ_LEN - DELAYS[prn - 1];
+    for (sequence_index, (chip, g1_value)) in
+        (sequence_start..).zip(code.iter_mut().zip(g1))
+    {
+        *chip = (-(g1_value * g2[sequence_index % CA_SEQ_LEN])) as i8;
     }
 
     Ok(code)

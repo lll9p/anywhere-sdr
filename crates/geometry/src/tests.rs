@@ -81,7 +81,7 @@ fn test_geometry_ecef2neu() {
     let neu_from_ecef = Neu::from_ecef(&ecef, tmat);
     println!("Neu from old: {neu:?}");
     println!("Neu from new: {neu_from_ecef:?}");
-    assert!(neu.precise(&neu_from_ecef, EPS), "Not equal!",);
+    assert!(neu.precise(&neu_from_ecef, EPS), "Not equal!");
 }
 #[test]
 fn test_geometry_neu2azel() {

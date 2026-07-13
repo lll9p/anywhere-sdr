@@ -201,16 +201,11 @@ pub fn compare_ephemeris(
     decoded: &DecodedEphemeris, expected: &QuantizedEphemeris,
 ) -> EphemerisDiagnostics {
     let mut differences = Vec::new();
-    compare_ephemeris_fields!(
-        &mut differences,
-        decoded,
-        expected,
-        [
-            week, code_l2, sv_health, iodc, iode, toc, toe, tgd, af2, af1, af0,
-            crs, deltan, m0, cuc, ecc, cus, sqrta, cic, omg0, cis, inc0, crc,
-            aop, omgdot, idot,
-        ]
-    );
+    compare_ephemeris_fields!(&mut differences, decoded, expected, [
+        week, code_l2, sv_health, iodc, iode, toc, toe, tgd, af2, af1, af0,
+        crs, deltan, m0, cuc, ecc, cus, sqrta, cic, omg0, cis, inc0, crc, aop,
+        omgdot, idot,
+    ]);
 
     EphemerisDiagnostics { differences }
 }

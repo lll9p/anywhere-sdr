@@ -100,7 +100,7 @@ pub struct Args {
     #[arg(short = 'T', long)]
     pub(crate) time_override: Option<bool>,
 
-    /// Duration [sec] (dynamic mode max: {}, static mode max: {})
+    /// Duration in seconds (dynamic mode max: {}, static mode max: {})
     #[arg(short = 'd', long)]
     pub(crate) duration: Option<f64>,
 
@@ -112,7 +112,7 @@ pub struct Args {
     #[arg(long, value_enum, action = ArgAction::Append)]
     pub(crate) tx: Vec<TxBackend>,
 
-    /// Sampling frequency [Hz] (default: 2600000)
+    /// Sampling frequency in hertz (default: 2600000)
     #[arg(short = 's', long, default_value_t = 2600000)]
     pub(crate) frequency: usize,
 
@@ -124,7 +124,7 @@ pub struct Args {
     #[arg(short = 'i', long, default_value_t = false, action = ArgAction::SetTrue)]
     pub(crate) ionospheric_disable: bool,
 
-    /// Disable path loss and hold power level constant [`fixed_gain`]
+    /// Disable path loss and hold power level constant (`fixed_gain`)
     #[arg(short = 'p', long)]
     pub(crate) path_loss: Option<i32>,
 

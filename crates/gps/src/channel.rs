@@ -286,10 +286,11 @@ impl Channel {
             r2[0] = c2;
         }
 
-        let mut j = CA_SEQ_LEN - delay[self.prn - 1];
-        for (ica, ig1) in self.ca_sequence.iter_mut().zip(g1) {
-            *ica = (-(ig1 * g2[j % CA_SEQ_LEN])) as i8;
-            j += 1;
+        let sequence_start = CA_SEQ_LEN - delay[self.prn - 1];
+        for (sequence_index, (ca_chip, g1_chip)) in
+            (sequence_start..).zip(self.ca_sequence.iter_mut().zip(g1))
+        {
+            *ca_chip = (-(g1_chip * g2[sequence_index % CA_SEQ_LEN])) as i8;
         }
     }
 

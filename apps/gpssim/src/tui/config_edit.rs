@@ -126,10 +126,8 @@ pub(super) fn handle_edit_key(app: &mut App, key: KeyEvent) {
         KeyCode::Backspace => {
             app.input_buffer.pop();
         }
-        KeyCode::Char(ch) => {
-            if !key.modifiers.contains(KeyModifiers::CONTROL) {
-                app.input_buffer.push(ch);
-            }
+        KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.input_buffer.push(ch);
         }
         _ => {}
     }
