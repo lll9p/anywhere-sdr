@@ -65,7 +65,7 @@ jobs:
         run: mkdir -p output
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --bin gpssim
+        run: cargo build --locked --release --target ${{ matrix.target }} --bin gpssim
 
       - name: Prepare artifact
         shell: bash

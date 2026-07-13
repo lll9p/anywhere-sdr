@@ -22,7 +22,7 @@ jobs:
         with:
           toolchain: stable
       - name: Cargo check
-        run: cargo check --all
+        run: cargo check --locked --all
 
   clippy:
     name: Clippy
@@ -35,7 +35,7 @@ jobs:
           toolchain: stable
           components: clippy
       - name: Cargo clippy
-        run: cargo clippy --all -- -D warnings
+        run: cargo clippy --locked --all -- -D warnings
 
   fmt:
     name: Format
@@ -64,7 +64,7 @@ jobs:
       - name: Create output directory
         run: mkdir -p output
       - name: Run tests
-        run: cargo test --release --no-fail-fast
+        run: cargo test --locked --release --no-fail-fast
         env:
           CARGO_INCREMENTAL: 0
           CARGO_PROFILE_DEV_DEBUG: 0
