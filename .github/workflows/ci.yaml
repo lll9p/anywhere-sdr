@@ -5,6 +5,7 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,7 +23,7 @@ jobs:
         with:
           toolchain: stable
       - name: Cargo check
-        run: cargo check --locked --all
+        run: cargo check --locked --workspace --all-targets --all-features --message-format=short
 
   clippy:
     name: Clippy
@@ -34,8 +35,10 @@ jobs:
         with:
           toolchain: stable
           components: clippy
-      - name: Cargo clippy
-        run: cargo clippy --locked --all -- -D warnings
+      - name: Strict workspace Clippy
+        run: cargo clippy --locked --workspace --all-targets --all-features --message-format=short -- -D warnings
+      - name: CI-equivalent Clippy
+        run: cargo clippy --locked --all --message-format=short -- -D warnings
 
   fmt:
     name: Format
@@ -48,7 +51,21 @@ jobs:
           toolchain: nightly
           components: rustfmt
       - name: Cargo fmt
-        run: cargo fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cargo doc
+        run: cargo doc --locked --workspace --no-deps --message-format=short
+        env:
+          RUSTDOCFLAGS: "-D warnings"
 
   test:
     name: Test
@@ -63,9 +80,31 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential
       - name: Create output directory
         run: mkdir -p output
-      - name: Run tests
-        run: cargo test --locked --release --no-fail-fast
+      - name: Run debug tests
+        run: cargo test --locked --workspace --all-targets --no-fail-fast --message-format=short
         env:
           CARGO_INCREMENTAL: 0
           CARGO_PROFILE_DEV_DEBUG: 0
           RUST_BACKTRACE: short
+      - name: Run release tests
+        run: cargo test --locked --release --workspace --all-targets --no-fail-fast --message-format=short
+        env:
+          CARGO_INCREMENTAL: 0
+          CARGO_PROFILE_DEV_DEBUG: 0
+          RUST_BACKTRACE: short
+
+  version:
+    name: Release version invariant
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Run version invariant tests
+        run: python3 scripts/test_check_release_version.py
+      - name: Build gpssim
+        run: cargo build --locked --release --bin gpssim
+      - name: Verify release version invariant
+        run: python3 scripts/check_release_version.py

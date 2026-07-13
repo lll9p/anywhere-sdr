@@ -24,6 +24,10 @@ env:
   CARGO_WORKSPACE_DIR: ${{ github.workspace }}
 
 jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/ci.yaml
+
   build:
     name: Build
     strategy:
@@ -81,7 +85,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [build]
+    needs: [validate, build]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

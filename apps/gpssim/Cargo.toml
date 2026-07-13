@@ -51,7 +51,6 @@ workspace = true
 name = "Anywhere-SDR"
 identifier = "com.laolilin.anywhere-sdr"
 icon = ["icons/icon.png"]
-version = "0.0.2"
 copyright = "Copyright (c) 2024 Lao Lilin. All rights reserved."
 category = "Developer Tool"
 short_description = "GPS L1 C/A signal simulator"
