@@ -144,7 +144,7 @@ generator.run_simulation().unwrap();
 - `-g <nmea_gga>`: NMEA GGA stream (dynamic mode)
 - `-c <location>`: ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
 - `-l <location>`: Lat,lon,height (static mode) e.g. 35.681298,139.766247,10.0
-- `-t <date,time>`: Scenario start time YYYY/MM/DD,hh:mm:ss or "now" for current time
+- `-t <timestamp>`: Scenario RFC 3339 UTC start time with an explicit offset (for example, `2026-07-14T00:00:00Z`) or `now`
 - `-T`: Overwrite TOC and TOE to scenario start time
 - `-d <duration>`: Duration in seconds
 - `-o <output>`: I/Q sampling data file (default: gpssim.bin)

@@ -4,21 +4,17 @@ use std::{
     path::Path,
 };
 
-use jiff::Timestamp;
 use pest::{
     Parser,
     iterators::{Pair, Pairs},
 };
 use pest_derive::Parser;
 
-use crate::{
-    ephemeris::{
-        Ephemeris, EphemerisBuilder, Orbit1, Orbit2, Orbit3, Orbit4, Orbit5,
-        Orbit6, Orbit7, SvClock,
-    },
-    error::Error,
-    utc::DeltaUtc,
-};
+use crate::{ephemeris::Ephemeris, error::Error, utc::DeltaUtc};
+
+/// RINEX navigation-epoch and orbit-record parsing.
+mod ephemeris_rules;
+use ephemeris_rules::read_ephemerides;
 
 /// Parser implementation for RINEX files using pest grammar
 #[derive(Parser)]
@@ -297,7 +293,7 @@ fn next_pair<'a>(
 }
 
 /// Helper to get the next pair's inner text or return an error.
-fn next_str<'a>(
+pub(super) fn next_str<'a>(
     pairs: &mut Pairs<'a, Rule>, context: &'static str,
 ) -> Result<&'a str, Error> {
     Ok(next_pair(pairs, context)?.as_str())
@@ -315,7 +311,7 @@ fn next_str<'a>(
 /// # Returns
 /// * `Ok(f64)` - The parsed floating-point value
 /// * `Err(ParseFloatError)` - If the string cannot be parsed as a float
-fn to_float(num: &str) -> Result<f64, ParseFloatError> {
+pub(super) fn to_float(num: &str) -> Result<f64, ParseFloatError> {
     num.replace('D', "E").trim().parse()
 }
 
@@ -327,7 +323,7 @@ fn to_float(num: &str) -> Result<f64, ParseFloatError> {
 /// # Returns
 /// * `Ok(i32)` - The parsed integer value
 /// * `Err(ParseIntError)` - If the string cannot be parsed as an integer
-fn to_int(num: &str) -> Result<i32, ParseIntError> {
+pub(super) fn to_int(num: &str) -> Result<i32, ParseIntError> {
     num.trim().parse()
 }
 
@@ -339,7 +335,7 @@ fn to_int(num: &str) -> Result<i32, ParseIntError> {
 /// # Returns
 /// * `Ok(usize)` - The parsed unsigned size value
 /// * `Err(ParseIntError)` - If the string cannot be parsed as an unsigned size
-fn to_usize(num: &str) -> Result<usize, ParseIntError> {
+pub(super) fn to_usize(num: &str) -> Result<usize, ParseIntError> {
     num.trim().parse()
 }
 
@@ -466,165 +462,4 @@ fn read_delta_utc(rule: &mut Pairs<Rule>) -> Result<DeltaUtc, Error> {
     let time = to_int(next_str(rule, "delta_utc time")?)?;
     let week = to_int(next_str(rule, "delta_utc week")?)?;
     Ok(DeltaUtc::new(a0, a1, time, week))
-}
-
-/// Parses the ephemerides section of a RINEX file and populates the builder.
-///
-/// This function processes the ephemeris rules from the pest parser and sets
-/// the ephemerides field in the `RinexBuilder`.
-///
-/// # Arguments
-/// * `eph_rules` - Iterator over ephemeris section rules from the pest parser
-/// * `builder` - `RinexBuilder` to populate with ephemeris data
-///
-/// # Returns
-/// * `Ok(())` - If the ephemerides were successfully parsed
-/// * `Err(Error)` - If there was an error parsing the ephemerides
-pub fn read_ephemerides(
-    eph_rules: &mut Pairs<Rule>, builder: &mut RinexBuilder,
-) -> Result<(), Error> {
-    let mut ephemerides: Vec<Ephemeris> = Vec::new();
-    for eph_rule in eph_rules {
-        match eph_rule.as_rule() {
-            Rule::ephemeris => {
-                let mut eph_builder = EphemerisBuilder::new();
-                let mut rules = eph_rule.into_inner();
-                read_ephemeris(&mut rules, &mut eph_builder)?;
-                let ephemeris = eph_builder.build()?;
-                ephemerides.push(ephemeris);
-            }
-            _ => {
-                return Err(Error::Rule(format!(
-                    "Unexpected rule in ephemerides section: {:?}",
-                    eph_rule.as_rule()
-                )));
-            }
-        }
-    }
-    builder.set_ephemerides(ephemerides);
-    Ok(())
-}
-#[allow(clippy::similar_names)]
-/// Parses a single satellite ephemeris from RINEX rules.
-///
-/// This function processes the rules for a single satellite ephemeris entry
-/// and populates the `EphemerisBuilder` with the extracted data. It handles
-/// the PRN, epoch, satellite clock, and seven orbit parameter lines.
-///
-/// # Arguments
-/// * `rules` - Iterator over ephemeris rules from the pest parser
-/// * `builder` - `EphemerisBuilder` to populate with ephemeris data
-///
-/// # Returns
-/// * `Ok(())` - If the ephemeris was successfully parsed
-/// * `Err(Error)` - If there was an error parsing the ephemeris
-fn read_ephemeris(
-    rules: &mut Pairs<Rule>, builder: &mut EphemerisBuilder,
-) -> Result<(), Error> {
-    // Expect a specific sequence of rules based on the grammar
-    // PRN + Epoch + SV Clock + 7 Orbit lines
-    for rule in rules {
-        match rule.as_rule() {
-            Rule::prn => {
-                let prn = to_usize(rule.as_str())?;
-                builder.set_prn(prn);
-            }
-            Rule::epoch => {
-                let mut epoch_rules = rule.into_inner();
-                let year = to_int(next_str(&mut epoch_rules, "epoch year")?)?;
-                let month = to_int(next_str(&mut epoch_rules, "epoch month")?)?;
-                let day = to_int(next_str(&mut epoch_rules, "epoch day")?)?;
-                let hour = to_int(next_str(&mut epoch_rules, "epoch hour")?)?;
-                let minutes =
-                    to_int(next_str(&mut epoch_rules, "epoch minutes")?)?;
-                let seconds =
-                    to_float(next_str(&mut epoch_rules, "epoch seconds")?)?;
-                let datetime = format!(
-                    "20{year}-{month:02}-{day:02}T{hour:02}:{minutes:02}:00Z"
-                );
-                let time_of_clock: Timestamp =
-                    datetime.parse::<Timestamp>()?.checked_add(
-                        std::time::Duration::from_secs_f64(seconds),
-                    )?;
-                builder.set_time_of_clock(time_of_clock);
-            }
-            Rule::sv_clk => {
-                let mut sv_clk_rules = rule.into_inner();
-                let bias =
-                    to_float(next_str(&mut sv_clk_rules, "sv_clk bias")?)?;
-                let drift =
-                    to_float(next_str(&mut sv_clk_rules, "sv_clk drift")?)?;
-                let drift_rate = to_float(next_str(
-                    &mut sv_clk_rules,
-                    "sv_clk drift_rate",
-                )?)?;
-                let sv_clock = SvClock::new(bias, drift, drift_rate);
-                builder.set_sv_clock(sv_clock);
-            }
-            Rule::orbit_1 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit1 = to_orbit_values(&mut rules, "orbit_1")?;
-                builder.set_orbit1(orbit);
-            }
-            Rule::orbit_2 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit2 = to_orbit_values(&mut rules, "orbit_2")?;
-                builder.set_orbit2(orbit);
-            }
-            Rule::orbit_3 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit3 = to_orbit_values(&mut rules, "orbit_3")?;
-                builder.set_orbit3(orbit);
-            }
-            Rule::orbit_4 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit4 = to_orbit_values(&mut rules, "orbit_4")?;
-                builder.set_orbit4(orbit);
-            }
-            Rule::orbit_5 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit5 = to_orbit_values(&mut rules, "orbit_5")?;
-                builder.set_orbit5(orbit);
-            }
-            Rule::orbit_6 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit6 = to_orbit_values(&mut rules, "orbit_6")?;
-                builder.set_orbit6(orbit);
-            }
-            Rule::orbit_7 => {
-                let mut rules = rule.into_inner();
-                let orbit: Orbit7 = to_orbit_values(&mut rules, "orbit_7")?;
-                builder.set_orbit7(orbit);
-            }
-            _ => unreachable!(),
-        }
-    }
-    Ok(())
-}
-/// Parses orbit parameter values from RINEX rules.
-///
-/// This generic function extracts four floating-point values from the rules
-/// and converts them to the specified orbit parameter type.
-///
-/// # Type Parameters
-/// * `O` - The orbit parameter type that can be created from an array of four
-///   f64 values
-///
-/// # Arguments
-/// * `rules` - Iterator over orbit parameter rules from the pest parser
-/// * `context` - Context string for error messages
-///
-/// # Returns
-/// * `Ok(O)` - The parsed orbit parameter object
-/// * `Err(Error)` - If there was an error parsing the parameters
-fn to_orbit_values<O: From<[f64; 4]>>(
-    rules: &mut Pairs<Rule>, context: &'static str,
-) -> Result<O, Error> {
-    let mut values = [0.0; 4];
-    for item in &mut values {
-        let val_str = next_str(rules, context)?;
-        *item = to_float(val_str)?;
-    }
-    let orbit = O::from(values);
-    Ok(orbit)
 }

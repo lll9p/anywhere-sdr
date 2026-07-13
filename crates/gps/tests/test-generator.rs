@@ -48,9 +48,9 @@ fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder, Error> {
                 builder = builder.leap(Some(leap));
             }
             [t, value] if t == "-t" => {
-                // convert YYYY/MM/DD,hh:mm:ss to YYYY-MM-DD hh:mm:ss
-                let value = value.replace('/', "-").replace(',', " ") + "-00";
-                builder = builder.time(Some(value))?;
+                // The original C accepts a GPS-system calendar label here.
+                let value = value.replace('/', "-").replace(',', "T");
+                builder = builder.gps_calendar_time(Some(value))?;
             }
             [T, ..] if T == "-T" => {
                 builder = builder.time_override(Some(true));
@@ -113,7 +113,7 @@ fn string_to_args(value: &str) -> Vec<Vec<String>> {
 // -l <location>
 // -L <wnslf,dn,dtslf>
 // -t <date,time>
-// -T <date,time>
+// -T
 // -d <duration>
 // -o <output>
 // -s <frequency>

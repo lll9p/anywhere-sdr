@@ -94,6 +94,26 @@ pub enum Error {
     #[error("Time parsing error: {0}")]
     TimeParseError(#[from] jiff::Error),
 
+    /// Error when a civil calendar label has invalid fields
+    #[error("Invalid {scale} calendar date: {reason}")]
+    InvalidCalendarDate {
+        /// Time scale of the rejected calendar label
+        scale: &'static str,
+        /// Validation failure details
+        reason: String,
+    },
+
+    /// Error when a conversion is requested before the GPS epoch
+    #[error("{scale} time is before the GPS epoch")]
+    TimeBeforeGpsEpoch {
+        /// Time scale of the rejected value
+        scale: &'static str,
+    },
+
+    /// Error when a `GpsTime` value is not finite or normalized
+    #[error("Invalid GPS time: {0}")]
+    InvalidGpsTime(String),
+
     /// Error when converting between UTF-8 and other encodings
     #[error("UTF-8 conversion error: {0}")]
     Utf8Error(#[from] std::string::FromUtf8Error),

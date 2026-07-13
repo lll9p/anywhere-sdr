@@ -254,7 +254,7 @@ fn build_generator(
     let mut builder = SignalGeneratorBuilder::default()
         .navigation_file(config.ephemerides.clone())?
         .leap(config.leap.clone())
-        .time(config.time.clone())?
+        .utc_time(config.time.clone())?
         .time_override(config.time_override)
         .duration(config.effective_duration())
         .output_file(None)

@@ -5,7 +5,7 @@ use constants::{
 };
 
 use crate::{
-    datetime::{DateTime, GpsTime},
+    datetime::{GpsCalendarDateTime, GpsTime},
     ephemeris::Ephemeris,
     ionoutc::IonoUtc,
 };
@@ -95,9 +95,9 @@ pub fn read_navigation_data(
             continue;
         }
 
-        let utc_datetime =
-            DateTime::from(rinex_record.time_of_clock.in_tz("UTC")?);
-        let gps_time = GpsTime::from(&utc_datetime);
+        let gps_calendar =
+            GpsCalendarDateTime::try_from(&rinex_record.time_of_clock)?;
+        let gps_time = GpsTime::from_gps_calendar(&gps_calendar)?;
 
         // --- Determine which time set this ephemeris belongs to ---
         let mut update_set = false;
@@ -134,7 +134,7 @@ pub fn read_navigation_data(
         // Get a mutable reference to the target Ephemeris structure to populate
         // current_set_index is guaranteed to be in bounds here
         let eph = &mut ephemeris_data[current_set_index][sv];
-        eph.t = utc_datetime;
+        eph.time_of_clock = gps_calendar;
         eph.toc = gps_time;
         eph.af0 = rinex_record.sv_clock.bias;
         eph.af1 = rinex_record.sv_clock.drift;

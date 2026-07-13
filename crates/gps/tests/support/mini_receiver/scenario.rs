@@ -28,10 +28,17 @@ impl FixedScenario {
             .join("resources")
             .join("brdc0010.22n");
         let location = location_llh.to_vec();
+        let gps_calendar_text =
+            start_time_text.strip_suffix('Z').ok_or_else(|| {
+                Error::msg(
+                    "mini-receiver GPS-calendar fixture must use its legacy Z \
+                     suffix",
+                )
+            })?;
         let builder = SignalGeneratorBuilder::default()
             .navigation_file(Some(navigation_path.clone()))?
             .location(Some(location))?
-            .time(Some(start_time_text.to_owned()))?
+            .gps_calendar_time(Some(gps_calendar_text.to_owned()))?
             .duration(Some(duration_seconds))
             .frequency(Some(sample_frequency_hz))?
             .data_format(Some(8))?

@@ -1,7 +1,7 @@
 use constants::{OMEGA_EARTH, R2D, SECONDS_IN_HALF_WEEK, SECONDS_IN_WEEK};
 use geometry::{Azel, Ecef, Location, Neu};
 
-use crate::datetime::{DateTime, GpsTime};
+use crate::datetime::{GpsCalendarDateTime, GpsTime};
 
 /// Represents the broadcast ephemeris data for a single GPS satellite.
 ///
@@ -24,8 +24,8 @@ pub struct Ephemeris {
     /// Flag indicating whether this ephemeris data is valid
     pub vflg: bool,
 
-    /// UTC date and time corresponding to this ephemeris
-    pub t: DateTime,
+    /// GPS-system calendar label corresponding to `toc`.
+    pub time_of_clock: GpsCalendarDateTime,
 
     /// Time of Clock (TOC) - reference time for clock parameters
     pub toc: GpsTime,

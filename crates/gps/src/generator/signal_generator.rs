@@ -7,7 +7,7 @@ use super::{motion_control::RuntimeMotionControl, timeline::SampleTimeline};
 use crate::{
     Error,
     channel::Channel,
-    datetime::{DateTime, GpsTime},
+    datetime::GpsTime,
     ephemeris::Ephemeris,
     generator::utils::MotionMode,
     io::{DataFormat, IQWriter},
@@ -166,17 +166,17 @@ impl SignalGenerator {
             );
         }
         let gps_time_start = self.receiver_gps_time.clone();
-        let date_time_start = DateTime::from(&gps_time_start);
+        let gps_calendar_start = gps_time_start.to_gps_calendar()?;
         tracing::info!(
-            year = date_time_start.y,
-            month = date_time_start.m,
-            day = date_time_start.d,
-            hour = date_time_start.hh,
-            minute = date_time_start.mm,
-            second = date_time_start.sec,
+            year = gps_calendar_start.year(),
+            month = gps_calendar_start.month(),
+            day = gps_calendar_start.day(),
+            hour = gps_calendar_start.hour(),
+            minute = gps_calendar_start.minute(),
+            second = gps_calendar_start.second(),
             gps_week = gps_time_start.week,
             gps_seconds = gps_time_start.sec,
-            "start time"
+            "start time (GPS calendar)"
         );
         // Clear all channels
         self.channels

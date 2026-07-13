@@ -33,8 +33,8 @@ Options:
   -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
   -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
   -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
-  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss
-  -T <date,time>   Overwrite TOC and TOE to scenario start time
+  -t <timestamp>   Scenario RFC 3339 UTC time with an explicit offset, or "now"
+  -T               Overwrite TOC and TOE to scenario start time
   -d <duration>    Duration [sec] (dynamic mode max: {}, static mode max: {})
   -o <output>      I/Q sampling data file (default: gpssim.bin)
   -s <frequency>   Sampling frequency [Hz] (default: 2600000)
@@ -92,7 +92,7 @@ pub struct Args {
     #[arg(short = 'L', long, value_parser, value_delimiter = ',')]
     pub(crate) leap: Option<Vec<i32>>,
 
-    /// Scenario start time YYYY-MM-DDTHH:MM:SSZ
+    /// Scenario RFC 3339 UTC time with an explicit offset, or "now"
     #[arg(short = 't', long)]
     pub(crate) time: Option<String>,
 
@@ -279,7 +279,7 @@ impl Args {
             .location_ecef(self.location_ecef.clone())?
             .location(self.location.clone())?
             .leap(self.leap.clone())
-            .time(self.time.clone())?
+            .utc_time(self.time.clone())?
             .time_override(self.time_override)
             .duration(self.duration)
             .output_file(if tx_enabled { None } else { output_path })

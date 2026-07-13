@@ -10,6 +10,74 @@ mod orbit;
 pub use self::orbit::*;
 use crate::error::Error;
 
+/// A RINEX navigation epoch labelled in GPS system calendar time.
+///
+/// RINEX GPS navigation epochs are not UTC instants and must not receive a
+/// GPS-UTC leap-second offset when converted to continuous GPS time.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GpsCalendarDateTime {
+    /// Gregorian year.
+    pub year: i32,
+    /// Gregorian month in `1..=12`.
+    pub month: i32,
+    /// Gregorian day of month.
+    pub day: i32,
+    /// Hour in `0..=23`.
+    pub hour: i32,
+    /// Minute in `0..=59`.
+    pub minute: i32,
+    /// Seconds in `0.0..60.0`.
+    pub second: f64,
+}
+
+impl GpsCalendarDateTime {
+    /// Constructs a validated RINEX GPS-calendar epoch.
+    pub fn new(
+        year: i32, month: i32, day: i32, hour: i32, minute: i32, second: f64,
+    ) -> Result<Self, Error> {
+        let jiff_year = i16::try_from(year).map_err(|_| {
+            Error::ephemeris_builder("GPS calendar year is out of range")
+        })?;
+        let jiff_month = i8::try_from(month).map_err(|_| {
+            Error::ephemeris_builder("GPS calendar month is out of range")
+        })?;
+        let jiff_day = i8::try_from(day).map_err(|_| {
+            Error::ephemeris_builder("GPS calendar day is out of range")
+        })?;
+        jiff::civil::Date::new(jiff_year, jiff_month, jiff_day)?;
+        if !(0..=23).contains(&hour)
+            || !(0..=59).contains(&minute)
+            || !second.is_finite()
+            || !(0.0..60.0).contains(&second)
+        {
+            return Err(Error::ephemeris_builder(
+                "GPS calendar clock fields are out of range",
+            ));
+        }
+        Ok(Self {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        })
+    }
+}
+
+impl Default for GpsCalendarDateTime {
+    fn default() -> Self {
+        Self {
+            year: 1980,
+            month: 1,
+            day: 6,
+            hour: 0,
+            minute: 0,
+            second: 0.0,
+        }
+    }
+}
+
 /// Satellite vehicle clock parameters from the RINEX navigation message.
 ///
 /// This structure contains the clock correction parameters for a GPS satellite.
@@ -71,8 +139,8 @@ pub struct Ephemeris {
     /// Satellite PRN (Pseudo-Random Noise) number (1-32)
     pub prn: usize,
 
-    /// Reference time for the clock parameters (Time of Clock)
-    pub time_of_clock: jiff::Timestamp,
+    /// Reference time for the clock parameters in GPS calendar time.
+    pub time_of_clock: GpsCalendarDateTime,
 
     /// Satellite clock correction parameters
     pub sv_clock: SvClock,
@@ -111,8 +179,8 @@ pub struct EphemerisBuilder {
     /// Satellite PRN number
     prn: Option<usize>,
 
-    /// Reference time for the clock parameters
-    time_of_clock: Option<jiff::Timestamp>,
+    /// Reference time for the clock parameters in GPS calendar time.
+    time_of_clock: Option<GpsCalendarDateTime>,
 
     /// Satellite clock correction parameters
     sv_clock: Option<SvClock>,
@@ -159,8 +227,8 @@ impl EphemerisBuilder {
     /// Sets the reference time for the clock parameters.
     ///
     /// # Arguments
-    /// * `time_of_clock` - Time of Clock (TOC) timestamp
-    pub fn set_time_of_clock(&mut self, time_of_clock: jiff::Timestamp) {
+    /// * `time_of_clock` - Time of Clock (TOC) GPS calendar label
+    pub fn set_time_of_clock(&mut self, time_of_clock: GpsCalendarDateTime) {
         self.time_of_clock.replace(time_of_clock);
     }
 

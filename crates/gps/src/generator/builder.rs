@@ -5,7 +5,7 @@ use geometry::Ecef;
 
 use crate::{
     Error,
-    datetime::{DateTime, GpsTime},
+    datetime::{GpsCalendarDateTime, GpsTime, UtcDateTime},
     ephemeris::Ephemeris,
     generator::{
         RuntimeMotionControl,
@@ -93,19 +93,110 @@ pub struct SignalGeneratorBuilder {
     verbose: Option<bool>,
 }
 impl SignalGeneratorBuilder {
-    /// Parses a datetime string into a timestamp.
-    ///
-    /// Used internally to convert user-provided date/time strings into a format
-    /// that can be used for simulation timing.
-    ///
-    /// # Arguments
-    /// * `value` - A string representing a date and time in the format
-    ///   "YYYY-MM-DD HH:MM:SS"
-    ///
-    /// # Returns
-    /// A Result containing either the parsed timestamp or a parsing error
-    fn parse_datetime(value: &str) -> Result<jiff::Timestamp, jiff::Error> {
-        value.parse()
+    /// Parses a timestamp with an explicit UTC offset.
+    fn parse_utc_timestamp(value: &str) -> Result<jiff::Timestamp, Error> {
+        value
+            .parse()
+            .map_err(|error: jiff::Error| Error::InvalidCalendarDate {
+                scale: "UTC",
+                reason: error.to_string(),
+            })
+    }
+
+    /// Parses UTC while preserving an explicit leap-second label.
+    fn parse_utc(value: &str) -> Result<UtcDateTime, Error> {
+        if !value.contains(":60") {
+            let timestamp = Self::parse_utc_timestamp(value)?;
+            return UtcDateTime::from_timestamp(&timestamp);
+        }
+        Self::parse_utc_leap_label(value)
+    }
+
+    /// Parses the documented UTC leap-label form without POSIX normalization.
+    fn parse_utc_leap_label(value: &str) -> Result<UtcDateTime, Error> {
+        let invalid = || Error::InvalidCalendarDate {
+            scale: "UTC",
+            reason: "leap-second labels must use \
+                     YYYY-MM-DDTHH:MM:60[.fraction]Z"
+                .into(),
+        };
+        let value = value.strip_suffix('Z').ok_or_else(&invalid)?;
+        let (date, time) = value.split_once('T').ok_or_else(&invalid)?;
+        if time.contains('T') {
+            return Err(invalid());
+        }
+
+        let mut date_parts = date.split('-');
+        let year = date_parts
+            .next()
+            .ok_or_else(&invalid)?
+            .parse::<i32>()
+            .map_err(|_| invalid())?;
+        let month = date_parts
+            .next()
+            .ok_or_else(&invalid)?
+            .parse::<i32>()
+            .map_err(|_| invalid())?;
+        let day = date_parts
+            .next()
+            .ok_or_else(&invalid)?
+            .parse::<i32>()
+            .map_err(|_| invalid())?;
+        if date_parts.next().is_some() {
+            return Err(invalid());
+        }
+
+        let mut time_parts = time.split(':');
+        let hour = time_parts
+            .next()
+            .ok_or_else(&invalid)?
+            .parse::<i32>()
+            .map_err(|_| invalid())?;
+        let minute = time_parts
+            .next()
+            .ok_or_else(&invalid)?
+            .parse::<i32>()
+            .map_err(|_| invalid())?;
+        let second_text = time_parts.next().ok_or_else(&invalid)?;
+        if time_parts.next().is_some() {
+            return Err(invalid());
+        }
+        let valid_second = second_text == "60"
+            || second_text.strip_prefix("60.").is_some_and(|fraction| {
+                !fraction.is_empty()
+                    && fraction.bytes().all(|byte| byte.is_ascii_digit())
+            });
+        if !valid_second {
+            return Err(invalid());
+        }
+        let second = second_text.parse::<f64>().map_err(|_| invalid())?;
+        UtcDateTime::new(year, month, day, hour, minute, second)
+    }
+
+    /// Parses a timezone-free GPS calendar label.
+    fn parse_gps_calendar(value: &str) -> Result<jiff::civil::DateTime, Error> {
+        let clock = value
+            .split_once('T')
+            .or_else(|| value.split_once(' '))
+            .map(|(_, clock)| clock);
+        if clock.is_some_and(|clock| {
+            clock.bytes().any(|byte| {
+                matches!(byte, b'Z' | b'z' | b'+' | b'-' | b'[' | b']')
+            })
+        }) {
+            return Err(Error::InvalidCalendarDate {
+                scale: "GPS calendar",
+                reason: "timezone-bearing labels are available only through \
+                         utc_time()"
+                    .into(),
+            });
+        }
+        value
+            .parse()
+            .map_err(|error: jiff::Error| Error::InvalidCalendarDate {
+                scale: "GPS calendar",
+                reason: error.to_string(),
+            })
     }
 
     /// Sets the RINEX navigation file for GPS ephemerides.
@@ -162,39 +253,48 @@ impl SignalGeneratorBuilder {
         self
     }
 
-    /// Sets the simulation start time.
+    /// Sets the simulation start from a UTC timestamp or `now`.
     ///
-    /// This method sets the GPS time at which the simulation will start.
-    /// The time can be specified as a string in the format "YYYY-MM-DD
-    /// HH:MM:SS" or as the special value "now" to use the current system
-    /// time.
-    ///
-    /// # Arguments
-    /// * `time` - Optional string representing the start time or "now"
-    ///
-    /// # Returns
-    /// * `Ok(Self)` - Builder with start time set
-    /// * `Err(Error)` - If the time string cannot be parsed
-    ///
-    /// # Errors
-    /// * Returns an error if the time string format is invalid
-    pub fn time(mut self, time: Option<String>) -> Result<Self, Error> {
+    /// The timestamp must include an explicit UTC offset, for example
+    /// `2026-07-14T00:00:00Z`. Historical GPS-UTC leap offsets are applied.
+    pub fn utc_time(mut self, time: Option<String>) -> Result<Self, Error> {
         if let Some(time) = time {
-            let time_parsed = match time.to_lowercase().as_str() {
-                "now" => jiff::Timestamp::now().in_tz("UTC"),
-                time => Self::parse_datetime(time)?.in_tz("UTC"),
-            }?;
-            let time = DateTime {
-                y: i32::from(time_parsed.year()),
-                m: i32::from(time_parsed.month()),
-                d: i32::from(time_parsed.day()),
-                hh: i32::from(time_parsed.hour()),
-                mm: i32::from(time_parsed.minute()),
-                sec: f64::from(time_parsed.second()), // TODO: add floor?
+            let utc = if time.eq_ignore_ascii_case("now") {
+                UtcDateTime::from_timestamp(&jiff::Timestamp::now())?
+            } else {
+                Self::parse_utc(&time)?
             };
-            self.receiver_gps_time = Some(GpsTime::from(&time));
+            self.receiver_gps_time = Some(GpsTime::from_utc(&utc)?);
         }
         Ok(self)
+    }
+
+    /// Sets the simulation start from a timezone-free GPS calendar label.
+    ///
+    /// This API is intended for GPS-system labels such as RINEX epochs and
+    /// compatibility fixtures. It never applies a GPS-UTC leap offset.
+    pub fn gps_calendar_time(
+        mut self, time: Option<String>,
+    ) -> Result<Self, Error> {
+        if let Some(time) = time {
+            if time.eq_ignore_ascii_case("now") {
+                return Err(Error::InvalidCalendarDate {
+                    scale: "GPS calendar",
+                    reason: "now is available only through utc_time()".into(),
+                });
+            }
+            let civil = Self::parse_gps_calendar(&time)?;
+            let gps_calendar = GpsCalendarDateTime::from_civil(civil);
+            self.receiver_gps_time =
+                Some(GpsTime::from_gps_calendar(&gps_calendar)?);
+        }
+        Ok(self)
+    }
+
+    /// Sets the simulation start using UTC semantics.
+    #[deprecated(note = "use utc_time() or gps_calendar_time() explicitly")]
+    pub fn time(self, time: Option<String>) -> Result<Self, Error> {
+        self.utc_time(time)
     }
 
     /// Sets the simulation duration in seconds.

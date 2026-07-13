@@ -4,7 +4,7 @@ use constants::{
     GM_EARTH, OMEGA_EARTH, PI, POW2_M5, POW2_M19, POW2_M29, POW2_M31, POW2_M33,
     POW2_M43, POW2_M55,
 };
-use gps::{BroadcastEphemeris, DateTime, Error, GpsTime};
+use gps::{BroadcastEphemeris, Error, GpsCalendarDateTime, GpsTime};
 
 use super::{EphemerisDiagnostics, RecoveredSubframe};
 
@@ -71,8 +71,7 @@ pub fn select_rinex_record(
 pub fn quantize_rinex_record(
     record: &rinex::ephemeris::Ephemeris, reference_week: i32,
 ) -> Result<QuantizedEphemeris, Error> {
-    let toc_time =
-        GpsTime::from(&DateTime::from(record.time_of_clock.in_tz("UTC")?));
+    let toc_time = record_time_of_clock(record)?;
     let sv_health = normalize_sv_health(record.orbit6.sv_health as i32);
     Ok(QuantizedEphemeris {
         prn: record.prn,
@@ -213,9 +212,8 @@ pub fn compare_ephemeris(
 fn record_time_of_clock(
     record: &rinex::ephemeris::Ephemeris,
 ) -> Result<GpsTime, Error> {
-    Ok(GpsTime::from(&DateTime::from(
-        record.time_of_clock.in_tz("UTC")?,
-    )))
+    let gps_calendar = GpsCalendarDateTime::try_from(&record.time_of_clock)?;
+    GpsTime::from_gps_calendar(&gps_calendar)
 }
 
 #[allow(non_snake_case)]
@@ -237,10 +235,20 @@ pub fn build_ephemeris_from_decoded(
     let ecc = f64::from(decoded.ecc) * POW2_M33;
     let deltan = f64::from(decoded.deltan) * POW2_M43 * PI;
     let omgdot = f64::from(decoded.omgdot) * POW2_M43 * PI;
+    let time_of_clock = match toc.to_gps_calendar() {
+        Ok(time_of_clock) => time_of_clock,
+        Err(error) => {
+            tracing::error!(
+                %error,
+                "decoded ephemeris contains an invalid GPS clock epoch"
+            );
+            return BroadcastEphemeris::default();
+        }
+    };
 
     BroadcastEphemeris {
         vflg: true,
-        t: DateTime::from(&toc),
+        time_of_clock,
         toc: toc.clone(),
         toe,
         iodc: i32::from(decoded.iodc),

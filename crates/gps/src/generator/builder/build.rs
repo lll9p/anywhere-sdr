@@ -4,7 +4,7 @@ use geometry::{Ecef, Location};
 use super::SignalGeneratorBuilder;
 use crate::{
     Error,
-    datetime::{DateTime, GpsTime},
+    datetime::GpsTime,
     generator::{
         MotionMode, signal_generator::SignalGenerator,
         timeline::planned_interval_count,
@@ -175,9 +175,9 @@ impl SignalGeneratorBuilder {
                     for i_eph in ephemerides.iter_mut().take(count) {
                         if i_eph[sv].vflg {
                             gtmp = i_eph[sv].toc.add_secs(dsec);
-                            let ttmp = DateTime::from(&gtmp);
+                            let time_of_clock = gtmp.to_gps_calendar()?;
                             i_eph[sv].toc = gtmp;
-                            i_eph[sv].t = ttmp;
+                            i_eph[sv].time_of_clock = time_of_clock;
                             gtmp = i_eph[sv].toe.add_secs(dsec);
                             i_eph[sv].toe = gtmp;
                         }

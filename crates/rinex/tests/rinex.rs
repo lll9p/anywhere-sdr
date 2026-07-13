@@ -7,8 +7,23 @@ fn rinex_parser() -> Result<(), Error> {
 }
 #[test]
 fn rinex_read() -> Result<(), Error> {
-    let _ = Rinex::read_string(RINEX_DATA)?;
+    let rinex = Rinex::read_string(RINEX_DATA)?;
+    let first = rinex
+        .ephemerides
+        .first()
+        .ok_or_else(|| Error::rule("missing test ephemeris"))?;
+    assert_eq!(first.time_of_clock.year, 2024);
+    assert_eq!(first.time_of_clock.month, 6);
+    assert_eq!(first.time_of_clock.day, 1);
+    assert_eq!(first.time_of_clock.hour, 0);
+    assert_eq!(first.time_of_clock.minute, 0);
+    assert!(first.time_of_clock.second.abs() < f64::EPSILON);
     Ok(())
+}
+#[test]
+fn rinex_epoch_year_overflow_is_error() {
+    let invalid = RINEX_DATA.replacen(" 1 24  6  1", " 1 2147483647  6  1", 1);
+    assert!(Rinex::read_string(&invalid).is_err());
 }
 const RINEX_DATA: &str = r"     2              NAVIGATION DATA                         RINEX VERSION / TYPE
 CCRINEXN V1.6.0 UX  CDDIS               02-JUN-24 23:31     PGM / RUN BY / DATE

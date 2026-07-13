@@ -31,7 +31,10 @@ mod propagation;
 /// Lookup tables for signal generation
 mod table;
 
-pub use datetime::{DateTime, GpsTime, TimeRange};
+pub use datetime::{
+    GPS_UTC_LEAP_SECONDS, GpsCalendarDateTime, GpsTime, LeapSecond, TimeRange,
+    UtcDateTime,
+};
 pub use ephemeris::Ephemeris as BroadcastEphemeris;
 pub use error::Error;
 pub use generator::{
