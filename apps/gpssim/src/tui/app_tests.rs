@@ -93,13 +93,33 @@ fn manual_mode_rejects_motion_file_conflicts_before_start() {
 }
 
 #[test]
+fn manual_mode_preserves_geometry_error_for_invalid_initial_llh() {
+    let mut config = manual_config();
+    config.manual_motion.initial_llh = Some([91.0, 0.0, 0.0]);
+    assert!(matches!(
+        ManualControlSession::from_config(&config.manual_motion),
+        Err(crate::Error::Geometry(
+            geometry::Error::InvalidCoordinates { .. }
+        ))
+    ));
+
+    let mut app = new_app(config);
+    start_run(&mut app);
+    assert!(app.message.as_deref().is_some_and(|message| {
+        message.contains("Invalid geodetic coordinates")
+    }));
+    assert!(app.worker.is_none());
+}
+
+#[test]
 fn manual_mode_hotkeys_update_targets() -> Result<(), String> {
     let mut app = new_app(manual_config());
     app.tab = ActiveTab::Run;
     app.run_state = RunState::Running;
-    app.manual_session = Some(ManualControlSession::from_config(
-        &app.config.manual_motion,
-    )?);
+    app.manual_session = Some(
+        ManualControlSession::from_config(&app.config.manual_motion)
+            .map_err(|error| error.to_string())?,
+    );
 
     handle_key_event(&mut app, key(KeyCode::Right));
     handle_key_event(&mut app, key(KeyCode::Up));

@@ -2,6 +2,7 @@ use constants::{OMEGA_EARTH, SPEED_OF_LIGHT};
 use geometry::{Azel, Ecef, Location, LocationMath, Neu};
 
 use crate::{
+    Error,
     datetime::{GpsTime, TimeRange},
     delay::ionospheric_delay,
     ephemeris::Ephemeris,
@@ -37,10 +38,14 @@ use crate::{
 /// * `xyz` - Position of the receiver in ECEF coordinates
 ///
 /// # Returns
-/// A `TimeRange` structure containing the computed range information
+/// A `TimeRange` structure containing the computed range information.
+///
+/// # Errors
+/// Returns a geometry error if the receiver ECEF position or resulting local
+/// direction is not finite or does not define geodetic/azimuth coordinates.
 pub fn compute_range(
     eph: &Ephemeris, ionoutc: &IonoUtc, time: &GpsTime, xyz: &Ecef,
-) -> TimeRange {
+) -> Result<TimeRange, Error> {
     let mut rho = TimeRange::default();
     // SV position at time of the pseudorange observation.
     let (mut pos, vel, clk) = eph.compute_satellite_state(time);
@@ -72,11 +77,11 @@ pub fn compute_range(
     rho.time = time.clone();
 
     // Azimuth and elevation angles.
-    let llh = Location::from(xyz);
+    let llh = Location::try_from(xyz)?;
     let neu = Neu::from_ecef(&los, llh.ltcmat());
-    rho.azel = Azel::from(&neu);
+    rho.azel = Azel::try_from(&neu)?;
     // Add ionospheric delay
     rho.iono_delay = ionospheric_delay(ionoutc, time, &llh, &rho.azel);
     rho.range += rho.iono_delay;
-    rho
+    Ok(rho)
 }

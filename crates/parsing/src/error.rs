@@ -20,6 +20,10 @@ pub enum Error {
     #[error("Integer parsing error: {0}")]
     ParseIntError(#[from] std::num::ParseIntError),
 
+    /// Error from geodetic coordinate validation or conversion
+    #[error("Geometry error: {0}")]
+    Geometry(#[from] geometry::Error),
+
     /// Error when parsing NMEA GGA sentences with invalid format
     #[error("Invalid NMEA GGA format: {0}")]
     InvalidNmeaFormat(String),

@@ -26,7 +26,7 @@ pub(crate) fn run(args: &Args, log_buffer: LogBuffer) -> Result<(), Error> {
     }
 
     let mut config = TuiConfig::default();
-    config.apply_overrides_from_args(args);
+    config.apply_overrides_from_args(args)?;
 
     let (worker_events_tx, worker_events_rx) = mpsc::channel();
     let mut app =

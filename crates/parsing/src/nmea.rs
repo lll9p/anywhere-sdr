@@ -1,9 +1,8 @@
 use std::{fs, path::PathBuf};
 
-use constants::R2D;
-use geometry::{Ecef, Location};
+use geometry::Ecef;
 
-use crate::Error;
+use crate::{Error, ecef_from_degrees};
 
 /// Parses a string into a floating-point number.
 ///
@@ -122,8 +121,6 @@ pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
         if lat_dir == "S" {
             llh[0] *= -1.0;
         }
-        llh[0] /= R2D; // Convert to radians
-
         // Parse longitude: format is DDDMM.MMMM (degrees + minutes)
         if lon.len() < 4 {
             return Err(Error::invalid_nmea(format!(
@@ -136,20 +133,10 @@ pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
         if lon_dir == "W" {
             llh[1] *= -1.0;
         }
-        llh[1] /= R2D; // Convert to radians
-
         // Parse altitude and undulation
         llh[2] = parse_f64(alt)? + parse_f64(undulation)?;
 
-        // Validate coordinates
-        if llh[0] < -90.0 || llh[0] > 90.0 || llh[1] < -180.0 || llh[1] > 180.0
-        {
-            return Err(Error::invalid_coordinates(llh[0], llh[1]));
-        }
-
-        // Convert to ECEF
-        let pos = Ecef::from(&Location::from(&llh));
-        xyz.push(pos);
+        xyz.push(ecef_from_degrees(llh[0], llh[1], llh[2])?);
     }
 
     if xyz.is_empty() {

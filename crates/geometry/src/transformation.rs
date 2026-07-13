@@ -1,6 +1,8 @@
-use constants::*;
+use std::f64::consts::PI;
 
-use crate::{coordinates::*, traits::LocationMath};
+use constants::{PI as LEGACY_PI, WGS84_ECCENTRICITY, WGS84_RADIUS};
+
+use crate::{Error, coordinates::*};
 /// Converts Earth-Centered, Earth-Fixed (ECEF) coordinates to geodetic
 /// coordinates.
 ///
@@ -15,72 +17,91 @@ use crate::{coordinates::*, traits::LocationMath};
 /// 3. Iteratively refine the latitude and height until convergence
 /// 4. Calculate final latitude, longitude, and height
 ///
-/// # Special Cases
-/// - If the ECEF vector is near zero (invalid), returns (0°, 0°, -a) where a is
-///   Earth's radius
-impl From<&Ecef> for Location {
-    fn from(ecef: &Ecef) -> Self {
+/// # Errors
+/// Returns an error for non-finite components, the Earth-center origin, numeric
+/// overflow, or failure to converge within the fixed iteration budget.
+impl TryFrom<&Ecef> for Location {
+    type Error = Error;
+
+    fn try_from(ecef: &Ecef) -> Result<Self, Self::Error> {
         let a: f64 = WGS84_RADIUS;
-        let eps: f64 = 1.0e-3;
+        let convergence_meters: f64 = 1.0e-3;
+        const MAX_ITERATIONS: usize = 16;
         let e: f64 = WGS84_ECCENTRICITY;
         let e2: f64 = e.powi(2);
 
-        let mut dz: f64;
-        let mut zdz: f64;
-        let mut nh: f64;
-        let mut slat: f64;
-        let mut n: f64;
-        let mut dz_new: f64;
-        if ecef.norm() < eps {
-            // Invalid ECEF vector
-            return Self {
-                latitude: 0.,
-                longitude: 0.,
-                height: -a,
-            };
+        if !ecef.x.is_finite() || !ecef.y.is_finite() || !ecef.z.is_finite() {
+            return Err(Error::invalid_ecef(ecef.x, ecef.y, ecef.z));
         }
         let x = ecef.x;
         let y = ecef.y;
         let z = ecef.z;
-        let rho2: f64 = x * x + y * y;
-        dz = e2 * z;
-        loop {
-            zdz = z + dz;
-            nh = (rho2 + zdz * zdz).sqrt();
-            slat = zdz / nh;
-            n = a / (1.0 - e2 * slat * slat).sqrt();
-            dz_new = n * e2 * slat;
-            if (dz - dz_new).abs() < eps {
-                break;
+        if x == 0.0 && y == 0.0 && z == 0.0 {
+            return Err(Error::EcefOrigin);
+        }
+
+        let horizontal_squared = x * x + y * y;
+        let horizontal = if horizontal_squared.is_finite()
+            && (horizontal_squared != 0.0 || (x == 0.0 && y == 0.0))
+        {
+            horizontal_squared.sqrt()
+        } else {
+            x.hypot(y)
+        };
+
+        let geocentric_radius = horizontal.hypot(z);
+        if !geocentric_radius.is_finite() {
+            return Err(Error::invalid_ecef(x, y, z));
+        }
+        if geocentric_radius < convergence_meters {
+            return Err(Error::EcefOrigin);
+        }
+        if horizontal == 0.0 {
+            let semi_minor_axis = a * (1.0 - e2).sqrt();
+            return Self::try_from_radians(
+                if z.is_sign_positive() {
+                    PI / 2.0
+                } else {
+                    -PI / 2.0
+                },
+                0.0,
+                z.abs() - semi_minor_axis,
+            );
+        }
+
+        let mut correction = e2 * z;
+        for _ in 0..MAX_ITERATIONS {
+            let corrected_z = z + correction;
+            if !corrected_z.is_finite() {
+                return Err(Error::invalid_ecef(x, y, z));
             }
+            let ellipsoid_radius_squared =
+                horizontal_squared + corrected_z * corrected_z;
+            let ellipsoid_radius = if ellipsoid_radius_squared.is_finite() {
+                ellipsoid_radius_squared.sqrt()
+            } else {
+                horizontal.hypot(corrected_z)
+            };
+            let sin_latitude = corrected_z / ellipsoid_radius;
+            let prime_vertical_radius =
+                a / (1.0 - e2 * sin_latitude * sin_latitude).sqrt();
+            let next_correction = prime_vertical_radius * e2 * sin_latitude;
+            if (correction - next_correction).abs() <= convergence_meters {
+                return Self::try_from_radians(
+                    corrected_z.atan2(horizontal),
+                    y.atan2(x),
+                    ellipsoid_radius - prime_vertical_radius,
+                );
+            }
+            correction = next_correction;
+        }
 
-            dz = dz_new;
-        }
-        let llh0 = zdz.atan2(rho2.sqrt());
-        let llh1 = y.atan2(x);
-        let llh2 = nh - n;
-
-        Self {
-            latitude: llh0,
-            longitude: llh1,
-            height: llh2,
-        }
-    }
-}
-/// Creates a Location from a 3-element array of [latitude, longitude, height].
-///
-/// This is a convenience method for creating a Location from an array,
-/// which is useful when working with data from external sources.
-///
-/// # Arguments
-/// * `value` - Array containing [latitude, longitude, height] values
-impl From<&[f64; 3]> for Location {
-    fn from(value: &[f64; 3]) -> Self {
-        Self {
-            latitude: value[0],
-            longitude: value[1],
-            height: value[2],
-        }
+        Err(Error::ecef_conversion_did_not_converge(
+            x,
+            y,
+            z,
+            MAX_ITERATIONS,
+        ))
     }
 }
 /// Converts geodetic coordinates to Earth-Centered, Earth-Fixed (ECEF)
@@ -108,19 +129,19 @@ impl From<&Location> for Ecef {
         let e: f64 = WGS84_ECCENTRICITY;
         let e2: f64 = e * e;
 
-        let clat: f64 = loc.latitude.cos();
-        let slat: f64 = loc.latitude.sin();
-        let clon: f64 = loc.longitude.cos();
-        let slon: f64 = loc.longitude.sin();
+        let clat: f64 = loc.latitude_radians().cos();
+        let slat: f64 = loc.latitude_radians().sin();
+        let clon: f64 = loc.longitude_radians().cos();
+        let slon: f64 = loc.longitude_radians().sin();
         let d: f64 = e * slat;
 
         let n: f64 = a / (1. - d.powi(2)).sqrt();
-        let nph: f64 = n + loc.height;
+        let nph: f64 = n + loc.height_meters();
 
         let tmp: f64 = nph * clat;
         let x = tmp * clon;
         let y = tmp * slon;
-        let z = ((1. - e2) * n + loc.height) * slat;
+        let z = ((1. - e2) * n + loc.height_meters()) * slat;
         Self { x, y, z }
     }
 }
@@ -155,10 +176,12 @@ impl From<&[f64; 3]> for Ecef {
 /// 1. Convert the ECEF point to geodetic coordinates
 /// 2. Compute the local tangent plane rotation matrix at that point
 /// 3. Apply the rotation matrix to transform to NEU coordinates
-impl From<&Ecef> for Neu {
-    fn from(value: &Ecef) -> Self {
-        let ltcmat = Location::from(value).ltcmat();
-        Self::from_ecef(value, ltcmat)
+impl TryFrom<&Ecef> for Neu {
+    type Error = Error;
+
+    fn try_from(value: &Ecef) -> Result<Self, Self::Error> {
+        let ltcmat = Location::try_from(value)?.ltcmat();
+        Ok(Self::from_ecef(value, ltcmat))
     }
 }
 /// Creates a NEU coordinate from a 3-element array of [north, east, up].
@@ -177,23 +200,6 @@ impl From<&[f64; 3]> for Neu {
         }
     }
 }
-/// Creates an Azimuth-Elevation coordinate from a 2-element array of [azimuth,
-/// elevation].
-///
-/// This is a convenience method for creating an Azel coordinate from an array,
-/// which is useful when working with data from external sources.
-///
-/// # Arguments
-/// * `value` - Array containing [azimuth, elevation] values in radians
-impl From<&[f64; 2]> for Azel {
-    fn from(value: &[f64; 2]) -> Self {
-        Self {
-            az: value[0],
-            el: value[1],
-        }
-    }
-}
-
 /// Converts North-East-Up (NEU) coordinates to Azimuth-Elevation angles.
 ///
 /// This implementation transforms NEU coordinates to azimuth and elevation
@@ -209,15 +215,38 @@ impl From<&[f64; 2]> for Azel {
 /// # Notes
 /// - Azimuth is adjusted to be in the range [0, 2π]
 /// - Elevation is in the range [-π/2, π/2]
-impl From<&Neu> for Azel {
-    fn from(neu: &Neu) -> Self {
-        let mut az = neu.east.atan2(neu.north);
-        if az < 0.0 {
-            az += 2.0 * PI;
+impl TryFrom<&Neu> for Azel {
+    type Error = Error;
+
+    fn try_from(neu: &Neu) -> Result<Self, Self::Error> {
+        if !neu.north.is_finite()
+            || !neu.east.is_finite()
+            || !neu.up.is_finite()
+        {
+            return Err(Error::invalid_neu(neu.north, neu.east, neu.up));
+        }
+        let horizontal_squared = neu.north * neu.north + neu.east * neu.east;
+        let horizontal = if horizontal_squared.is_finite()
+            && (horizontal_squared != 0.0
+                || (neu.north == 0.0 && neu.east == 0.0))
+        {
+            horizontal_squared.sqrt()
+        } else {
+            neu.north.hypot(neu.east)
+        };
+        if horizontal == 0.0 {
+            return Err(Error::undefined_neu_direction(
+                neu.north, neu.east, neu.up,
+            ));
         }
 
-        let ne = (neu.north * neu.north + neu.east * neu.east).sqrt();
-        let el = neu.up.atan2(ne);
-        Self { az, el }
+        let mut azimuth = neu.east.atan2(neu.north);
+        if azimuth < 0.0 {
+            azimuth += 2.0 * LEGACY_PI;
+        }
+        if azimuth >= 2.0 * PI {
+            azimuth -= 2.0 * PI;
+        }
+        Self::try_from_radians(azimuth, neu.up.atan2(horizontal))
     }
 }

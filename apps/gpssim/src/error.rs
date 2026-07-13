@@ -8,6 +8,10 @@ pub enum Error {
     #[error("GPS error: {0}")]
     Gps(#[from] gps::Error),
 
+    /// Error from geodetic coordinate validation or conversion
+    #[error("Geometry error: {0}")]
+    Geometry(#[from] geometry::Error),
+
     /// Error when performing I/O operations
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

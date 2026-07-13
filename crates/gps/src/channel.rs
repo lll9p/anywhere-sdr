@@ -5,6 +5,7 @@ use constants::{
 use geometry::{Azel, Ecef};
 
 use crate::{
+    Error,
     datetime::{GpsTime, TimeRange},
     ephemeris::Ephemeris,
     ionoutc::IonoUtc,
@@ -133,7 +134,7 @@ impl Channel {
     pub fn update_for_satellite(
         &mut self, prn: usize, eph: &Ephemeris, ionoutc: &IonoUtc,
         receiver_gps_time: &GpsTime, xyz: &Ecef, azel: Azel,
-    ) {
+    ) -> Result<(), Error> {
         // Initialize channel
         self.prn = prn;
         self.azel = azel;
@@ -146,7 +147,7 @@ impl Channel {
         // subframes)
         self.generate_nav_msg(receiver_gps_time, true);
         // Initialize pseudorange
-        let rho = compute_range(eph, ionoutc, receiver_gps_time, xyz);
+        let rho = compute_range(eph, ionoutc, receiver_gps_time, xyz)?;
         self.rho0 = rho;
         // Initialize carrier phase
         // r_xyz = rho.range;
@@ -166,6 +167,7 @@ impl Channel {
         // #else
         phase_ini -= phase_ini.floor();
         self.carrier_phase = (512.0 * 65536.0 * phase_ini) as u32;
+        Ok(())
     }
 
     /// Updates the channel's state based on new pseudorange information and

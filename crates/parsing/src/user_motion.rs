@@ -1,9 +1,8 @@
 use std::{fs, path::PathBuf};
 
-use constants::R2D;
-use geometry::{Ecef, Location};
+use geometry::Ecef;
 
-use crate::Error;
+use crate::{Error, ecef_from_degrees, validate_ecef};
 
 /// Reads user motion data from a CSV file in ECEF coordinate format.
 ///
@@ -72,7 +71,7 @@ pub fn read_user_motion(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
             .trim()
             .parse()?;
 
-        xyz.push(Ecef::from(&[x, y, z]));
+        xyz.push(validate_ecef(Ecef::from(&[x, y, z]))?);
     }
 
     if xyz.is_empty() {
@@ -159,26 +158,7 @@ pub fn read_user_motion_llh(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
             .trim()
             .parse()?;
 
-        let mut llh = Location::from(&[lat, lon, height]);
-
-        // Validate coordinates
-        if llh.latitude > 90.0
-            || llh.latitude < -90.0
-            || llh.longitude > 180.0
-            || llh.longitude < -180.0
-        {
-            return Err(Error::invalid_coordinates(
-                llh.latitude,
-                llh.longitude,
-            ));
-        }
-
-        // Convert to radians
-        llh.latitude /= R2D;
-        llh.longitude /= R2D;
-
-        // Convert to ECEF
-        xyz.push(Ecef::from(&llh));
+        xyz.push(ecef_from_degrees(lat, lon, height)?);
     }
 
     if xyz.is_empty() {

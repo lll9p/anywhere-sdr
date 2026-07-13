@@ -45,7 +45,8 @@ fn progress_uses_actual_emitted_samples_for_fractional_blocks() {
 fn manual_mode_streaming_runs_without_new_input_until_cancelled()
 -> Result<(), String> {
     let config = manual_config();
-    let session = ManualControlSession::from_config(&config.manual_motion)?;
+    let session = ManualControlSession::from_config(&config.manual_motion)
+        .map_err(|error| error.to_string())?;
     let (event_tx, event_rx) = mpsc::channel();
 
     let handle = spawn_worker(config, Some(session.control.clone()), event_tx);

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use geometry::{Azel, Ecef};
 use gps::{
     BroadcastEphemeris, Error, GpsTime, IonoUtc, SignalGenerator,
-    SignalGeneratorBuilder, compute_range,
+    SignalGeneratorBuilder,
 };
 
 #[derive(Clone, Debug)]
@@ -16,6 +16,7 @@ pub struct FixedScenario {
     generator: SignalGenerator,
     navigation_path: PathBuf,
     start_time: GpsTime,
+    visible_satellites: Vec<VisibleSatellite>,
 }
 
 impl FixedScenario {
@@ -49,11 +50,14 @@ impl FixedScenario {
         let mut generator = builder.build()?;
         generator.initialize()?;
         let start_time = generator.receiver_gps_time.clone();
+        let visible_satellites =
+            collect_visible_satellites(&generator, &start_time)?;
 
         Ok(Self {
             generator,
             navigation_path,
             start_time,
+            visible_satellites,
         })
     }
 
@@ -89,45 +93,7 @@ impl FixedScenario {
     }
 
     pub fn visible_satellites(&self) -> Vec<VisibleSatellite> {
-        let receiver_position = self.receiver_position();
-        let mut satellites = Vec::new();
-
-        for (sv_index, ephemeris) in self.generator.ephemerides
-            [self.generator.valid_ephemerides_index]
-            .iter()
-            .enumerate()
-        {
-            let Some((azel, visible)) = ephemeris.check_visibility(
-                &self.start_time,
-                &receiver_position,
-                self.generator.elevation_mask,
-            ) else {
-                continue;
-            };
-            if !visible {
-                continue;
-            }
-
-            let _range = compute_range(
-                ephemeris,
-                &self.generator.ionoutc,
-                &self.start_time,
-                &receiver_position,
-            );
-            satellites.push(VisibleSatellite {
-                prn: sv_index + 1,
-                azel,
-            });
-        }
-
-        satellites.sort_by(|left, right| {
-            right
-                .azel
-                .el
-                .total_cmp(&left.azel.el)
-                .then_with(|| left.prn.cmp(&right.prn))
-        });
-        satellites
+        self.visible_satellites.clone()
     }
 
     pub fn run_streaming<F, E>(&mut self, mut on_block: F) -> Result<(), E>
@@ -149,4 +115,43 @@ impl FixedScenario {
             Ok(())
         })
     }
+}
+
+fn collect_visible_satellites(
+    generator: &SignalGenerator, start_time: &GpsTime,
+) -> Result<Vec<VisibleSatellite>, Error> {
+    let receiver_position = generator
+        .positions
+        .first()
+        .copied()
+        .ok_or_else(Error::wrong_positions)?;
+    let mut satellites = Vec::new();
+    for (sv_index, ephemeris) in generator.ephemerides
+        [generator.valid_ephemerides_index]
+        .iter()
+        .enumerate()
+    {
+        let Some((azel, visible)) = ephemeris.check_visibility(
+            start_time,
+            &receiver_position,
+            generator.elevation_mask_degrees,
+        )?
+        else {
+            continue;
+        };
+        if visible {
+            satellites.push(VisibleSatellite {
+                prn: sv_index + 1,
+                azel,
+            });
+        }
+    }
+    satellites.sort_by(|left, right| {
+        right
+            .azel
+            .elevation_radians()
+            .total_cmp(&left.azel.elevation_radians())
+            .then_with(|| left.prn.cmp(&right.prn))
+    });
+    Ok(satellites)
 }

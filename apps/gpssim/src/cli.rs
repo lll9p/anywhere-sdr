@@ -28,10 +28,10 @@ pub(crate) enum TxBackend {
 Options:
   -e <gps_nav>     RINEX navigation file for GPS ephemerides (required)
   -u <user_motion> User motion file in ECEF x, y, z format (dynamic mode)
-  -x <user_motion> User motion file in lat, lon, height format (dynamic mode)
+  -x <user_motion> User motion file in latitude/longitude degrees and height meters (dynamic mode)
   -g <nmea_gga>    NMEA GGA stream (dynamic mode)
   -c <location>    ECEF X,Y,Z in meters (static mode) e.g. 3967283.154,1022538.181,4872414.484
-  -l <location>    Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
+  -l <location>    Latitude/longitude degrees and height meters (static mode) e.g. 35.681298,139.766247,10.0
   -L <wnslf,dn,dtslf> User leap future event in GPS week number, day number, next leap second e.g. 2347,3,19
   -t <timestamp>   Scenario RFC 3339 UTC time with an explicit offset, or "now"
   -T               Overwrite TOC and TOE to scenario start time
@@ -70,7 +70,8 @@ pub struct Args {
     #[arg(short = 'u', long, value_hint = clap::ValueHint::FilePath)]
     pub(crate) user_motion_ecef: Option<PathBuf>,
 
-    /// User motion file in lat, lon, height format (dynamic mode)
+    /// User motion file in latitude/longitude degrees and height meters
+    /// (dynamic mode)
     #[arg(short = 'x', long, value_hint = clap::ValueHint::FilePath)]
     pub(crate) user_motion_llh: Option<PathBuf>,
 
@@ -83,7 +84,8 @@ pub struct Args {
     #[arg(short = 'c', long, value_parser, value_delimiter = ',')]
     pub(crate) location_ecef: Option<Vec<f64>>,
 
-    /// Lat, lon, height (static mode) e.g. 35.681298,139.766247,10.0
+    /// Latitude/longitude degrees and height meters (static mode), e.g.
+    /// 35.681298,139.766247,10.0
     #[arg(short = 'l', long, value_parser, value_delimiter = ',')]
     pub(crate) location: Option<Vec<f64>>,
 
@@ -394,17 +396,35 @@ mod tests {
     }
 
     #[test]
-    fn applies_cli_overrides_to_tui_config() -> Result<(), clap::Error> {
+    fn applies_cli_overrides_to_tui_config()
+    -> Result<(), Box<dyn std::error::Error>> {
         let args = Args::try_parse_from([
             "gpssim", "--tui", "--tx", "null", "-s", "123", "-b", "8",
         ])?;
 
         let mut config = TuiConfig::default();
-        config.apply_overrides_from_args(&args);
+        config.apply_overrides_from_args(&args)?;
 
         assert_eq!(config.tx, vec![TxBackend::Null]);
         assert_eq!(config.frequency, 123);
         assert_eq!(config.bits, 8);
+        Ok(())
+    }
+
+    #[test]
+    fn tui_ecef_override_propagates_geometry_errors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let args = Args::try_parse_from([
+            "gpssim",
+            "--tui",
+            "--location-ecef",
+            "NaN,0,0",
+        ])?;
+        let mut config = TuiConfig::default();
+        assert!(matches!(
+            config.apply_overrides_from_args(&args),
+            Err(crate::Error::Geometry(geometry::Error::InvalidEcef { .. }))
+        ));
         Ok(())
     }
 }

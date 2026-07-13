@@ -370,8 +370,8 @@ fn start_run(app: &mut App) {
     let manual_session = if app.config.uses_manual_motion() {
         match ManualControlSession::from_config(&app.config.manual_motion) {
             Ok(session) => Some(session),
-            Err(message) => {
-                app.message = Some(message);
+            Err(error) => {
+                app.message = Some(error.to_string());
                 return;
             }
         }

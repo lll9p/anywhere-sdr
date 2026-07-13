@@ -8,6 +8,8 @@
 mod builder;
 /// Runtime motion control (commands + snapshot)
 mod motion_control;
+/// Numeric helpers for runtime motion integration
+mod motion_math;
 /// Core signal generation implementation
 mod signal_generator;
 /// Authoritative emitted-sample timeline

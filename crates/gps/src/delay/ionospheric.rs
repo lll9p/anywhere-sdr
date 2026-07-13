@@ -36,9 +36,9 @@ pub fn ionospheric_delay(
         // No ionospheric delay
         return 0.0;
     }
-    let E = azel.el / PI;
-    let phi_u = llh.latitude / PI;
-    let lam_u = llh.longitude / PI;
+    let E = azel.elevation_radians() / PI;
+    let phi_u = llh.latitude_radians() / PI;
+    let lam_u = llh.longitude_radians() / PI;
     let F = 1.0 + 16.0 * (0.53 - E).powf(3.0);
     if ionoutc.vflg {
         let mut PER: f64;
@@ -49,12 +49,13 @@ pub fn ionospheric_delay(
 
         // Geodetic latitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let phi_i = phi_u + psi * azel.az.cos();
+        let phi_i = phi_u + psi * azel.azimuth_radians().cos();
         let phi_i = phi_i.clamp(-0.416, 0.416);
 
         // Geodetic longitude of the earth projection of the ionospheric
         // intersection point (semi-circles)
-        let lam_i = lam_u + psi * azel.az.sin() / (phi_i * PI).cos();
+        let lam_i =
+            lam_u + psi * azel.azimuth_radians().sin() / (phi_i * PI).cos();
         // Geomagnetic latitude of the earth projection of the ionospheric
         // intersection point (mean ionospheric height assumed 350 km)
         // (semi-circles)

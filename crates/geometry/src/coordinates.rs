@@ -1,37 +1,111 @@
-use constants::*;
+use std::f64::consts::PI;
 
-use crate::traits::LocationMath;
+use constants::R2D;
 
-/// Geodetic coordinates in Latitude-Longitude-Height (LLH) system
-/// - Latitude: Degrees north/south (-90° to 90°)
-/// - Longitude: Degrees east/west (-180° to 180°)
-/// - Height: Meters above WGS84 ellipsoid
+use crate::{Error, traits::LocationMath};
+
+/// Validated WGS-84 geodetic coordinates with canonical radian angles.
+///
+/// Raw values must enter through [`Location::try_from_degrees`] or
+/// [`Location::try_from_radians`].
+///
+/// ```
+/// use geometry::{Ecef, Location};
+///
+/// # fn main() -> Result<(), geometry::Error> {
+/// let tokyo = Location::try_from_degrees(35.681_298, 139.766_247, 10.0)?;
+/// assert!(
+///     (tokyo.latitude_radians() - 35.681_298_f64.to_radians()).abs() < 1e-12
+/// );
+///
+/// let ecef = Ecef::from(&tokyo);
+/// let round_trip = Location::try_from(&ecef)?;
+/// assert!((round_trip.longitude_degrees() - 139.766_247).abs() < 1e-8);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Location {
-    /// Latitude in degrees (-90° to 90°)
-    pub latitude: f64,
-    /// Longitude in degrees (-180° to 180°)
-    pub longitude: f64,
-    /// Height above WGS84 ellipsoid in meters
-    pub height: f64,
+    /// Geodetic latitude in radians.
+    latitude_radians: f64,
+    /// Geodetic longitude in radians.
+    longitude_radians: f64,
+    /// Height above the WGS-84 ellipsoid in meters.
+    height_meters: f64,
 }
 impl Location {
-    /// Constructs new LLH coordinates with angular degrees
-    pub fn new(latitude: f64, longitude: f64, height: f64) -> Self {
-        Self {
-            latitude,
-            longitude,
-            height,
+    /// Constructs validated geodetic coordinates from radians and meters.
+    pub fn try_from_radians(
+        latitude_radians: f64, longitude_radians: f64, height_meters: f64,
+    ) -> Result<Self, Error> {
+        if !latitude_radians.is_finite()
+            || !longitude_radians.is_finite()
+            || !height_meters.is_finite()
+            || !(-PI / 2.0..=PI / 2.0).contains(&latitude_radians)
+            || !(-PI..=PI).contains(&longitude_radians)
+        {
+            return Err(Error::invalid_coordinates(
+                latitude_radians,
+                longitude_radians,
+                height_meters,
+            ));
         }
+
+        Ok(Self {
+            latitude_radians,
+            longitude_radians,
+            height_meters,
+        })
     }
 
-    /// Converts angular degrees to radians for calculations
-    pub fn to_rad(&self) -> Self {
-        Self {
-            latitude: self.latitude.to_radians(),
-            longitude: self.longitude.to_radians(),
-            height: self.height,
+    /// Constructs validated geodetic coordinates from degrees and meters.
+    pub fn try_from_degrees(
+        latitude_degrees: f64, longitude_degrees: f64, height_meters: f64,
+    ) -> Result<Self, Error> {
+        if !latitude_degrees.is_finite()
+            || !longitude_degrees.is_finite()
+            || !height_meters.is_finite()
+            || !(-90.0..=90.0).contains(&latitude_degrees)
+            || !(-180.0..=180.0).contains(&longitude_degrees)
+        {
+            return Err(Error::invalid_coordinates(
+                latitude_degrees / R2D,
+                longitude_degrees / R2D,
+                height_meters,
+            ));
         }
+        // Preserve the established GPS/C conversion ratio at degree-based
+        // input boundaries while keeping the stored representation explicit.
+        Self::try_from_radians(
+            latitude_degrees / R2D,
+            longitude_degrees / R2D,
+            height_meters,
+        )
+    }
+
+    /// Returns latitude in radians.
+    pub fn latitude_radians(&self) -> f64 {
+        self.latitude_radians
+    }
+
+    /// Returns longitude in radians.
+    pub fn longitude_radians(&self) -> f64 {
+        self.longitude_radians
+    }
+
+    /// Returns latitude in degrees.
+    pub fn latitude_degrees(&self) -> f64 {
+        self.latitude_radians.to_degrees()
+    }
+
+    /// Returns longitude in degrees.
+    pub fn longitude_degrees(&self) -> f64 {
+        self.longitude_radians.to_degrees()
+    }
+
+    /// Returns height above the WGS-84 ellipsoid in meters.
+    pub fn height_meters(&self) -> f64 {
+        self.height_meters
     }
 
     /// Computes Local Tangent Plane (ENU) rotation matrix
@@ -41,8 +115,8 @@ impl Location {
     /// - n: North-axis components
     /// - u: Up-axis components
     pub fn ltcmat(&self) -> [[f64; 3]; 3] {
-        let (slat, clat) = self.latitude.sin_cos();
-        let (slon, clon) = self.longitude.sin_cos();
+        let (slat, clat) = self.latitude_radians.sin_cos();
+        let (slon, clon) = self.longitude_radians.sin_cos();
         [
             [-slat * clon, -slat * slon, clat], // East components
             [-slon, clon, 0.0],                 // North components
@@ -54,10 +128,10 @@ impl Location {
     /// θ = atan2(sinΔλ·cosφ2, cosφ1·sinφ2 − sinφ1·cosφ2·cosΔλ)
     /// Returns bearing in degrees (0°-360°)
     pub fn bearing(&self, other: &Self) -> f64 {
-        let lat1 = self.latitude.to_radians();
-        let lon1 = self.longitude.to_radians();
-        let lat2 = other.latitude.to_radians();
-        let lon2 = other.longitude.to_radians();
+        let lat1 = self.latitude_radians;
+        let lon1 = self.longitude_radians;
+        let lat2 = other.latitude_radians;
+        let lon2 = other.longitude_radians;
         let y = (lon2 - lon1).sin() * lat2.cos();
         let x = (lat1.cos()) * (lat2.sin())
             - (lat1.sin()) * (lat2.cos()) * (lon2 - lon1).cos();
@@ -72,12 +146,12 @@ impl Location {
     /// Returns distance in meters
     pub fn measure(&self, other: &Self) -> f64 {
         const R: f64 = 6378.137; // Earth radius in kilometers
-        let d_lat = (other.latitude - self.latitude).to_radians();
-        let d_lon = (other.longitude - self.longitude).to_radians();
+        let d_lat = other.latitude_radians - self.latitude_radians;
+        let d_lon = other.longitude_radians - self.longitude_radians;
 
         let a = (d_lat / 2.0).sin().powi(2)
-            + self.latitude.to_radians().cos()
-                * other.latitude.to_radians().cos()
+            + self.latitude_radians.cos()
+                * other.latitude_radians.cos()
                 * (d_lon / 2.0).sin().powi(2);
 
         let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
@@ -88,40 +162,31 @@ impl Location {
 }
 impl LocationMath for Location {
     fn norm(&self) -> f64 {
-        (self.latitude.powi(2) + self.longitude.powi(2) + self.height.powi(2))
-            .sqrt()
+        (self.latitude_radians.powi(2)
+            + self.longitude_radians.powi(2)
+            + self.height_meters.powi(2))
+        .sqrt()
     }
 
     fn dot_prod(&self, rhs: &Self) -> f64 {
-        self.latitude * rhs.latitude
-            + self.longitude * rhs.longitude
-            + self.height * rhs.height
+        self.latitude_radians * rhs.latitude_radians
+            + self.longitude_radians * rhs.longitude_radians
+            + self.height_meters * rhs.height_meters
     }
 
     #[cfg(test)]
     fn precise(&self, rhs: &Self, eps: f64) -> bool {
-        (self.latitude - rhs.latitude).abs() <= eps
-            && (self.longitude - rhs.longitude).abs() <= eps
-            && (self.height - rhs.height).abs() <= eps
-    }
-}
-impl std::ops::Sub for Location {
-    type Output = Self;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            latitude: self.latitude - rhs.latitude,
-            longitude: self.longitude - rhs.longitude,
-            height: self.height - rhs.height,
-        }
+        (self.latitude_radians - rhs.latitude_radians).abs() <= eps
+            && (self.longitude_radians - rhs.longitude_radians).abs() <= eps
+            && (self.height_meters - rhs.height_meters).abs() <= eps
     }
 }
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[{:.6}, {:.6}, {:.6}]",
-            self.latitude, self.longitude, self.height
+            "[{:.6} rad, {:.6} rad, {:.3} m]",
+            self.latitude_radians, self.longitude_radians, self.height_meters
         )
     }
 }
@@ -252,133 +317,86 @@ impl LocationMath for Neu {
     }
 }
 
-/// Azimuth-Elevation pair for directional calculations
-/// - Azimuth: Clockwise angle from north (0°-360°)
-/// - Elevation: Angle above horizon (0°-90°)
+/// Validated azimuth/elevation angles with canonical radian storage.
+///
+/// ```
+/// use geometry::Azel;
+///
+/// # fn main() -> Result<(), geometry::Error> {
+/// let direction = Azel::try_from_degrees(90.0, 30.0)?;
+/// assert!(
+///     (direction.azimuth_radians() - std::f64::consts::FRAC_PI_2).abs()
+///         < 1e-12
+/// );
+/// assert!((direction.elevation_degrees() - 30.0).abs() < 1e-12);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Azel {
-    /// Azimuth angle in degrees (0-360°, clockwise from north)
-    pub az: f64,
-    /// Elevation angle in degrees (0-90°, above horizon)
-    pub el: f64,
+    /// Clockwise azimuth from north in radians.
+    azimuth_radians: f64,
+    /// Elevation above the local horizon in radians.
+    elevation_radians: f64,
 }
 
-/// Represents a navigation target with bearing and location information.
-///
-/// This structure is used for navigation calculations, allowing for
-/// incremental movement along a bearing from a starting location.
-#[derive(Debug)]
-pub struct NavigationTarget {
-    /// Step size in degrees for bearing adjustments
-    bearing_step: f64,
-    /// Current bearing in degrees (0-360°)
-    bearing: f64,
-    /// Current location
-    location: Location,
-}
-impl Default for NavigationTarget {
-    fn default() -> Self {
-        Self {
-            bearing_step: 1.0,
-            bearing: 0.0,
-            location: Location::default(),
+impl Azel {
+    /// Constructs validated azimuth/elevation angles from radians.
+    pub fn try_from_radians(
+        azimuth_radians: f64, elevation_radians: f64,
+    ) -> Result<Self, Error> {
+        if !azimuth_radians.is_finite()
+            || !elevation_radians.is_finite()
+            || !(0.0..2.0 * PI).contains(&azimuth_radians)
+            || !(-PI / 2.0..=PI / 2.0).contains(&elevation_radians)
+        {
+            return Err(Error::invalid_azel(
+                azimuth_radians,
+                elevation_radians,
+            ));
         }
-    }
-}
-impl NavigationTarget {
-    /// Creates a new `NavigationTarget` with default values.
-    ///
-    /// # Returns
-    /// A new `NavigationTarget` with bearing step of 1.0 degree, bearing of 0.0
-    /// degrees, and default location.
-    pub fn new() -> Self {
-        Self::default()
+
+        Ok(Self {
+            azimuth_radians,
+            elevation_radians,
+        })
     }
 
-    /// Normalizes a bearing value to the range [0, 360) degrees.
-    ///
-    /// # Arguments
-    /// * `bearing` - The bearing value to normalize
-    ///
-    /// # Returns
-    /// The normalized bearing in the range [0, 360) degrees
-    fn truncate_bearing(bearing: f64) -> f64 {
-        (bearing + 360.0) % 360.0
+    /// Constructs validated azimuth/elevation angles from degrees.
+    pub fn try_from_degrees(
+        azimuth_degrees: f64, elevation_degrees: f64,
+    ) -> Result<Self, Error> {
+        if !azimuth_degrees.is_finite()
+            || !elevation_degrees.is_finite()
+            || !(0.0..360.0).contains(&azimuth_degrees)
+            || !(-90.0..=90.0).contains(&elevation_degrees)
+        {
+            return Err(Error::invalid_azel(
+                azimuth_degrees / R2D,
+                elevation_degrees / R2D,
+            ));
+        }
+        // Keep degree boundaries byte-compatible with existing GPS output.
+        Self::try_from_radians(azimuth_degrees / R2D, elevation_degrees / R2D)
     }
 
-    /// Increments the current bearing by the bearing step.
-    ///
-    /// This method increases the bearing by the bearing step value,
-    /// normalizing the result to the range [0, 360) degrees.
-    pub fn inc_bearing(&mut self) {
-        let bearing = (self.bearing + self.bearing_step) % 360.0;
-        self.bearing = Self::truncate_bearing(bearing);
+    /// Returns azimuth in radians.
+    pub fn azimuth_radians(&self) -> f64 {
+        self.azimuth_radians
     }
 
-    /// Decrements the current bearing by the bearing step.
-    ///
-    /// This method decreases the bearing by the bearing step value,
-    /// normalizing the result to the range [0, 360) degrees.
-    pub fn dec_bearing(&mut self) {
-        let bearing = (self.bearing - self.bearing_step) % 360.0;
-        self.bearing = Self::truncate_bearing(bearing);
+    /// Returns elevation in radians.
+    pub fn elevation_radians(&self) -> f64 {
+        self.elevation_radians
     }
 
-    /// Sets the current location.
-    ///
-    /// # Arguments
-    /// * `location` - The new location
-    ///
-    /// # Returns
-    /// A mutable reference to self for method chaining
-    pub fn set_location(&mut self, location: Location) -> &mut Self {
-        self.location = location;
-        self
+    /// Returns azimuth in degrees.
+    pub fn azimuth_degrees(&self) -> f64 {
+        self.azimuth_radians * R2D
     }
 
-    /// Calculates the bearing from the current location to another location.
-    ///
-    /// # Arguments
-    /// * `location` - The target location
-    ///
-    /// # Returns
-    /// The bearing in degrees from the current location to the target location
-    pub fn bearing(&self, location: &Location) -> f64 {
-        let lat1 = self.location.latitude.to_radians();
-        let lon1 = self.location.longitude.to_radians();
-        let lat2 = location.latitude.to_radians();
-        let lon2 = location.longitude.to_radians();
-        let y = (lat2 - lat1) * (lat2 + lat1).cos();
-        let x = (lon2 - lon1) * (lon2 + lon1).cos();
-        y.atan2(x).to_degrees()
-    }
-
-    /// Moves the current location along the current bearing by the specified
-    /// distance.
-    ///
-    /// # Arguments
-    /// * `distance` - The distance to move in meters
-    ///
-    /// # Returns
-    /// The new location after moving
-    pub fn go(&mut self, distance: f64) -> Location {
-        let location_rad = self.location.to_rad();
-        let lat1 = location_rad.latitude;
-        let lon1 = location_rad.longitude;
-        let bearing = self.bearing.to_radians();
-        let distance = distance / WGS84_RADIUS;
-        let lat2 = (lat1.sin() * distance.cos()
-            + lat1.cos() * distance.sin() * bearing.cos())
-        .asin();
-        let lon2 = lon1
-            + (bearing.sin() * distance.sin() * lat1.cos())
-                .atan2(distance.cos() - lat1.sin() * lat2.sin());
-        let new_location = Location::new(
-            lat2.to_degrees(),
-            lon2.to_degrees(),
-            self.location.height,
-        );
-        self.location = new_location;
-        new_location
+    /// Returns elevation in degrees.
+    pub fn elevation_degrees(&self) -> f64 {
+        self.elevation_radians * R2D
     }
 }

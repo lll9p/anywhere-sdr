@@ -2,6 +2,12 @@ use std::sync::{Arc, Mutex, TryLockError};
 
 use geometry::{Ecef, Location, Neu};
 
+use super::motion_math::{
+    apply_limited_delta, ecef_from_neu, horizontal_speed_mps,
+    normalize_heading_deg, shortest_heading_delta_deg,
+};
+use crate::Error;
+
 /// Runtime motion control commands.
 ///
 /// Commands are applied at the next simulation step boundary.
@@ -294,17 +300,17 @@ impl MotionIntegrator {
     /// position, and publishes a snapshot back to the controller.
     pub(crate) fn step(
         &mut self, dt: f64, control: &RuntimeMotionControl,
-    ) -> Ecef {
+    ) -> Result<Ecef, Error> {
         let pending = control.try_take_pending();
         self.apply_pending(pending);
 
         self.apply_targets(dt);
         self.apply_acceleration(dt);
-        self.integrate_position(dt);
+        self.integrate_position(dt)?;
 
         let snapshot = self.snapshot();
         control.try_publish_snapshot(snapshot);
-        self.position_ecef
+        Ok(self.position_ecef)
     }
 
     /// Apply pending updates collected since the last step.
@@ -374,14 +380,6 @@ impl MotionIntegrator {
     fn apply_targets(&mut self, dt: f64) {
         let horizontal_speed = horizontal_speed_mps(self.velocity_neu);
 
-        let apply_limited_delta = |delta: f64, max_delta: f64| -> f64 {
-            if max_delta == 0.0 {
-                delta
-            } else {
-                delta.clamp(-max_delta, max_delta)
-            }
-        };
-
         if let Some(target_heading) = self.target_heading {
             let current_heading = normalize_heading_deg(self.heading_deg);
             let delta = shortest_heading_delta_deg(
@@ -427,20 +425,21 @@ impl MotionIntegrator {
     }
 
     /// Integrate position using the current velocity.
-    fn integrate_position(&mut self, dt: f64) {
+    fn integrate_position(&mut self, dt: f64) -> Result<(), Error> {
         let displacement_neu = Neu {
             north: self.velocity_neu.north * dt,
             east: self.velocity_neu.east * dt,
             up: self.velocity_neu.up * dt,
         };
 
-        let reference_location = Location::from(&self.position_ecef);
+        let reference_location = Location::try_from(&self.position_ecef)?;
         let ltcmat = reference_location.ltcmat();
         let displacement_ecef = ecef_from_neu(displacement_neu, ltcmat);
 
         self.position_ecef.x += displacement_ecef.x;
         self.position_ecef.y += displacement_ecef.y;
         self.position_ecef.z += displacement_ecef.z;
+        Ok(())
     }
 
     /// Build a snapshot representing the current motion state.
@@ -491,54 +490,6 @@ impl MotionIntegrator {
     fn clear_targets(&mut self) {
         self.target_speed = None;
         self.target_heading = None;
-    }
-}
-
-/// Compute horizontal speed magnitude from a NEU velocity vector.
-fn horizontal_speed_mps(velocity_neu: Neu) -> f64 {
-    (velocity_neu.north * velocity_neu.north
-        + velocity_neu.east * velocity_neu.east)
-        .sqrt()
-}
-
-/// Normalize a heading in degrees into the range `[0, 360)`.
-fn normalize_heading_deg(heading_deg: f64) -> f64 {
-    let deg = heading_deg % 360.0;
-    if deg < 0.0 { deg + 360.0 } else { deg }
-}
-
-/// Compute the signed smallest-angle delta from current to target heading.
-///
-/// The returned value is in degrees and lies in `[-180, 180]`.
-fn shortest_heading_delta_deg(current_deg: f64, target_deg: f64) -> f64 {
-    let current = normalize_heading_deg(current_deg);
-    let target = normalize_heading_deg(target_deg);
-    let mut delta = target - current;
-    if delta > 180.0 {
-        delta -= 360.0;
-    } else if delta < -180.0 {
-        delta += 360.0;
-    }
-    delta
-}
-
-/// Convert a NEU displacement to an ECEF displacement using a local tangent
-/// rotation matrix.
-///
-/// The provided `ltcmat` matrix is used elsewhere as an ECEF->NEU rotation
-/// (rows correspond to North/East/Up). For NEU->ECEF, this applies the
-/// transpose.
-fn ecef_from_neu(neu: Neu, ltcmat: [[f64; 3]; 3]) -> Ecef {
-    Ecef {
-        x: ltcmat[0][0] * neu.north
-            + ltcmat[1][0] * neu.east
-            + ltcmat[2][0] * neu.up,
-        y: ltcmat[0][1] * neu.north
-            + ltcmat[1][1] * neu.east
-            + ltcmat[2][1] * neu.up,
-        z: ltcmat[0][2] * neu.north
-            + ltcmat[1][2] * neu.east
-            + ltcmat[2][2] * neu.up,
     }
 }
 

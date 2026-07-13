@@ -70,7 +70,7 @@ pub fn solve_pvt(
                 ionoutc,
                 &observation.receive_time,
                 &receiver_position,
-            )
+            )?
             .range
                 + state[3];
             let residual = observation.pseudorange_m - predicted;
@@ -79,7 +79,7 @@ pub fn solve_pvt(
                 ionoutc,
                 &observation.receive_time,
                 &receiver_position,
-            );
+            )?;
             let row = [jacobian[0], jacobian[1], jacobian[2], 1.0];
 
             let scale = {
@@ -135,7 +135,7 @@ pub fn solve_pvt(
             ionoutc,
             &observation.receive_time,
             &receiver_position,
-        )
+        )?
         .range
             + state[3];
         let residual = observation.pseudorange_m - predicted;
@@ -161,9 +161,9 @@ fn expand_tow_week(reference_week: i32, transmit_seconds: f64) -> i32 {
 fn numerical_jacobian(
     ephemeris: &BroadcastEphemeris, ionoutc: &IonoUtc, receive_time: &GpsTime,
     receiver_position: &Ecef,
-) -> [f64; 3] {
+) -> Result<[f64; 3], Error> {
     let baseline =
-        compute_range(ephemeris, ionoutc, receive_time, receiver_position)
+        compute_range(ephemeris, ionoutc, receive_time, receiver_position)?
             .range;
     let delta = 1.0;
 
@@ -183,13 +183,13 @@ fn numerical_jacobian(
         receiver_position.z + delta,
     );
 
-    let dx = compute_range(ephemeris, ionoutc, receive_time, &x_plus).range
+    let dx = compute_range(ephemeris, ionoutc, receive_time, &x_plus)?.range
         - baseline;
-    let dy = compute_range(ephemeris, ionoutc, receive_time, &y_plus).range
+    let dy = compute_range(ephemeris, ionoutc, receive_time, &y_plus)?.range
         - baseline;
-    let dz = compute_range(ephemeris, ionoutc, receive_time, &z_plus).range
+    let dz = compute_range(ephemeris, ionoutc, receive_time, &z_plus)?.range
         - baseline;
-    [dx / delta, dy / delta, dz / delta]
+    Ok([dx / delta, dy / delta, dz / delta])
 }
 
 fn solve_linear_system(

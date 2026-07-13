@@ -10,6 +10,69 @@ fn assert_ecef_matches(actual: &Ecef, expected: &Ecef) {
 }
 
 #[test]
+fn builder_preserves_geometry_error_for_invalid_degree_location() {
+    let result =
+        SignalGeneratorBuilder::default().location(Some(vec![91.0, 0.0, 0.0]));
+    assert!(matches!(
+        result,
+        Err(Error::Geometry(geometry::Error::InvalidCoordinates { .. }))
+    ));
+}
+
+#[test]
+fn generator_initialization_propagates_invalid_ecef() -> Result<(), Error> {
+    let navigation_path = PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
+        .join("resources")
+        .join("brdc0010.22n");
+    let builder = SignalGeneratorBuilder::default()
+        .navigation_file(Some(navigation_path))?
+        .location_ecef(Some(vec![f64::NAN, 0.0, 0.0]))?
+        .data_format(Some(8))?;
+    let mut generator = builder.build()?;
+    assert!(matches!(
+        generator.initialize(),
+        Err(Error::Geometry(geometry::Error::InvalidEcef { .. }))
+    ));
+    Ok(())
+}
+
+#[test]
+fn runtime_motion_propagates_invalid_ecef_on_the_next_step() -> Result<(), Error>
+{
+    let navigation_path = PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
+        .join("resources")
+        .join("brdc0010.22n");
+    let origin = Ecef::new(-3_813_477.954, 3_554_276.552, 3_662_785.237);
+    let control = RuntimeMotionControl::new(origin);
+    let builder = SignalGeneratorBuilder::default()
+        .navigation_file(Some(navigation_path))?
+        .runtime_motion_control(Some(control.clone()))?
+        .frequency(Some(1_000_000))?
+        .data_format(Some(8))?
+        .output_file(None);
+    let mut generator = builder.build()?;
+    generator.initialize()?;
+
+    let mut blocks = 0usize;
+    let result = generator.run_streaming_user_control::<_, Error>(|_iq| {
+        blocks += 1;
+        control.submit(MotionCommand::SetPositionEcef(Ecef::new(
+            f64::NAN,
+            0.0,
+            0.0,
+        )));
+        Ok(())
+    });
+
+    assert_eq!(blocks, 1);
+    assert!(matches!(
+        result,
+        Err(Error::Geometry(geometry::Error::InvalidEcef { .. }))
+    ));
+    Ok(())
+}
+
+#[test]
 fn runtime_streaming_produces_blocks_and_setposition_applies_next_step()
 -> Result<(), Error> {
     let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));

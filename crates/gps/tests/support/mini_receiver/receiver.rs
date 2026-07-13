@@ -95,20 +95,20 @@ impl TrackerState {
 
     fn update_tracking_rates(
         &mut self, context: &TrackingContext, block_time: &GpsTime,
-    ) {
+    ) -> Result<(), Error> {
         let block_end = block_time.add_secs(context.sample_rate_seconds);
         let range_now = compute_range(
             &self.ephemeris,
             &context.ionoutc,
             block_time,
             &context.receiver_position,
-        );
+        )?;
         let range_next = compute_range(
             &self.ephemeris,
             &context.ionoutc,
             &block_end,
             &context.receiver_position,
-        );
+        )?;
         let range_rate =
             (range_next.range - range_now.range) / context.sample_rate_seconds;
         let carrier_hz = -range_rate * LAMBDA_L1_INV
@@ -121,13 +121,14 @@ impl TrackerState {
         self.code_phase_step = code_hz / context.sample_frequency_hz;
         self.carrier_step_re = carrier_phase_step.cos();
         self.carrier_step_im = carrier_phase_step.sin();
+        Ok(())
     }
 
     fn process_block(
         &mut self, context: &TrackingContext, block_start_sample: usize,
         block_time: &GpsTime, samples: &[i16],
-    ) {
-        self.update_tracking_rates(context, block_time);
+    ) -> Result<(), Error> {
+        self.update_tracking_rates(context, block_time)?;
         let capture_start = &context.start_time;
         let samples_per_complex = 2usize;
         let complex_sample_count = samples.len() / samples_per_complex;
@@ -170,6 +171,7 @@ impl TrackerState {
                     (block_start_sample + sample_index + 1) as f64;
             }
         }
+        Ok(())
     }
 }
 
@@ -192,13 +194,13 @@ pub fn build_tracking_assists(
             scenario.ionoutc(),
             scenario.start_time(),
             &receiver_position,
-        );
+        )?;
         let range_next = compute_range(
             ephemeris,
             scenario.ionoutc(),
             &next_block_time,
             &receiver_position,
-        );
+        )?;
         let range_rate = (range_next.range - range_now.range)
             / scenario.sample_rate_seconds();
         let predicted_carrier_hz = -range_rate * LAMBDA_L1_INV;
@@ -362,7 +364,7 @@ pub fn track_satellites(
                 block_start,
                 block_time,
                 iq,
-            );
+            )?;
         }
         Ok(())
     })?;

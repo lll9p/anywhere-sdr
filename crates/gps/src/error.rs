@@ -90,6 +90,14 @@ pub enum Error {
     #[error("RINEX error: {0}")]
     Rinex(#[from] rinex::error::Error),
 
+    /// Error from geodetic coordinate validation or conversion
+    #[error("Geometry error: {0}")]
+    Geometry(#[from] geometry::Error),
+
+    /// Error from motion or NMEA input parsing
+    #[error("Input parsing error: {0}")]
+    Parsing(#[from] parsing::Error),
+
     /// Error when parsing time values
     #[error("Time parsing error: {0}")]
     TimeParseError(#[from] jiff::Error),

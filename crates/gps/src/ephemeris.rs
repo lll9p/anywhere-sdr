@@ -1,7 +1,10 @@
-use constants::{OMEGA_EARTH, R2D, SECONDS_IN_HALF_WEEK, SECONDS_IN_WEEK};
+use constants::{OMEGA_EARTH, SECONDS_IN_HALF_WEEK, SECONDS_IN_WEEK};
 use geometry::{Azel, Ecef, Location, Neu};
 
-use crate::datetime::{GpsCalendarDateTime, GpsTime};
+use crate::{
+    Error,
+    datetime::{GpsCalendarDateTime, GpsTime},
+};
 
 /// Represents the broadcast ephemeris data for a single GPS satellite.
 ///
@@ -245,28 +248,32 @@ impl Ephemeris {
     /// # Arguments
     /// * `time` - GPS time at which to check visibility
     /// * `xyz` - Receiver position in ECEF coordinates
-    /// * `elv_mask` - Elevation mask angle in degrees (satellites below this
-    ///   angle are considered invisible)
+    /// * `elevation_mask_degrees` - Elevation mask angle in degrees (satellites
+    ///   below this angle are considered invisible)
     ///
     /// # Returns
-    /// * `None` - If the ephemeris data is invalid
-    /// * `Some((azel, false))` - If the satellite is below the elevation mask
-    ///   (invisible)
-    /// * `Some((azel, true))` - If the satellite is visible, with its azimuth
-    ///   and elevation angles
+    /// * `Ok(None)` - If the ephemeris data is invalid
+    /// * `Ok(Some((azel, false)))` - If the satellite is below the elevation
+    ///   mask (invisible)
+    /// * `Ok(Some((azel, true)))` - If the satellite is visible, with its
+    ///   azimuth and elevation angles
+    ///
+    /// # Errors
+    /// Returns a geometry error if the receiver position or local direction is
+    /// outside the defined conversion domain.
     #[inline]
     pub fn check_visibility(
-        &self, time: &GpsTime, xyz: &Ecef, elv_mask: f64,
-    ) -> Option<(Azel, bool)> {
+        &self, time: &GpsTime, xyz: &Ecef, elevation_mask_degrees: f64,
+    ) -> Result<Option<(Azel, bool)>, Error> {
         if !self.vflg {
-            return None; // Invalid ephemeris
+            return Ok(None); // Invalid ephemeris
         }
 
         // Compute satellite position
         let (pos, _vel, _clk) = self.compute_satellite_state(time);
 
         // Convert receiver position to geodetic coordinates
-        let llh = Location::from(xyz);
+        let llh = Location::try_from(xyz)?;
 
         // Calculate line-of-sight vector from receiver to satellite
         let los = Ecef::from(&pos) - xyz;
@@ -275,13 +282,13 @@ impl Ephemeris {
         let neu = Neu::from_ecef(&los, llh.ltcmat());
 
         // Convert to azimuth and elevation angles
-        let azel = Azel::from(&neu);
+        let azel = Azel::try_from(&neu)?;
 
         // Check if elevation is above the mask angle
-        if azel.el * R2D <= elv_mask {
-            return Some((azel, false)); // Below elevation mask (invisible)
+        if azel.elevation_degrees() <= elevation_mask_degrees {
+            return Ok(Some((azel, false))); // Below elevation mask (invisible)
         }
 
-        Some((azel, true)) // Visible
+        Ok(Some((azel, true))) // Visible
     }
 }

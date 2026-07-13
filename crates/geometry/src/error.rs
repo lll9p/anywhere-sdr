@@ -4,13 +4,18 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    /// Error when geodetic coordinates are outside valid ranges
-    #[error("Invalid coordinates: latitude={latitude}, longitude={longitude}")]
+    /// Error when geodetic coordinates are non-finite or outside valid ranges
+    #[error(
+        "Invalid geodetic coordinates: latitude={latitude_radians} rad, \
+         longitude={longitude_radians} rad, height={height_meters} m"
+    )]
     InvalidCoordinates {
-        /// Latitude value that caused the error
-        latitude: f64,
-        /// Longitude value that caused the error
-        longitude: f64,
+        /// Latitude value that caused the error, in radians
+        latitude_radians: f64,
+        /// Longitude value that caused the error, in radians
+        longitude_radians: f64,
+        /// Height value that caused the error, in meters
+        height_meters: f64,
     },
 
     /// Error when ECEF coordinates are invalid
@@ -24,6 +29,29 @@ pub enum Error {
         z: f64,
     },
 
+    /// Error when the ECEF vector is at or numerically near Earth center
+    #[error(
+        "ECEF position is too close to Earth center for unique geodetic \
+         coordinates"
+    )]
+    EcefOrigin,
+
+    /// Error when iterative ECEF conversion does not converge
+    #[error(
+        "ECEF conversion did not converge after {iterations} iterations: \
+         x={x}, y={y}, z={z}"
+    )]
+    EcefConversionDidNotConverge {
+        /// X coordinate in meters
+        x: f64,
+        /// Y coordinate in meters
+        y: f64,
+        /// Z coordinate in meters
+        z: f64,
+        /// Number of attempted iterations
+        iterations: usize,
+    },
+
     /// Error when NEU coordinates are invalid
     #[error("Invalid NEU coordinates: north={north}, east={east}, up={up}")]
     InvalidNeu {
@@ -32,6 +60,19 @@ pub enum Error {
         /// East coordinate value that caused the error
         east: f64,
         /// Up coordinate value that caused the error
+        up: f64,
+    },
+
+    /// Error when a NEU vector does not define a unique azimuth
+    #[error(
+        "NEU vector has no unique azimuth: north={north}, east={east}, up={up}"
+    )]
+    UndefinedNeuDirection {
+        /// North component in meters
+        north: f64,
+        /// East component in meters
+        east: f64,
+        /// Up component in meters
         up: f64,
     },
 
@@ -70,10 +111,13 @@ impl Error {
 
     /// Create a new error for invalid coordinates
     #[inline]
-    pub fn invalid_coordinates(latitude: f64, longitude: f64) -> Self {
+    pub fn invalid_coordinates(
+        latitude_radians: f64, longitude_radians: f64, height_meters: f64,
+    ) -> Self {
         Error::InvalidCoordinates {
-            latitude,
-            longitude,
+            latitude_radians,
+            longitude_radians,
+            height_meters,
         }
     }
 
@@ -83,10 +127,29 @@ impl Error {
         Error::InvalidEcef { x, y, z }
     }
 
+    /// Create a new error for an ECEF conversion that did not converge
+    #[inline]
+    pub fn ecef_conversion_did_not_converge(
+        x: f64, y: f64, z: f64, iterations: usize,
+    ) -> Self {
+        Error::EcefConversionDidNotConverge {
+            x,
+            y,
+            z,
+            iterations,
+        }
+    }
+
     /// Create a new error for invalid NEU coordinates
     #[inline]
     pub fn invalid_neu(north: f64, east: f64, up: f64) -> Self {
         Error::InvalidNeu { north, east, up }
+    }
+
+    /// Create a new error for a NEU vector without a unique azimuth
+    #[inline]
+    pub fn undefined_neu_direction(north: f64, east: f64, up: f64) -> Self {
+        Error::UndefinedNeuDirection { north, east, up }
     }
 
     /// Create a new error for invalid azimuth-elevation

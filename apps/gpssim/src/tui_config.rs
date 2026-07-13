@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use geometry::{Ecef, Location};
 
-use crate::cli::{Args, TxBackend};
+use crate::{
+    Error,
+    cli::{Args, TxBackend},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum MotionSource {
@@ -118,7 +121,9 @@ impl Default for TuiConfig {
 }
 
 impl TuiConfig {
-    pub(crate) fn apply_overrides_from_args(&mut self, args: &Args) {
+    pub(crate) fn apply_overrides_from_args(
+        &mut self, args: &Args,
+    ) -> Result<(), Error> {
         self.ephemerides.clone_from(&args.ephemerides);
         self.user_motion_ecef.clone_from(&args.user_motion_ecef);
         self.user_motion_llh.clone_from(&args.user_motion_llh);
@@ -147,21 +152,24 @@ impl TuiConfig {
         self.hackrf_prefill_blocks = args.hackrf_prefill_blocks;
         self.hackrf_drop_on_underrun = args.hackrf_drop_on_underrun;
 
-        self.manual_motion.initial_llh = args
-            .location
-            .as_ref()
-            .and_then(|values| triplet_from_vec(values))
-            .or_else(|| {
-                args.location_ecef.as_ref().and_then(|location_ecef| {
-                    let ecef = Ecef::from(&triplet_from_vec(location_ecef)?);
-                    let location = Location::from(&ecef);
-                    Some([
-                        location.latitude.to_degrees(),
-                        location.longitude.to_degrees(),
-                        location.height,
-                    ])
-                })
-            });
+        self.manual_motion.initial_llh = if let Some(location) = &args.location
+        {
+            triplet_from_vec(location)
+        } else if let Some(location_ecef) = &args.location_ecef {
+            if let Some(location_ecef) = triplet_from_vec(location_ecef) {
+                let location = Location::try_from(&Ecef::from(&location_ecef))?;
+                Some([
+                    location.latitude_degrees(),
+                    location.longitude_degrees(),
+                    location.height_meters(),
+                ])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        Ok(())
     }
 
     pub(crate) fn uses_manual_motion(&self) -> bool {
@@ -208,24 +216,8 @@ impl TuiConfig {
     }
 
     fn validate_manual_motion(&self) -> Result<(), String> {
-        let Some(initial_llh) = self.manual_motion.initial_llh else {
+        if self.manual_motion.initial_llh.is_none() {
             return Err("manual mode requires initial LLH position".to_string());
-        };
-
-        let [latitude_deg, longitude_deg, height_m] = initial_llh;
-        if !latitude_deg.is_finite()
-            || !longitude_deg.is_finite()
-            || !height_m.is_finite()
-        {
-            return Err("manual mode initial LLH must be finite".to_string());
-        }
-        if !(-90.0..=90.0).contains(&latitude_deg) {
-            return Err("manual mode latitude must be in -90..=90".to_string());
-        }
-        if !(-180.0..=180.0).contains(&longitude_deg) {
-            return Err(
-                "manual mode longitude must be in -180..=180".to_string()
-            );
         }
 
         if !self.manual_motion.initial_heading_deg.is_finite() {

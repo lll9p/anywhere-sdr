@@ -14,12 +14,15 @@
 mod coordinates;
 /// Error types for geometry operations
 mod error;
+/// Navigation target calculations
+mod navigation;
 #[cfg(test)]
 mod tests;
 /// Traits for coordinate system operations
 mod traits;
 /// Coordinate system transformation functions
 mod transformation;
-pub use coordinates::{Azel, Ecef, Location, NavigationTarget, Neu};
+pub use coordinates::{Azel, Ecef, Location, Neu};
 pub use error::Error;
+pub use navigation::NavigationTarget;
 pub use traits::LocationMath;

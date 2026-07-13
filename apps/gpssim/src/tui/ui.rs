@@ -248,9 +248,11 @@ fn manual_run_lines(session: &ManualControlSession) -> Vec<Line<'static>> {
         ));
         lines.push(labeled_line(
             "position_llh",
-            session
-                .actual_position_llh()
-                .map_or_else(|| "<unavailable>".to_string(), format_llh),
+            match session.actual_position_llh() {
+                Ok(Some(location)) => format_llh(location),
+                Ok(None) => "<unavailable>".to_string(),
+                Err(error) => format!("<invalid: {error}>"),
+            },
         ));
     } else {
         lines.push(labeled_line("actual_state", "waiting for snapshot"));

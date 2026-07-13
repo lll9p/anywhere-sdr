@@ -1,4 +1,4 @@
-use constants::{MAX_CHAN, MAX_SAT, R2D, SECONDS_IN_HOUR};
+use constants::{MAX_CHAN, MAX_SAT, SECONDS_IN_HOUR};
 use geometry::{Ecef, Location};
 
 use super::SignalGeneratorBuilder;
@@ -77,8 +77,9 @@ impl SignalGeneratorBuilder {
         } else {
             // Default static location; Tokyo
             self.mode = Some(MotionMode::Static);
-            let llh = [35.681_298 / R2D, 139.766_247 / R2D, 10.0];
-            let xyz = Ecef::from(&Location::from(&llh));
+            let llh =
+                Location::try_from_degrees(35.681_298, 139.766_247, 10.0)?;
+            let xyz = Ecef::from(&llh);
             // let mut xyz = [0.0, 0.0, 0.0];
             // llh2xyz(&llh, &mut xyz);
             vec![xyz]
@@ -240,7 +241,7 @@ impl SignalGeneratorBuilder {
             antenna_pattern,
             mode,
             runtime_motion_control: self.runtime_motion_control,
-            elevation_mask: 0.0, // Default elevation mask
+            elevation_mask_degrees: 0.0, // Default elevation mask
             sample_frequency,
             sample_rate,
             data_format,

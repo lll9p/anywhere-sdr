@@ -25,7 +25,7 @@ impl SignalGenerator {
     /// Applies navigation and allocation work at an exact frame deadline.
     fn handle_periodic_tasks(
         &mut self, current_location: Ecef, deadline: &GpsTime,
-    ) {
+    ) -> Result<(), Error> {
         for channel in self.channels.iter_mut().take(MAX_CHAN) {
             if channel.prn != 0 {
                 channel.generate_nav_msg(deadline, false);
@@ -71,10 +71,11 @@ impl SignalGenerator {
             }
         }
 
-        self.allocate_channel_at(current_location, deadline);
+        self.allocate_channel_at(current_location, deadline)?;
         if self.verbose {
             Self::log_channel_status(&self.channels);
         }
+        Ok(())
     }
 
     /// Returns the next non-empty block from the initialized timeline.
@@ -161,19 +162,25 @@ impl SignalGenerator {
     }
 
     /// Advances GPS and channel state to a block endpoint.
-    fn prepare_block(&mut self, block: &TimelineBlock, current_location: Ecef) {
+    fn prepare_block(
+        &mut self, block: &TimelineBlock, current_location: Ecef,
+    ) -> Result<(), Error> {
         self.receiver_gps_time = block.end_time.clone();
         self.update_channel_parameters(
             current_location,
             block.duration_seconds,
-        );
+        )?;
+        Ok(())
     }
 
     /// Runs every exact frame deadline reached by the emitted block.
-    fn finish_block(&mut self, block: TimelineBlock, current_location: Ecef) {
+    fn finish_block(
+        &mut self, block: TimelineBlock, current_location: Ecef,
+    ) -> Result<(), Error> {
         for deadline in &block.frame_deadlines {
-            self.handle_periodic_tasks(current_location, deadline);
+            self.handle_periodic_tasks(current_location, deadline)?;
         }
+        Ok(())
     }
 
     /// Runs the GPS signal simulation and writes every emitted sample.
@@ -198,7 +205,7 @@ impl SignalGenerator {
 
         while let Some(block) = self.next_timeline_block()? {
             let current_location = self.finite_block_location(&block)?;
-            self.prepare_block(&block, current_location);
+            self.prepare_block(&block, current_location)?;
             self.generate_and_write_samples(block.sample_count)?;
             emitted_blocks += 1;
             if self.verbose && emitted_blocks.is_multiple_of(100) {
@@ -209,7 +216,7 @@ impl SignalGenerator {
                     "simulation progress"
                 );
             }
-            self.finish_block(block, current_location);
+            self.finish_block(block, current_location)?;
         }
         if let Some(writer) = &mut self.writer {
             writer.finish_packing()?;
@@ -245,7 +252,8 @@ impl SignalGenerator {
         while let Some(block) = self.next_timeline_block().map_err(E::from)? {
             let current_location =
                 self.finite_block_location(&block).map_err(E::from)?;
-            self.prepare_block(&block, current_location);
+            self.prepare_block(&block, current_location)
+                .map_err(E::from)?;
             iq_buffer.resize(2 * block.sample_count, 0);
             Self::generate_samples_into(
                 &mut self.channels,
@@ -253,7 +261,8 @@ impl SignalGenerator {
                 &mut iq_buffer,
             )
             .map_err(E::from)?;
-            self.finish_block(block, current_location);
+            self.finish_block(block, current_location)
+                .map_err(E::from)?;
             on_block(&iq_buffer)?;
         }
         self.complete_finite_run();
@@ -300,9 +309,11 @@ impl SignalGenerator {
                         "runtime motion timeline ended unexpectedly",
                     ))
                 })?;
-            let current_location =
-                integrator.step(block.duration_seconds, &control);
-            self.prepare_block(&block, current_location);
+            let current_location = integrator
+                .step(block.duration_seconds, &control)
+                .map_err(E::from)?;
+            self.prepare_block(&block, current_location)
+                .map_err(E::from)?;
             iq_buffer.resize(2 * block.sample_count, 0);
             Self::generate_samples_into(
                 &mut self.channels,
@@ -311,7 +322,8 @@ impl SignalGenerator {
             )
             .map_err(E::from)?;
             on_block(&iq_buffer)?;
-            self.finish_block(block, current_location);
+            self.finish_block(block, current_location)
+                .map_err(E::from)?;
         }
     }
 }

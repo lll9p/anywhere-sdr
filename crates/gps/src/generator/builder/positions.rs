@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use constants::R2D;
 use geometry::{Ecef, Location};
 use parsing::{read_nmea_gga, read_user_motion, read_user_motion_llh};
 
@@ -69,10 +68,12 @@ impl SignalGeneratorBuilder {
         }
         if let Some(location) = location {
             self.mode = Some(MotionMode::Static);
-            let mut location = [location[0], location[1], location[2]];
-            location[0] /= R2D;
-            location[1] /= R2D;
-            let xyz = Ecef::from(&Location::from(&location));
+            let location = Location::try_from_degrees(
+                location[0],
+                location[1],
+                location[2],
+            )?;
+            let xyz = Ecef::from(&location);
             // let mut xyz = [0.0, 0.0, 0.0];
             // llh2xyz(&location, &mut xyz);
             self.positions = Some(vec![xyz]);
@@ -143,9 +144,7 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_user_motion(&file).map_err(|e| {
-                Error::ParsingError(format!("User motion file error: {e}"))
-            })?);
+            self.positions = Some(read_user_motion(&file)?);
         }
         Ok(self)
     }
@@ -181,12 +180,7 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions =
-                Some(read_user_motion_llh(&file).map_err(|e| {
-                    Error::ParsingError(format!(
-                        "User motion LLH file error: {e}"
-                    ))
-                })?);
+            self.positions = Some(read_user_motion_llh(&file)?);
         }
         Ok(self)
     }
@@ -221,9 +215,7 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_nmea_gga(&file).map_err(|e| {
-                Error::ParsingError(format!("NMEA GGA file error: {e}"))
-            })?);
+            self.positions = Some(read_nmea_gga(&file)?);
         }
         Ok(self)
     }

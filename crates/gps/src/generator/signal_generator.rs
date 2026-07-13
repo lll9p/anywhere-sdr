@@ -61,8 +61,8 @@ pub struct SignalGenerator {
     pub mode: MotionMode,
     /// Optional runtime motion controller (`UserControl` mode)
     pub runtime_motion_control: Option<RuntimeMotionControl>,
-    /// Elevation mask angle in radians (satellites below this are not visible)
-    pub elevation_mask: f64,
+    /// Elevation mask angle in degrees (satellites below this are not visible)
+    pub elevation_mask_degrees: f64,
     /// Sampling frequency in Hz (typically 2.6MHz)
     pub sample_frequency: f64,
     /// Time step between samples in seconds (typically 0.1s)
@@ -102,7 +102,7 @@ impl Default for SignalGenerator {
             antenna_pattern: [0.0; 37],
             mode: MotionMode::Static,
             runtime_motion_control: None,
-            elevation_mask: f64::default(),
+            elevation_mask_degrees: f64::default(),
             sample_frequency: 0.0,
             sample_rate: 0.0,
             data_format: DataFormat::Bits8,
@@ -189,7 +189,7 @@ impl SignalGenerator {
             .take(MAX_SAT)
             .for_each(|s| *s = -1);
         // Allocate visible satellites at the initial state epoch.
-        self.allocate_channel(self.positions[0]);
+        self.allocate_channel(self.positions[0])?;
         if self.verbose {
             Self::log_channel_status(&self.channels);
         }
@@ -248,7 +248,7 @@ impl SignalGenerator {
     ///
     /// # Returns
     /// * The number of visible satellites
-    pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
+    pub fn allocate_channel(&mut self, xyz: Ecef) -> Result<i32, Error> {
         let receiver_gps_time = self.receiver_gps_time.clone();
         self.allocate_channel_at(xyz, &receiver_gps_time)
     }
@@ -256,7 +256,7 @@ impl SignalGenerator {
     /// Allocates channels using the supplied exact receiver epoch.
     fn allocate_channel_at(
         &mut self, xyz: Ecef, receiver_gps_time: &GpsTime,
-    ) -> i32 {
+    ) -> Result<i32, Error> {
         let mut visible_satellite_count: i32 = 0;
         // let ref_0: [f64; 3] = [0., 0., 0.];
         // #[allow(unused_variables)]
@@ -271,8 +271,8 @@ impl SignalGenerator {
             if let Some((azel, true)) = eph.check_visibility(
                 receiver_gps_time,
                 &xyz,
-                self.elevation_mask,
-            ) {
+                self.elevation_mask_degrees,
+            )? {
                 visible_satellite_count += 1; // Number of visible satellites
                 if self.allocated_satellite[sv] == -1 {
                     // Visible but not allocated
@@ -291,7 +291,7 @@ impl SignalGenerator {
                                 receiver_gps_time,
                                 &xyz,
                                 azel,
-                            );
+                            )?;
                             allocated_channel_index = Some(channel_index);
                             break;
                         }
@@ -309,7 +309,7 @@ impl SignalGenerator {
                 self.allocated_satellite[sv] = -1;
             }
         }
-        visible_satellite_count
+        Ok(visible_satellite_count)
     }
 
     /// Generates I/Q samples for all active channels and writes them to the
@@ -406,7 +406,7 @@ impl SignalGenerator {
     /// * `current_location` - The current receiver position in ECEF coordinates
     fn update_channel_parameters(
         &mut self, current_location: Ecef, elapsed_seconds: f64,
-    ) {
+    ) -> Result<(), Error> {
         let ephemeris_set_index = self.valid_ephemerides_index;
         let sampling_period = self.sample_frequency.recip();
         for i in 0..MAX_CHAN {
@@ -424,7 +424,7 @@ impl SignalGenerator {
                     &self.ionoutc,
                     &self.receiver_gps_time,
                     &current_location,
-                );
+                )?;
                 self.channels[i].update_state(
                     &rho,
                     elapsed_seconds,
@@ -443,7 +443,7 @@ impl SignalGenerator {
                     let path_loss = 20_200_000.0 / rho.distance;
                     // Receiver antenna gain
                     let boresight_angle_index =
-                        ((90.0 - rho.azel.el * R2D) / 5.0) as usize; // covert elevation to boresight
+                        ((90.0 - rho.azel.elevation_degrees()) / 5.0) as usize;
                     let ant_gain = self.antenna_pattern[boresight_angle_index];
                     (path_loss * ant_gain * 128.0) as i32 // scaled by 2^7
                 };
@@ -451,6 +451,7 @@ impl SignalGenerator {
                 self.antenna_gains[i] = gain; // hold the power level constant
             }
         }
+        Ok(())
     }
 
     /// Prints detailed status information about active satellite channels.
@@ -482,8 +483,8 @@ impl SignalGenerator {
                 &mut output,
                 "{:02} {:6.1} {:5.1} {:11.1} {:5.1}",
                 ichan.prn,
-                ichan.azel().az * R2D,
-                ichan.azel().el * R2D,
+                ichan.azel().azimuth_degrees(),
+                ichan.azel().elevation_degrees(),
                 ichan.rho0().distance,
                 ichan.rho0().iono_delay,
             )
