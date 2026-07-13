@@ -50,21 +50,21 @@ impl GpsTime {
     /// # Returns
     /// A new GPS time that is `dt` seconds later than this time
     pub fn add_secs(&self, dt: f64) -> Self {
-        let mut new_time: GpsTime = GpsTime { week: 0, sec: 0. };
-        new_time.week = self.week;
-        new_time.sec = self.sec + dt;
-        new_time.sec = (new_time.sec * 1000.0).round() / 1000.0; // Avoid rounding error
+        let seconds = self.sec + dt;
+        let week_offset = seconds.div_euclid(SECONDS_IN_WEEK);
+        Self {
+            week: self.week + week_offset as i32,
+            sec: seconds.rem_euclid(SECONDS_IN_WEEK),
+        }
+    }
 
-        // Handle week rollovers
-        while new_time.sec >= SECONDS_IN_WEEK {
-            new_time.sec -= SECONDS_IN_WEEK;
-            new_time.week += 1;
+    /// Floors seconds-of-week to an exact whole-second interval.
+    pub(crate) fn floor_to_interval(&self, interval_seconds: u32) -> Self {
+        let interval_seconds = f64::from(interval_seconds);
+        Self {
+            week: self.week,
+            sec: (self.sec / interval_seconds).floor() * interval_seconds,
         }
-        while new_time.sec < 0.0 {
-            new_time.sec += SECONDS_IN_WEEK;
-            new_time.week -= 1;
-        }
-        new_time
     }
 }
 impl From<&DateTime> for GpsTime {
@@ -233,4 +233,41 @@ pub struct TimeRange {
 
     /// Ionospheric delay in meters
     pub iono_delay: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use constants::SECONDS_IN_WEEK;
+
+    use super::GpsTime;
+
+    #[test]
+    fn add_secs_preserves_sub_millisecond_composition() {
+        let start = GpsTime {
+            week: 2_000,
+            sec: 10.0,
+        };
+        let mut time = start.clone();
+        for _ in 0..10_000 {
+            time = time.add_secs(0.0004);
+        }
+        assert!((time.diff_secs(&start) - 4.0).abs() < 1.0e-9);
+
+        let thirds = start
+            .add_secs(1.0 / 3.0)
+            .add_secs(1.0 / 3.0)
+            .add_secs(1.0 / 3.0);
+        assert!((thirds.diff_secs(&start) - 1.0).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn add_secs_normalizes_week_boundaries_without_quantization() {
+        let start = GpsTime {
+            week: 2_000,
+            sec: SECONDS_IN_WEEK - 0.0004,
+        };
+        let end = start.add_secs(0.0008);
+        assert_eq!(end.week, 2_001);
+        assert!((end.sec - 0.0004).abs() < 1.0e-9);
+    }
 }

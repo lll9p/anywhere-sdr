@@ -161,10 +161,10 @@ fn run_streaming_worker(
     let started = Instant::now();
     let mut last_progress = Instant::now();
 
-    let samples_per_block = generator.iq_buffer_size as u64;
-    let step_seconds = generator.sample_rate;
+    let sample_frequency_hz = generator.sample_frequency;
 
     let mut blocks: u64 = 0;
+    let mut total_samples: u64 = 0;
     let mut cancelled = false;
 
     let mut on_block = |block: &[i16]| -> Result<(), Error> {
@@ -174,6 +174,7 @@ fn run_streaming_worker(
         }
 
         blocks = blocks.wrapping_add(1);
+        total_samples = total_samples.saturating_add((block.len() / 2) as u64);
 
         if last_progress.elapsed() >= Duration::from_millis(200) {
             let hackrf_underruns = hackrf_underrun_counter
@@ -182,8 +183,8 @@ fn run_streaming_worker(
             let progress = compute_progress(
                 started,
                 blocks,
-                samples_per_block,
-                step_seconds,
+                total_samples,
+                sample_frequency_hz,
                 hackrf_underruns,
             );
             if event_tx.send(WorkerEvent::Progress(progress)).is_err() {
@@ -210,8 +211,8 @@ fn run_streaming_worker(
     let progress = compute_progress(
         started,
         blocks,
-        samples_per_block,
-        step_seconds,
+        total_samples,
+        sample_frequency_hz,
         hackrf_underruns,
     );
 
@@ -228,12 +229,11 @@ fn run_streaming_worker(
 }
 
 fn compute_progress(
-    started: Instant, blocks: u64, samples_per_block: u64, step_seconds: f64,
-    hackrf_underruns: Option<u64>,
+    started: Instant, blocks: u64, total_samples: u64,
+    sample_frequency_hz: f64, hackrf_underruns: Option<u64>,
 ) -> Progress {
     let elapsed = started.elapsed();
     let elapsed_seconds = elapsed.as_secs_f64();
-    let total_samples = samples_per_block.saturating_mul(blocks);
     let samples_per_second = if elapsed_seconds > 0.0 {
         total_samples as f64 / elapsed_seconds
     } else {
@@ -242,7 +242,7 @@ fn compute_progress(
     Progress {
         blocks,
         elapsed,
-        sim_seconds: blocks as f64 * step_seconds,
+        sim_seconds: total_samples as f64 / sample_frequency_hz,
         throughput_msps: samples_per_second / 1_000_000.0,
         hackrf_underruns,
     }

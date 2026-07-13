@@ -1,7 +1,7 @@
 #![cfg(not(debug_assertions))]
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
-use gps::{Error, SignalGeneratorBuilder};
+use gps::{DataFormat, Error, SignalGeneratorBuilder};
 use test_case::test_case;
 mod prepare;
 use prepare::{OUTPUT_DIR, RESOURCES_DIR, prepare_c_bin};
@@ -291,35 +291,35 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
         .and_then(|n| n.to_str())
         .ok_or_else(|| gps::Error::msg("Cannot get file name"))?;
 
-    // Compare file contents
     let c_bin_path = PathBuf::from(&c_bin_file_full);
-
-    // Check if C version output file exists
     if !c_bin_path.exists() {
         return Err(Error::msg(format!(
             "C version output file does not exist: {c_bin_file_full}"
         )));
     }
 
-    // Get file names for comparison
-    let rust_file_str = rust_file
-        .to_str()
-        .ok_or_else(|| Error::msg("Invalid Rust output file path"))?;
-    let c_bin_path_str = c_bin_path
-        .to_str()
-        .ok_or_else(|| Error::msg("Invalid C output file path"))?;
+    let rust_bytes = std::fs::read(&rust_file)?;
+    let c_bytes = std::fs::read(&c_bin_path)?;
+    let bytes_per_block = match generator.data_format {
+        DataFormat::Bits1 => generator.iq_buffer_size / 4,
+        DataFormat::Bits8 => generator.iq_buffer_size * 2,
+        DataFormat::Bits16 => generator.iq_buffer_size * 4,
+    };
 
-    // Compare files using diff
-    let output = Command::new("diff")
-        .args([rust_file_str, c_bin_path_str])
-        .spawn()?
-        .wait_with_output()?;
-
-    let success = output.status.success();
-    if success {
-        std::fs::remove_file(&rust_file)?;
-    }
-
-    assert!(success, "Files are different: {rust_file_name}");
+    // The original C loop intentionally remains the compatibility oracle for
+    // sample contents, but it emits one fewer interval than the requested
+    // duration. Rust now emits that final interval by contract.
+    assert_eq!(
+        rust_bytes.len(),
+        c_bytes.len() + bytes_per_block,
+        "Rust output must exceed legacy C output by exactly one block: \
+         {rust_file_name}"
+    );
+    assert_eq!(
+        &rust_bytes[..c_bytes.len()],
+        c_bytes,
+        "Rust compatibility prefix differs from C output: {rust_file_name}"
+    );
+    std::fs::remove_file(&rust_file)?;
     Ok(())
 }

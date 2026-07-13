@@ -8,25 +8,54 @@ use std::{
 
 use crate::Error;
 
+/// Stateful MSB-first packer for signed I/Q decisions.
+#[derive(Clone, Copy, Debug, Default)]
+struct Bits1PackingState {
+    /// Partially filled output byte.
+    pending_byte: u8,
+    /// Number of high-order bits already filled in `pending_byte`.
+    pending_bits: u8,
+}
+
+impl Bits1PackingState {
+    /// Appends all complete bytes produced by `iq`, retaining any remainder.
+    fn push(self, iq: &[i16], out: &mut Vec<u8>) -> Self {
+        let mut state = self;
+        for &sample in iq {
+            state.pending_byte |=
+                u8::from(sample > 0) << (7 - state.pending_bits);
+            state.pending_bits += 1;
+            if state.pending_bits == 8 {
+                out.push(state.pending_byte);
+                state = Self::default();
+            }
+        }
+        state
+    }
+
+    /// Emits a final byte with every unused low-order bit set to zero.
+    fn finish(self, out: &mut Vec<u8>) -> Self {
+        if self.pending_bits != 0 {
+            out.push(self.pending_byte);
+        }
+        Self::default()
+    }
+}
+
 /// Packs interleaved i16 I/Q into 1-bit packed format.
 ///
-/// Semantics MUST match `IQWriter::write_samples()`.
+/// Decisions are packed MSB first. If `iq` does not fill the final byte, its
+/// unused low-order bits are zero. Semantics match a completed
+/// [`IQWriter`] stream.
 pub fn pack_bits1_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
-    if !iq.len().is_multiple_of(8) {
-        return Err(Error::msg("Bits1 requires I/Q length divisible by 8"));
-    }
-    if out.len() != iq.len() / 8 {
+    if out.len() != iq.len().div_ceil(8) {
         return Err(Error::msg("Bits1 output length mismatch"));
     }
 
-    for (byte_index, chunk) in iq.chunks_exact(8).enumerate() {
-        let mut byte: u8 = 0;
-        for (bit_index, &sample) in chunk.iter().enumerate() {
-            byte |= u8::from(sample > 0) << (7 - bit_index as u8);
-        }
-        out[byte_index] = byte;
-    }
-
+    let mut packed = Vec::with_capacity(out.len());
+    let state = Bits1PackingState::default().push(iq, &mut packed);
+    state.finish(&mut packed);
+    out.copy_from_slice(&packed);
     Ok(())
 }
 
@@ -88,8 +117,11 @@ pub struct IQWriter {
     /// Buffer for storing I/Q samples before writing to file
     pub buffer: Vec<i16>,
 
-    /// Size of the I/Q buffer in samples
+    /// Size of the I/Q buffer in complex samples
     pub buffer_size: usize,
+
+    /// Pending 1-bit decisions shared across callback blocks.
+    bits1_state: Bits1PackingState,
 }
 
 impl IQWriter {
@@ -114,7 +146,7 @@ impl IQWriter {
         path: &PathBuf, format: DataFormat, buffer_size: usize,
     ) -> Result<Self, Error> {
         let file = File::create(path)?;
-        let mut writer = BufWriter::new(file);
+        let writer = BufWriter::new(file);
         // Allocate buffer for I/Q samples (2 values per sample: I and Q)
         let buffer = vec![0; 2 * buffer_size];
         Ok(Self {
@@ -122,6 +154,7 @@ impl IQWriter {
             format,
             buffer,
             buffer_size,
+            bits1_state: Bits1PackingState::default(),
         })
     }
 
@@ -145,10 +178,15 @@ impl IQWriter {
     pub fn write_samples(&mut self) -> Result<(), Error> {
         match self.format {
             DataFormat::Bits1 => {
-                // For 1-bit format, pack 8 samples into each byte
-                let mut packed = vec![0u8; self.buffer_size / 4];
-                pack_bits1_into(&self.buffer, &mut packed)?;
+                let mut packed = Vec::with_capacity(
+                    (usize::from(self.bits1_state.pending_bits)
+                        + self.buffer.len())
+                        / 8,
+                );
+                let next_state =
+                    self.bits1_state.push(&self.buffer, &mut packed);
                 self.writer.write_all(&packed)?;
+                self.bits1_state = next_state;
             }
             DataFormat::Bits8 => {
                 // For 8-bit format, convert 16-bit samples to 8-bit
@@ -160,6 +198,23 @@ impl IQWriter {
                 // For 16-bit format, write samples directly
                 self.writer.write_all(as_bytes_i16(&self.buffer))?;
             }
+        }
+        Ok(())
+    }
+
+    /// Finalizes format-level packing without flushing the buffered file.
+    ///
+    /// For [`DataFormat::Bits1`], a pending partial byte is written with
+    /// zero-valued low-order padding bits. The broader fallible file-flush
+    /// contract is intentionally handled separately.
+    pub fn finish_packing(&mut self) -> Result<(), Error> {
+        if matches!(self.format, DataFormat::Bits1)
+            && self.bits1_state.pending_bits != 0
+        {
+            let mut packed = Vec::with_capacity(1);
+            let next_state = self.bits1_state.finish(&mut packed);
+            self.writer.write_all(&packed)?;
+            self.bits1_state = next_state;
         }
         Ok(())
     }
@@ -210,5 +265,16 @@ mod tests {
         pack_bits1_into(&iq, &mut out)?;
         assert_eq!(out[0], 0b1010_1010);
         Ok(())
+    }
+
+    #[test]
+    fn bits1_state_spans_blocks_and_zero_pads_the_final_byte() {
+        let mut packed = Vec::new();
+        let state = Bits1PackingState::default()
+            .push(&[1, -1, 1], &mut packed)
+            .push(&[-1, 1, -1, 1, -1, 1], &mut packed);
+        assert_eq!(packed, vec![0b1010_1010]);
+        state.finish(&mut packed);
+        assert_eq!(packed, vec![0b1010_1010, 0b1000_0000]);
     }
 }

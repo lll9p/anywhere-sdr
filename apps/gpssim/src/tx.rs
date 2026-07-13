@@ -175,19 +175,19 @@ impl TxSink for FileTxSink {
     fn write_block_i16(
         &mut self, interleaved_iq_i16: &[i16],
     ) -> Result<(), Error> {
-        if interleaved_iq_i16.len() != self.writer.buffer.len() {
+        if !interleaved_iq_i16.len().is_multiple_of(2) {
             return Err(Error::tx_backend_msg(
                 self.backend(),
                 format!(
-                    "IQ block length mismatch: got {} i16, expected {} i16 \
-                     (path={})",
+                    "IQ block length must be even: got {} i16 (path={})",
                     interleaved_iq_i16.len(),
-                    self.writer.buffer.len(),
                     self.path.display(),
                 ),
             ));
         }
 
+        self.writer.buffer_size = interleaved_iq_i16.len() / 2;
+        self.writer.buffer.resize(interleaved_iq_i16.len(), 0);
         self.writer.buffer.copy_from_slice(interleaved_iq_i16);
         self.writer.write_samples().map_err(|err| {
             Error::tx_backend_with_source(
@@ -199,7 +199,13 @@ impl TxSink for FileTxSink {
     }
 
     fn finish(&mut self) -> Result<(), Error> {
-        Ok(())
+        self.writer.finish_packing().map_err(|err| {
+            Error::tx_backend_with_source(
+                self.backend(),
+                format!("path={}", self.path.display()),
+                err,
+            )
+        })
     }
 }
 
@@ -333,7 +339,7 @@ mod tests {
         let golden_path = unique_output_path("gpssim_golden")?;
         let tee_path = unique_output_path("gpssim_tee")?;
 
-        let duration_seconds = 0.2;
+        let duration_seconds = 0.15;
         let sample_frequency_hz = 1_000_000;
         let bits = 8;
 
@@ -363,16 +369,16 @@ mod tests {
         let mut gen_b = builder_b.build()?;
         gen_b.initialize()?;
 
-        let num_steps = match gen_b.mode {
-            MotionMode::Static => gen_b.simulation_step_count.max(1),
-            MotionMode::Dynamic => gen_b.simulation_step_count,
+        let expected_blocks = match gen_b.mode {
+            MotionMode::Static | MotionMode::Dynamic => {
+                gen_b.simulation_step_count
+            }
             MotionMode::UserControl => {
                 return Err(Error::msg(
                     "unexpected user-control mode in tee golden-path test",
                 ));
             }
         };
-        let expected_blocks = num_steps.saturating_sub(1);
 
         let writes_mock = Arc::new(AtomicUsize::new(0));
         let mut tee = TxTee::new(vec![
@@ -400,6 +406,64 @@ mod tests {
 
         std::fs::remove_file(&golden_path)?;
         std::fs::remove_file(&tee_path)?;
+        Ok(())
+    }
+
+    #[test]
+    fn bits1_file_sink_matches_run_simulation_with_final_padding()
+    -> Result<(), Error> {
+        let resources_dir =
+            PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join("resources");
+        let nav = resources_dir.join("brdc0010.22n");
+        let golden_path = unique_output_path("gpssim_bits1_golden")?;
+        let stream_path = unique_output_path("gpssim_bits1_stream")?;
+
+        let mut golden = SignalGeneratorBuilder::default()
+            .navigation_file(Some(nav.clone()))?
+            .location(Some(vec![35.681_298, 139.766_247, 100.0]))?
+            .duration(Some(0.100_001))
+            .sample_rate(Some(0.1))
+            .frequency(Some(1_000_000))?
+            .data_format(Some(1))?
+            .output_file(Some(golden_path.clone()))
+            .verbose(Some(false))
+            .build()?;
+        golden.initialize()?;
+        golden.run_simulation()?;
+        drop(golden);
+
+        let mut streaming = SignalGeneratorBuilder::default()
+            .navigation_file(Some(nav))?
+            .location(Some(vec![35.681_298, 139.766_247, 100.0]))?
+            .duration(Some(0.100_001))
+            .sample_rate(Some(0.1))
+            .frequency(Some(1_000_000))?
+            .data_format(Some(1))?
+            .output_file(None)
+            .verbose(Some(false))
+            .build()?;
+        streaming.initialize()?;
+        let mut sink = FileTxSink::new(
+            stream_path.clone(),
+            DataFormat::Bits1,
+            streaming.iq_buffer_size,
+        )?;
+        streaming
+            .run_streaming::<_, Error>(|block| sink.write_block_i16(block))?;
+        sink.finish()?;
+        drop(sink);
+
+        let golden_bytes = std::fs::read(&golden_path)?;
+        let stream_bytes = std::fs::read(&stream_path)?;
+        assert_eq!(golden_bytes.len(), 25_001);
+        assert_eq!(stream_bytes, golden_bytes);
+        assert_eq!(
+            stream_bytes.last().copied().unwrap_or_default() & 0b0011_1111,
+            0
+        );
+
+        std::fs::remove_file(&golden_path)?;
+        std::fs::remove_file(&stream_path)?;
         Ok(())
     }
 }

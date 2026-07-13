@@ -189,12 +189,13 @@ impl TxSink for HackrfTxSink {
     fn write_block_i16(
         &mut self, interleaved_iq_i16: &[i16],
     ) -> Result<(), Error> {
-        if interleaved_iq_i16.len() != self.expected_i16_len {
+        if interleaved_iq_i16.len() > self.expected_i16_len
+            || !interleaved_iq_i16.len().is_multiple_of(2)
+        {
             return Err(Error::tx_backend_msg(
                 self.backend(),
                 format!(
-                    "IQ block length mismatch: got {} i16, expected {} i16 \
-                     ({})",
+                    "IQ block length invalid: got {} i16, maximum {} i16 ({})",
                     interleaved_iq_i16.len(),
                     self.expected_i16_len,
                     self.backend_context(),

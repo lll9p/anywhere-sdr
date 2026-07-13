@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use constants::*;
 use geometry::Ecef;
 
-use super::motion_control::{MotionIntegrator, RuntimeMotionControl};
+use super::{motion_control::RuntimeMotionControl, timeline::SampleTimeline};
 use crate::{
     Error,
     channel::Channel,
@@ -15,6 +15,10 @@ use crate::{
     propagation::compute_range,
     table::ANT_PAT_DB,
 };
+
+/// Finite and runtime-controlled sample emission loops.
+mod run;
+
 /// Main class for GPS signal generation and simulation.
 ///
 /// This struct contains all the state needed to simulate GPS signals:
@@ -41,10 +45,12 @@ pub struct SignalGenerator {
     /// Tracking which satellites are allocated to which channels (-1 = not
     /// allocated)
     pub allocated_satellite: [i32; MAX_SAT],
-    /// Receiver positions in ECEF coordinates (one per 100ms time step)
+    /// Receiver positions in ECEF coordinates (one per configured update step)
     pub positions: Vec<Ecef>,
-    /// Total number of motion steps to simulate
+    /// Total number of emitted intervals to simulate
     pub simulation_step_count: usize,
+    /// Requested emitted waveform duration in seconds
+    pub duration_seconds: Option<f64>,
     /// Current GPS time at the receiver
     pub receiver_gps_time: GpsTime,
     /// Signal gain values for each channel
@@ -73,6 +79,10 @@ pub struct SignalGenerator {
     pub writer: Option<IQWriter>,
     /// Whether the generator has been initialized
     pub initialized: bool,
+    /// Authoritative emitted-sample timeline
+    pub(super) timeline: Option<SampleTimeline>,
+    /// Outcome controlling whether a finite timeline may restart
+    pub(super) finite_run_state: run::FiniteRunState,
     /// Whether to show detailed channel status
     pub verbose: bool,
 }
@@ -86,6 +96,7 @@ impl Default for SignalGenerator {
             allocated_satellite: [0; MAX_SAT],
             positions: Vec::new(),
             simulation_step_count: usize::default(),
+            duration_seconds: None,
             receiver_gps_time: GpsTime::default(),
             antenna_gains: [0; MAX_CHAN],
             antenna_pattern: [0.0; 37],
@@ -101,6 +112,8 @@ impl Default for SignalGenerator {
             output_file: None,
             writer: None,
             initialized: false,
+            timeline: None,
+            finite_run_state: run::FiniteRunState::default(),
             verbose: true,
         }
     }
@@ -175,9 +188,7 @@ impl SignalGenerator {
             .iter_mut()
             .take(MAX_SAT)
             .for_each(|s| *s = -1);
-        // Initial reception time
-        self.receiver_gps_time = self.receiver_gps_time.add_secs(0.0);
-        // Allocate visible satellites
+        // Allocate visible satellites at the initial state epoch.
         self.allocate_channel(self.positions[0]);
         if self.verbose {
             Self::log_channel_status(&self.channels);
@@ -191,8 +202,26 @@ impl SignalGenerator {
             *item = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0);
         }
 
-        self.iq_buffer_size =
-            (self.sample_frequency * self.sample_rate).floor() as usize;
+        let interval_limit = match self.mode {
+            MotionMode::Static if self.duration_seconds.is_none() => {
+                Some(self.simulation_step_count)
+            }
+            MotionMode::Dynamic => Some(self.simulation_step_count),
+            MotionMode::Static | MotionMode::UserControl => None,
+        };
+        let duration_seconds = if matches!(self.mode, MotionMode::UserControl) {
+            None
+        } else {
+            self.duration_seconds
+        };
+        let timeline = SampleTimeline::new(
+            self.receiver_gps_time.clone(),
+            self.sample_frequency,
+            self.sample_rate,
+            duration_seconds,
+            interval_limit,
+        )?;
+        self.iq_buffer_size = timeline.maximum_block_samples()?;
         self.writer = match &self.output_file {
             Some(file) => Some(IQWriter::new(
                 file,
@@ -201,6 +230,8 @@ impl SignalGenerator {
             )?),
             None => None,
         };
+        self.timeline = Some(timeline);
+        self.finite_run_state = run::FiniteRunState::Ready;
         self.initialized = true;
         Ok(())
     }
@@ -218,6 +249,14 @@ impl SignalGenerator {
     /// # Returns
     /// * The number of visible satellites
     pub fn allocate_channel(&mut self, xyz: Ecef) -> i32 {
+        let receiver_gps_time = self.receiver_gps_time.clone();
+        self.allocate_channel_at(xyz, &receiver_gps_time)
+    }
+
+    /// Allocates channels using the supplied exact receiver epoch.
+    fn allocate_channel_at(
+        &mut self, xyz: Ecef, receiver_gps_time: &GpsTime,
+    ) -> i32 {
         let mut visible_satellite_count: i32 = 0;
         // let ref_0: [f64; 3] = [0., 0., 0.];
         // #[allow(unused_variables)]
@@ -230,7 +269,7 @@ impl SignalGenerator {
             .take(MAX_SAT)
         {
             if let Some((azel, true)) = eph.check_visibility(
-                &self.receiver_gps_time,
+                receiver_gps_time,
                 &xyz,
                 self.elevation_mask,
             ) {
@@ -249,7 +288,7 @@ impl SignalGenerator {
                                 sv + 1,
                                 eph,
                                 &self.ionoutc,
-                                &self.receiver_gps_time,
+                                receiver_gps_time,
                                 &xyz,
                                 azel,
                             );
@@ -289,11 +328,15 @@ impl SignalGenerator {
     /// * Returns an error if the I/Q writer is not initialized
     /// * Returns an error if writing to the output file fails
     #[inline]
-    fn generate_and_write_samples(&mut self) -> Result<(), Error> {
+    fn generate_and_write_samples(
+        &mut self, complex_sample_count: usize,
+    ) -> Result<(), Error> {
         let writer = self
             .writer
             .as_mut()
             .ok_or_else(|| Error::msg("IQWriter not initialized"))?;
+        writer.buffer_size = complex_sample_count;
+        writer.buffer.resize(2 * complex_sample_count, 0);
         Self::generate_samples_into(
             &mut self.channels,
             &self.antenna_gains,
@@ -361,7 +404,9 @@ impl SignalGenerator {
     ///
     /// # Arguments
     /// * `current_location` - The current receiver position in ECEF coordinates
-    fn update_channel_parameters(&mut self, current_location: Ecef) {
+    fn update_channel_parameters(
+        &mut self, current_location: Ecef, elapsed_seconds: f64,
+    ) {
         let ephemeris_set_index = self.valid_ephemerides_index;
         let sampling_period = self.sample_frequency.recip();
         for i in 0..MAX_CHAN {
@@ -382,7 +427,7 @@ impl SignalGenerator {
                 );
                 self.channels[i].update_state(
                     &rho,
-                    self.sample_rate,
+                    elapsed_seconds,
                     sampling_period,
                 );
 
@@ -405,310 +450,6 @@ impl SignalGenerator {
                 // Store gain for IQ generation phase
                 self.antenna_gains[i] = gain; // hold the power level constant
             }
-        }
-    }
-
-    /// Handles periodic tasks that occur at regular intervals during
-    /// simulation.
-    ///
-    /// This method performs tasks that need to happen periodically (every 30
-    /// seconds):
-    /// - Updates the navigation message for all active channels
-    /// - Refreshes the ephemeris data set if a newer one is available
-    /// - Updates the navigation subframes if the ephemeris set changed
-    /// - Reallocates satellite channels based on current visibility
-    ///
-    /// These periodic updates ensure that the simulation accurately reflects
-    /// the changing satellite positions and navigation data over time.
-    ///
-    /// # Arguments
-    /// * `current_location` - The current receiver position in ECEF coordinates
-    fn handle_periodic_tasks(&mut self, current_location: Ecef) {
-        let current_step_index =
-            (self.receiver_gps_time.sec * 10.0 + 0.5) as i32;
-        if current_step_index % 300 == 0 {
-            // Every 30 seconds
-            // 1. Update Nav Msg for active channels
-            for ichan in self.channels.iter_mut().take(MAX_CHAN) {
-                if ichan.prn != 0 {
-                    ichan.generate_nav_msg(&self.receiver_gps_time, false);
-                }
-            }
-            // 2. Refresh ephemeris index and subframes if necessary
-            // Refresh ephemeris and subframes
-            // Quick and dirty fix. Need more elegant way.
-            let mut refreshed_eph = false;
-            let next_ephemeris_set_index = self.valid_ephemerides_index + 1;
-            // Check if next ephemeris set is valid and timely
-            if next_ephemeris_set_index < self.ephemerides.len()
-                && self.ephemerides[next_ephemeris_set_index]
-                    .iter()
-                    .take(MAX_SAT)
-                    .any(|eph| eph.vflg)
-            {
-                // Find the earliest ToC in the next set (or check a specific
-                // SV) Simplified check: Assume SV 0's ToC is
-                // representative
-                if self.ephemerides[next_ephemeris_set_index][0].vflg {
-                    let dt = self.ephemerides[next_ephemeris_set_index][0]
-                        .toc
-                        .diff_secs(&self.receiver_gps_time);
-                    // If the next ephemeris is close (e.g., within an hour),
-                    // switch to it
-                    if dt.abs() < SECONDS_IN_HOUR {
-                        // Use absolute diff
-                        self.valid_ephemerides_index = next_ephemeris_set_index;
-                        refreshed_eph = true;
-                        tracing::info!(
-                            next_ephemeris_set_index,
-                            "switched to ephemeris set"
-                        );
-                    }
-                }
-            }
-
-            // If ephemeris refreshed, update subframes for active channels
-            if refreshed_eph {
-                let current_ephemeris_set_index = self.valid_ephemerides_index;
-                for ichan in self
-                    .channels
-                    .iter_mut()
-                    .take(MAX_CHAN)
-                    .filter(|ch| ch.prn != 0)
-                {
-                    let sv = ichan.prn - 1;
-                    ichan.generate_navigation_subframes(
-                        &self.ephemerides[current_ephemeris_set_index][sv],
-                        &self.ionoutc,
-                    );
-                    // self.ephemerides[current_ephemeris_set_index][sv]
-                    //     .generate_navigation_subframes(
-                    //         &self.ionoutc,
-                    //         &mut ichan.sbf,
-                    //     );
-                    // Maybe need to regenerate nav message bits immediately?
-                    // ichan.generate_nav_msg(&self.receiver_gps_time, false);
-                    // // Already done above, maybe redundant
-                }
-            }
-            // Update channel allocation
-            self.allocate_channel(current_location);
-
-            // Show details about simulated channels
-            if self.verbose {
-                Self::log_channel_status(&self.channels);
-            }
-        }
-    }
-
-    /// Runs the GPS signal simulation and generates baseband I/Q samples.
-    ///
-    /// This is the main simulation method that:
-    /// 1. Determines the number of simulation steps based on mode and duration
-    /// 2. For each time step:
-    ///    - Determines the current receiver position (static or from motion
-    ///      file)
-    ///    - Step 1: Updates satellite parameters (pseudorange, phase, and gain)
-    ///    - Step 2: Generates baseband I/Q sample data
-    ///    - Step 3: Periodically updates navigation data (every 30 seconds)
-    ///    - Step 4: Updates simulation time and displays progress
-    ///
-    /// The method must be called after `initialize()`.
-    ///
-    /// # Returns
-    /// * `Ok(())` - If the simulation completes successfully
-    /// * `Err(Error)` - If there's an error during simulation
-    ///
-    /// # Errors
-    /// * Returns an error if the generator was not initialized
-    /// * Returns an error if there's an issue generating or writing samples
-    pub fn run_simulation(&mut self) -> Result<(), Error> {
-        if !self.initialized {
-            return Err(Error::msg("Not initialized!"));
-        }
-
-        if matches!(self.mode, MotionMode::UserControl) {
-            return Err(Error::msg(
-                "run_simulation is not supported in runtime motion control \
-                 mode",
-            ));
-        }
-        // Determine the total number of simulation steps
-        let num_steps = match self.mode {
-            MotionMode::Static => self.simulation_step_count.max(1), /* Ensure at least one step for static */
-            MotionMode::Dynamic => self.simulation_step_count,
-            MotionMode::UserControl => 0,
-        };
-
-        if num_steps == 0 {
-            tracing::warn!("no simulation steps requested");
-            return Ok(());
-        }
-
-        tracing::info!(num_steps, "starting signal generation");
-        // Generate baseband signals
-        self.receiver_gps_time =
-            self.receiver_gps_time.add_secs(self.sample_rate);
-        let time_start = std::time::Instant::now();
-        // Main loop: Iterate through each time interval (0.1 seconds)
-        // From 1..num_steps, because step 0 was done in initialize.
-        for step_index in 1..num_steps {
-            // Select receiver position based on static/dynamic mode
-            let current_location = match self.mode {
-                MotionMode::Static => self.positions[0],
-                MotionMode::Dynamic => self
-                    .positions
-                    .get(step_index)
-                    .copied()
-                    .unwrap_or(self.positions[0]),
-                MotionMode::UserControl => unreachable!(
-                    "UserControl mode is rejected at function entry"
-                ),
-            };
-            // Step 1: Update satellite parameters (pseudorange, phase, and
-            // gain)
-            self.update_channel_parameters(current_location);
-
-            // Step 2: Generate baseband I/Q sample data
-            self.generate_and_write_samples()?;
-            // Update navigation message and channel allocation every 30 seconds
-            // Step 3: Periodically update navigation data (every 30 seconds)
-            self.handle_periodic_tasks(current_location);
-
-            // Step 4: Update simulation time and display progress
-            // Update receiver time
-            self.receiver_gps_time =
-                self.receiver_gps_time.add_secs(self.sample_rate);
-            if self.verbose && step_index % 100 == 0 {
-                let time_into_run_seconds =
-                    (step_index + 1) as f64 * self.sample_rate;
-                tracing::debug!(time_into_run_seconds, "simulation progress");
-            }
-        }
-
-        tracing::info!("done");
-        tracing::info!(
-            process_seconds = time_start.elapsed().as_secs_f32(),
-            "process time"
-        );
-        Ok(())
-    }
-
-    /// Runs the simulation and streams interleaved I/Q blocks (i16) to a caller
-    /// provided callback.
-    ///
-    /// The streamed blocks match the internal I/Q buffer contents used by the
-    /// file output path (before any bit-depth packing).
-    ///
-    /// # Errors
-    /// Returns an error if the generator was not initialized or if the callback
-    /// returns an error.
-    pub fn run_streaming<F, E>(&mut self, mut on_block: F) -> Result<(), E>
-    where
-        F: FnMut(&[i16]) -> Result<(), E>,
-        E: From<Error>,
-    {
-        if !self.initialized {
-            return Err(Error::NotInitialized.into());
-        }
-
-        if matches!(self.mode, MotionMode::UserControl) {
-            return Err(Error::msg(
-                "run_streaming is not supported in runtime motion control mode",
-            )
-            .into());
-        }
-
-        // Determine the total number of simulation steps
-        let num_steps = match self.mode {
-            MotionMode::Static => self.simulation_step_count.max(1),
-            MotionMode::Dynamic => self.simulation_step_count,
-            MotionMode::UserControl => 0,
-        };
-
-        if num_steps == 0 {
-            return Ok(());
-        }
-
-        let mut iq_buffer: Vec<i16> = vec![0; 2 * self.iq_buffer_size];
-
-        // Generate baseband signals
-        self.receiver_gps_time =
-            self.receiver_gps_time.add_secs(self.sample_rate);
-
-        // Main loop: Iterate through each time interval (0.1 seconds)
-        // From 1..num_steps, because step 0 was done in initialize.
-        for step_index in 1..num_steps {
-            let current_location = match self.mode {
-                MotionMode::Static => self.positions[0],
-                MotionMode::Dynamic => self
-                    .positions
-                    .get(step_index)
-                    .copied()
-                    .unwrap_or(self.positions[0]),
-                MotionMode::UserControl => unreachable!(
-                    "UserControl mode is rejected at function entry"
-                ),
-            };
-
-            self.update_channel_parameters(current_location);
-            Self::generate_samples_into(
-                &mut self.channels,
-                &self.antenna_gains,
-                &mut iq_buffer,
-            )?;
-            on_block(&iq_buffer)?;
-            self.handle_periodic_tasks(current_location);
-
-            self.receiver_gps_time =
-                self.receiver_gps_time.add_secs(self.sample_rate);
-        }
-
-        Ok(())
-    }
-
-    /// Runs streaming with runtime motion control, producing blocks until the
-    /// callback returns an error.
-    pub fn run_streaming_user_control<F, E>(
-        &mut self, mut on_block: F,
-    ) -> Result<(), E>
-    where
-        F: FnMut(&[i16]) -> Result<(), E>,
-        E: From<Error>,
-    {
-        if !self.initialized {
-            return Err(Error::NotInitialized.into());
-        }
-        if !matches!(self.mode, MotionMode::UserControl) {
-            return Err(Error::msg(
-                "generator is not in runtime motion control mode",
-            )
-            .into());
-        }
-        let Some(control) = self.runtime_motion_control.clone() else {
-            return Err(
-                Error::msg("runtime motion control not configured").into()
-            );
-        };
-
-        let mut iq_buffer: Vec<i16> = vec![0; 2 * self.iq_buffer_size];
-        self.receiver_gps_time =
-            self.receiver_gps_time.add_secs(self.sample_rate);
-
-        let mut integrator = MotionIntegrator::new(self.positions[0]);
-
-        loop {
-            let current_location = integrator.step(self.sample_rate, &control);
-            self.update_channel_parameters(current_location);
-            Self::generate_samples_into(
-                &mut self.channels,
-                &self.antenna_gains,
-                &mut iq_buffer,
-            )?;
-            on_block(&iq_buffer)?;
-            self.handle_periodic_tasks(current_location);
-            self.receiver_gps_time =
-                self.receiver_gps_time.add_secs(self.sample_rate);
         }
     }
 

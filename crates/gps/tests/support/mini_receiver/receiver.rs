@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 
 use constants::{
     CA_SEQ_LEN_FLOAT, CARR_TO_CODE, CODE_FREQ, LAMBDA_L1_INV, MAX_SAT,
-    SECONDS_IN_WEEK, SPEED_OF_LIGHT_INV,
+    SPEED_OF_LIGHT_INV,
 };
 use geometry::Ecef;
 use gps::{BroadcastEphemeris, Error, GpsTime, IonoUtc, compute_range};
@@ -124,14 +124,13 @@ impl TrackerState {
     }
 
     fn process_block(
-        &mut self, context: &TrackingContext, block_index: usize,
+        &mut self, context: &TrackingContext, block_start_sample: usize,
         block_time: &GpsTime, samples: &[i16],
     ) {
         self.update_tracking_rates(context, block_time);
         let capture_start = &context.start_time;
         let samples_per_complex = 2usize;
         let complex_sample_count = samples.len() / samples_per_complex;
-        let block_start_sample = block_index * complex_sample_count;
 
         for sample_index in 0..complex_sample_count {
             let raw_i = f64::from(samples[sample_index * 2]);
@@ -155,8 +154,7 @@ impl TrackerState {
                 self.code_phase -= CA_SEQ_LEN_FLOAT;
                 let epoch_start_sample = self.current_epoch_start_sample;
                 if epoch_start_sample >= 0.0 {
-                    let epoch_start_time = add_secs_precise(
-                        capture_start,
+                    let epoch_start_time = capture_start.add_secs(
                         epoch_start_sample / context.sample_frequency_hz,
                     );
                     self.prompt_epochs.push(PromptEpoch {
@@ -327,6 +325,16 @@ pub fn assisted_acquisition(
     Ok(metrics)
 }
 
+fn advance_sample_offset(
+    sample_offset: &mut usize, block_samples: usize,
+) -> Result<usize, Error> {
+    let block_start = *sample_offset;
+    *sample_offset = sample_offset
+        .checked_add(block_samples)
+        .ok_or_else(|| Error::msg("mini receiver sample offset overflow"))?;
+    Ok(block_start)
+}
+
 pub fn track_satellites(
     scenario: &mut FixedScenario, acquisitions: &[AcquisitionMetric],
 ) -> Result<Vec<TrackedSatellite>, Error> {
@@ -344,11 +352,14 @@ pub fn track_satellites(
         tracker_states[acquisition.prn - 1] = Some(state);
     }
 
-    scenario.run_streaming::<_, Error>(|block_index, block_time, iq| {
+    let mut sample_offset = 0usize;
+    scenario.run_streaming::<_, Error>(|_block_index, block_time, iq| {
+        let block_start =
+            advance_sample_offset(&mut sample_offset, iq.len() / 2)?;
         for tracker_state in tracker_states.iter_mut().flatten() {
             tracker_state.process_block(
                 &tracking_context,
-                block_index,
+                block_start,
                 block_time,
                 iq,
             );
@@ -368,10 +379,9 @@ pub fn track_satellites(
 }
 
 fn aligned_navigation_start(time: &GpsTime) -> GpsTime {
-    let aligned_seconds = f64::from((time.sec + 0.5) as u32 / 30) * 30.0;
     GpsTime {
         week: time.week,
-        sec: aligned_seconds,
+        sec: (time.sec / 30.0).floor() * 30.0,
     }
 }
 
@@ -388,46 +398,36 @@ fn predicted_code_phase(
     code_phase
 }
 
-fn add_secs_precise(time: &GpsTime, dt: f64) -> GpsTime {
-    let mut week = time.week;
-    let mut sec = time.sec + dt;
-
-    while sec >= SECONDS_IN_WEEK {
-        sec -= SECONDS_IN_WEEK;
-        week += 1;
-    }
-    while sec < 0.0 {
-        sec += SECONDS_IN_WEEK;
-        week -= 1;
-    }
-
-    GpsTime { week, sec }
-}
-
 #[cfg(test)]
 mod tests {
     use gps::GpsTime;
 
-    use super::add_secs_precise;
+    use super::{advance_sample_offset, aligned_navigation_start};
 
     #[test]
-    fn add_secs_precise_preserves_sample_scale_offsets() {
+    fn navigation_start_floors_fractional_frame_time() {
         let time = GpsTime {
-            week: 2190,
-            sec: 123_456.0,
+            week: 2_190,
+            sec: 29.999_999,
         };
-        let sample_offset_seconds = 1_000.0 / 2_600_000.0;
+        assert_eq!(aligned_navigation_start(&time), GpsTime {
+            week: 2_190,
+            sec: 0.0,
+        });
+    }
 
-        let rounded = time.add_secs(sample_offset_seconds);
-        let precise = add_secs_precise(&time, sample_offset_seconds);
-
-        assert!(
-            (rounded.diff_secs(&time) - sample_offset_seconds).abs() > 1.0e-4,
-            "GpsTime::add_secs unexpectedly preserved sample-scale precision"
-        );
-        assert!(
-            (precise.diff_secs(&time) - sample_offset_seconds).abs() < 1.0e-12,
-            "add_secs_precise lost sample-scale precision"
-        );
+    #[test]
+    fn variable_blocks_accumulate_actual_prior_sample_counts()
+    -> Result<(), gps::Error> {
+        let mut offset = 0usize;
+        let starts = [33_333, 33_334, 33_333]
+            .into_iter()
+            .map(|block_samples| {
+                advance_sample_offset(&mut offset, block_samples)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        assert_eq!(starts, vec![0, 33_333, 66_667]);
+        assert_eq!(offset, 100_000);
+        Ok(())
     }
 }

@@ -35,6 +35,13 @@ fn navigation_path() -> PathBuf {
 }
 
 #[test]
+fn progress_uses_actual_emitted_samples_for_fractional_blocks() {
+    let progress =
+        compute_progress(Instant::now(), 2, 150_000, 1_000_000.0, None);
+    assert!((progress.sim_seconds - 0.15).abs() < f64::EPSILON);
+}
+
+#[test]
 fn manual_mode_streaming_runs_without_new_input_until_cancelled()
 -> Result<(), String> {
     let config = manual_config();

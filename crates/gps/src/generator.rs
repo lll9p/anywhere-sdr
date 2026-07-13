@@ -10,6 +10,8 @@ mod builder;
 mod motion_control;
 /// Core signal generation implementation
 mod signal_generator;
+/// Authoritative emitted-sample timeline
+mod timeline;
 /// Utility functions and types for signal generation
 mod utils;
 

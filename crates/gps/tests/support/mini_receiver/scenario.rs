@@ -129,13 +129,15 @@ impl FixedScenario {
         E: From<Error>,
     {
         let stream_start = self.start_time.clone();
-        let sample_rate_seconds = self.generator.sample_rate;
+        let sample_frequency_hz = self.generator.sample_frequency;
         let mut block_index = 0usize;
+        let mut emitted_samples = 0usize;
 
         self.generator.run_streaming::<_, E>(|iq| {
-            let block_time =
-                stream_start.add_secs(block_index as f64 * sample_rate_seconds);
+            let block_time = stream_start
+                .add_secs(emitted_samples as f64 / sample_frequency_hz);
             on_block(block_index, &block_time, iq)?;
+            emitted_samples += iq.len() / 2;
             block_index += 1;
             Ok(())
         })

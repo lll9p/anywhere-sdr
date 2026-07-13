@@ -207,8 +207,11 @@ impl Args {
 
         let time_start = std::time::Instant::now();
         let mut blocks: u64 = 0;
+        let mut total_samples: u64 = 0;
         let streaming_result = generator.run_streaming::<_, Error>(|block| {
             blocks = blocks.wrapping_add(1);
+            total_samples =
+                total_samples.saturating_add((block.len() / 2) as u64);
             tee.write_block_i16(block)
         });
 
@@ -220,8 +223,7 @@ impl Args {
         finish_result?;
 
         if cpu_only_bench {
-            let samples_per_block = generator.iq_buffer_size as u64;
-            let total_samples = samples_per_block.saturating_mul(blocks);
+            let maximum_samples_per_block = generator.iq_buffer_size as u64;
             let elapsed_seconds = elapsed.as_secs_f64();
             let samples_per_second = if elapsed_seconds > 0.0 {
                 total_samples as f64 / elapsed_seconds
@@ -231,12 +233,12 @@ impl Args {
 
             println!(
                 "cpu_bench sample_frequency_hz={} step_seconds={:.6} \
-                 blocks={} samples_per_block={} total_samples={} \
+                 blocks={} maximum_samples_per_block={} total_samples={} \
                  elapsed_seconds={:.3} throughput_msps={:.3}",
                 generator.sample_frequency,
                 generator.sample_rate,
                 blocks,
-                samples_per_block,
+                maximum_samples_per_block,
                 total_samples,
                 elapsed_seconds,
                 samples_per_second / 1_000_000.0,

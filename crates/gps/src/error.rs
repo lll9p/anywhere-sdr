@@ -79,6 +79,13 @@ pub enum Error {
     #[error("Signal generator not initialized")]
     NotInitialized,
 
+    /// Error after a callback consumed the final block but rejected the run
+    #[error(
+        "Finite run was interrupted after its final sample; call initialize() \
+         before starting a new run"
+    )]
+    FiniteRunInterruptedAtEnd,
+
     /// Error from the RINEX parsing module
     #[error("RINEX error: {0}")]
     Rinex(#[from] rinex::error::Error),
