@@ -2,9 +2,9 @@ use std::fmt::{self, Display};
 
 use thiserror::Error;
 
-struct FinalizationFailureDisplay<'a>(&'a [Error]);
+struct FailureListDisplay<'a>(&'a [Error]);
 
-impl Display for FinalizationFailureDisplay<'_> {
+impl Display for FailureListDisplay<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (index, error) in self.0.iter().enumerate() {
             if index != 0 {
@@ -16,10 +16,8 @@ impl Display for FinalizationFailureDisplay<'_> {
     }
 }
 
-fn display_finalization_failures(
-    failures: &[Error],
-) -> FinalizationFailureDisplay<'_> {
-    FinalizationFailureDisplay(failures)
+fn display_failures(failures: &[Error]) -> FailureListDisplay<'_> {
+    FailureListDisplay(failures)
 }
 
 /// Custom error type for the gpssim application
@@ -57,7 +55,7 @@ pub enum Error {
     /// Multiple TX sinks failed during ordered finalization
     #[error(
         "multiple TX finalization failures: first: {first}; additional: {}",
-        display_finalization_failures(.additional)
+        display_failures(.additional)
     )]
     MultipleFinalizationFailures {
         /// First failure in configured sink order
@@ -78,6 +76,42 @@ pub enum Error {
         primary: Box<Error>,
         /// Secondary ordered output-finalization failure
         finalization: Box<Error>,
+    },
+
+    /// A terminal operation failed
+    #[error("terminal operation `{operation}` failed: {source}")]
+    TerminalOperation {
+        /// Stable operation label
+        operation: &'static str,
+        /// Underlying terminal I/O failure
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Multiple terminal restoration operations failed
+    #[error(
+        "multiple terminal cleanup failures: first: {first}; additional: {}",
+        display_failures(.additional)
+    )]
+    MultipleTerminalCleanupFailures {
+        /// First failure in restoration order
+        #[source]
+        first: Box<Error>,
+        /// Remaining failures in restoration order
+        additional: Vec<Error>,
+    },
+
+    /// TUI execution and terminal restoration both failed
+    #[error(
+        "TUI operation failed: {primary}; terminal cleanup also failed: \
+         {cleanup}"
+    )]
+    TuiAndTerminalCleanupFailed {
+        /// Primary initialization, draw, poll, or read failure
+        #[source]
+        primary: Box<Error>,
+        /// Secondary ordered terminal restoration failure
+        cleanup: Box<Error>,
     },
 
     /// Error originating from a TX backend (with optional context)
@@ -131,11 +165,20 @@ impl Error {
             message: message.into(),
         }
     }
+
+    pub(crate) fn terminal_operation(
+        operation: &'static str, source: std::io::Error,
+    ) -> Self {
+        Error::TerminalOperation { operation, source }
+    }
 }
 
-pub(crate) fn resolve_finalization_failures(
-    failures: Vec<Error>,
-) -> Result<(), Error> {
+fn resolve_ordered_failures<F>(
+    failures: Vec<Error>, aggregate: F,
+) -> Result<(), Error>
+where
+    F: FnOnce(Box<Error>, Vec<Error>) -> Error,
+{
     let mut failures = failures.into_iter();
     let Some(first) = failures.next() else {
         return Ok(());
@@ -145,10 +188,44 @@ pub(crate) fn resolve_finalization_failures(
     };
     let mut additional = vec![second];
     additional.extend(failures);
-    Err(Error::MultipleFinalizationFailures {
-        first: Box::new(first),
-        additional,
+    Err(aggregate(Box::new(first), additional))
+}
+
+pub(crate) fn resolve_finalization_failures(
+    failures: Vec<Error>,
+) -> Result<(), Error> {
+    resolve_ordered_failures(failures, |first, additional| {
+        Error::MultipleFinalizationFailures { first, additional }
     })
+}
+
+pub(crate) fn resolve_terminal_cleanup_failures(
+    failures: Vec<Error>,
+) -> Result<(), Error> {
+    resolve_ordered_failures(failures, |first, additional| {
+        Error::MultipleTerminalCleanupFailures { first, additional }
+    })
+}
+
+pub(crate) fn attach_terminal_cleanup(
+    primary: Error, cleanup: Result<(), Error>,
+) -> Error {
+    match cleanup {
+        Ok(()) => primary,
+        Err(cleanup) => Error::TuiAndTerminalCleanupFailed {
+            primary: Box::new(primary),
+            cleanup: Box::new(cleanup),
+        },
+    }
+}
+
+pub(crate) fn resolve_tui_and_terminal_cleanup<T>(
+    primary: Result<T, Error>, cleanup: Result<(), Error>,
+) -> Result<T, Error> {
+    match primary {
+        Ok(value) => cleanup.map(|()| value),
+        Err(primary) => Err(attach_terminal_cleanup(primary, cleanup)),
+    }
 }
 
 pub(crate) fn resolve_run_and_finish<T>(

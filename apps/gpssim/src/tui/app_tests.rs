@@ -14,7 +14,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::*;
 use crate::{
     cli::TxBackend,
-    tui::{manual_control::ManualControlSession, worker::WorkerHandle},
+    tui::{
+        manual_control::ManualControlSession,
+        worker::{Progress, WorkerEvent, WorkerHandle},
+    },
     tui_config::{ManualMotionConfig, MotionSource, TuiConfig},
     utils::LogBuffer,
 };
@@ -41,13 +44,7 @@ fn navigation_path() -> PathBuf {
 }
 
 fn new_app(config: TuiConfig) -> App {
-    let (worker_events_tx, worker_events_rx) = mpsc::channel();
-    App::new(
-        config,
-        LogBuffer::new(64),
-        worker_events_rx,
-        worker_events_tx,
-    )
+    App::new(config, LogBuffer::new(64))
 }
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -66,7 +63,7 @@ fn manual_mode_requires_initial_position_before_start() {
     let mut app = new_app(manual_config());
     app.config.manual_motion.initial_llh = None;
 
-    start_run(&mut app);
+    app.start_run();
 
     assert_eq!(
         app.message.as_deref(),
@@ -80,7 +77,7 @@ fn manual_mode_rejects_motion_file_conflicts_before_start() {
     let mut app = new_app(manual_config());
     app.config.user_motion_llh = Some(PathBuf::from("motion.csv"));
 
-    start_run(&mut app);
+    app.start_run();
 
     assert_eq!(
         app.message.as_deref(),
@@ -104,7 +101,7 @@ fn manual_mode_preserves_geometry_error_for_invalid_initial_llh() {
     ));
 
     let mut app = new_app(config);
-    start_run(&mut app);
+    app.start_run();
     assert!(app.message.as_deref().is_some_and(|message| {
         message.contains("Invalid geodetic coordinates")
     }));
@@ -137,17 +134,36 @@ fn manual_mode_hotkeys_update_targets() -> Result<(), String> {
 }
 
 #[test]
-fn cancel_event_resets_state_and_joins_worker() {
+fn cancel_event_resets_state_and_joins_worker() -> Result<(), String> {
     let mut app = new_app(TuiConfig::default());
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_thread = cancel.clone();
+    let (event_tx, events) = mpsc::channel();
+    let join = thread::Builder::new()
+        .spawn(move || {
+            while !cancel_for_thread.load(Ordering::Relaxed) {
+                thread::yield_now();
+            }
+            if event_tx
+                .send(WorkerEvent::Cancelled(Progress {
+                    blocks: 1,
+                    elapsed: Duration::from_millis(50),
+                    sim_seconds: 0.1,
+                    throughput_msps: 0.2,
+                    hackrf_underruns: None,
+                }))
+                .is_err()
+            {
+                tracing::debug!("test app dropped worker event receiver");
+            }
+        })
+        .map_err(|error| error.to_string())?;
     app.worker = Some(WorkerHandle {
         cancel: cancel.clone(),
-        join: thread::spawn(move || {
-            while !cancel_for_thread.load(Ordering::Relaxed) {
-                thread::sleep(Duration::from_millis(5));
-            }
-        }),
+        events,
+        join,
+        pending_terminal: None,
+        events_disconnected: false,
     });
     app.run_state = RunState::Running;
 
@@ -156,15 +172,14 @@ fn cancel_event_resets_state_and_joins_worker() {
     assert_eq!(app.run_state, RunState::Stopping);
     assert!(cancel.load(Ordering::Relaxed));
 
-    app.handle_worker_event(WorkerEvent::Cancelled(Progress {
-        blocks: 1,
-        elapsed: Duration::from_millis(50),
-        sim_seconds: 0.1,
-        throughput_msps: 0.2,
-        hackrf_underruns: None,
-    }));
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while app.worker.is_some() && std::time::Instant::now() < deadline {
+        app.drain_worker_events();
+        thread::yield_now();
+    }
 
     assert_eq!(app.run_state, RunState::Idle);
     assert!(app.worker.is_none());
     assert!(matches!(app.last_run, Some(LastRun::Cancelled)));
+    Ok(())
 }

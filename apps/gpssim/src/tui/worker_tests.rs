@@ -83,13 +83,12 @@ fn manual_mode_streaming_runs_without_new_input_until_cancelled()
     let config = manual_config();
     let session = ManualControlSession::from_config(&config.manual_motion)
         .map_err(|error| error.to_string())?;
-    let (event_tx, event_rx) = mpsc::channel();
-
-    let handle = spawn_worker(config, Some(session.control.clone()), event_tx);
+    let handle = spawn_worker(config, Some(session.control.clone()))
+        .map_err(|error| error.to_string())?;
 
     thread::sleep(Duration::from_millis(350));
     let mut observed_events = Vec::new();
-    while let Ok(event) = event_rx.try_recv() {
+    while let Ok(event) = handle.events.try_recv() {
         observed_events.push(format!("{event:?}"));
     }
     assert!(
@@ -114,7 +113,7 @@ fn manual_mode_streaming_runs_without_new_input_until_cancelled()
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut saw_cancelled = false;
     while Instant::now() < deadline {
-        match event_rx.recv_timeout(Duration::from_millis(100)) {
+        match handle.events.recv_timeout(Duration::from_millis(100)) {
             Ok(WorkerEvent::Cancelled(_)) => {
                 saw_cancelled = true;
                 break;

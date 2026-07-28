@@ -41,22 +41,44 @@ pub(super) enum WorkerEvent {
     Error(String),
 }
 
+pub(super) enum PendingTerminalOutcome {
+    Finished(Progress),
+    Cancelled(Progress),
+    Error(String),
+}
+
 pub(super) struct WorkerHandle {
     pub(super) cancel: Arc<AtomicBool>,
+    pub(super) events: mpsc::Receiver<WorkerEvent>,
     pub(super) join: thread::JoinHandle<()>,
+    pub(super) pending_terminal: Option<PendingTerminalOutcome>,
+    pub(super) events_disconnected: bool,
 }
 
 pub(super) fn spawn_worker(
     config: TuiConfig, manual_control: Option<RuntimeMotionControl>,
-    event_tx: mpsc::Sender<WorkerEvent>,
-) -> WorkerHandle {
+) -> std::io::Result<WorkerHandle> {
+    let (event_tx, events) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_thread = cancel.clone();
-    let join = thread::spawn(move || {
-        worker_thread_main(config, manual_control, cancel_for_thread, event_tx);
-    });
+    let join = thread::Builder::new()
+        .name("gpssim-worker".to_string())
+        .spawn(move || {
+            worker_thread_main(
+                config,
+                manual_control,
+                cancel_for_thread,
+                event_tx,
+            );
+        })?;
 
-    WorkerHandle { cancel, join }
+    Ok(WorkerHandle {
+        cancel,
+        events,
+        join,
+        pending_terminal: None,
+        events_disconnected: false,
+    })
 }
 
 pub(super) fn resolve_output_path(config: &TuiConfig) -> Option<PathBuf> {

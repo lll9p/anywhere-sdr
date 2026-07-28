@@ -1,4 +1,4 @@
-use std::sync::{atomic::Ordering, mpsc};
+use std::sync::atomic::Ordering;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -10,9 +10,7 @@ use super::{
     manual_control::{
         MANUAL_HEADING_STEP_DEG, MANUAL_SPEED_STEP_MPS, ManualControlSession,
     },
-    worker::{
-        Progress, WorkerEvent, WorkerHandle, describe_sinks, spawn_worker,
-    },
+    worker::{Progress, WorkerHandle, describe_sinks},
 };
 use crate::{cli::TxBackend, tui_config::TuiConfig, utils::LogBuffer};
 
@@ -88,17 +86,11 @@ pub(super) struct App {
     pub(super) log_scroll: u16,
     pub(super) manual_session: Option<ManualControlSession>,
 
-    worker: Option<WorkerHandle>,
-    worker_events_rx: mpsc::Receiver<WorkerEvent>,
-    worker_events_tx: mpsc::Sender<WorkerEvent>,
+    pub(super) worker: Option<WorkerHandle>,
 }
 
 impl App {
-    pub(super) fn new(
-        config: TuiConfig, log_buffer: LogBuffer,
-        worker_events_rx: mpsc::Receiver<WorkerEvent>,
-        worker_events_tx: mpsc::Sender<WorkerEvent>,
-    ) -> Self {
+    pub(super) fn new(config: TuiConfig, log_buffer: LogBuffer) -> Self {
         let sinks_desc = describe_sinks(&config);
         Self {
             tab: ActiveTab::Config,
@@ -116,19 +108,11 @@ impl App {
             log_scroll: 0,
             manual_session: None,
             worker: None,
-            worker_events_rx,
-            worker_events_tx,
         }
     }
 
     pub(super) fn should_exit(&self) -> bool {
         self.exit_requested && self.worker.is_none()
-    }
-
-    pub(super) fn drain_worker_events(&mut self) {
-        while let Ok(event) = self.worker_events_rx.try_recv() {
-            self.handle_worker_event(event);
-        }
     }
 
     pub(super) fn push_log(&mut self, line: impl Into<String>) {
@@ -145,65 +129,15 @@ impl App {
         }
     }
 
-    fn request_exit(&mut self) {
+    pub(super) fn request_exit(&mut self) {
         self.exit_requested = true;
         self.request_cancel();
     }
 
-    fn request_cancel(&mut self) {
+    pub(super) fn request_cancel(&mut self) {
         if let Some(worker) = &self.worker {
             worker.cancel.store(true, Ordering::Relaxed);
             self.run_state = RunState::Stopping;
-        }
-    }
-
-    fn join_worker_if_done(&mut self) {
-        let Some(worker) = self.worker.take() else {
-            return;
-        };
-
-        match worker.join.join() {
-            Ok(()) => {}
-            Err(_) => {
-                self.push_log("worker thread panicked");
-            }
-        }
-        self.run_state = RunState::Idle;
-    }
-
-    fn handle_worker_event(&mut self, event: WorkerEvent) {
-        match event {
-            WorkerEvent::Started { sinks } => {
-                self.sinks_desc = sinks;
-                self.push_log("run started");
-                self.run_state = RunState::Running;
-                self.refresh_manual_snapshot();
-            }
-            WorkerEvent::Log(line) => {
-                self.push_log(line);
-            }
-            WorkerEvent::Progress(progress) => {
-                self.progress = Some(progress);
-                self.run_state = RunState::Running;
-                self.refresh_manual_snapshot();
-            }
-            WorkerEvent::Finished(progress) => {
-                self.progress = Some(progress);
-                self.last_run = Some(LastRun::Finished);
-                self.push_log("run finished");
-                self.join_worker_if_done();
-            }
-            WorkerEvent::Cancelled(progress) => {
-                self.progress = Some(progress);
-                self.last_run = Some(LastRun::Cancelled);
-                self.push_log("run cancelled");
-                self.join_worker_if_done();
-            }
-            WorkerEvent::Error(message) => {
-                self.last_run = Some(LastRun::Error(message.clone()));
-                self.push_log(format!("run error: {message}"));
-                self.join_worker_if_done();
-            }
         }
     }
 }
@@ -237,7 +171,7 @@ pub(super) fn handle_key_event(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Enter => {
             if app.tab == ActiveTab::Config {
-                start_run(app);
+                app.start_run();
             } else if let Some(session) = running_manual_session_mut(app) {
                 session.resume_cruise();
                 session.refresh_snapshot();
@@ -354,48 +288,6 @@ fn running_manual_session_mut(
     }
 
     app.manual_session.as_mut()
-}
-
-fn start_run(app: &mut App) {
-    if app.worker.is_some() {
-        app.message = Some("already running".to_string());
-        return;
-    }
-
-    if let Err(message) = app.config.validate_for_run() {
-        app.message = Some(message);
-        return;
-    }
-
-    let manual_session = if app.config.uses_manual_motion() {
-        match ManualControlSession::from_config(&app.config.manual_motion) {
-            Ok(session) => Some(session),
-            Err(error) => {
-                app.message = Some(error.to_string());
-                return;
-            }
-        }
-    } else {
-        None
-    };
-
-    let config = app.config.clone();
-    app.last_run = None;
-    app.progress = None;
-    app.run_state = RunState::Running;
-    app.sinks_desc = describe_sinks(&config);
-    app.manual_session = manual_session;
-    app.message = None;
-
-    let handle = spawn_worker(
-        config,
-        app.manual_session
-            .as_ref()
-            .map(|session| session.control.clone()),
-        app.worker_events_tx.clone(),
-    );
-    app.worker = Some(handle);
-    app.tab = ActiveTab::Run;
 }
 
 #[cfg(test)]
