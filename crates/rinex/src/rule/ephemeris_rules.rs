@@ -49,11 +49,7 @@ fn read_ephemeris(
                     to_int(next_str(&mut epoch_rules, "epoch minutes")?)?;
                 let second =
                     to_float(next_str(&mut epoch_rules, "epoch seconds")?)?;
-                // The RINEX 2 year pivot remains owned by AUD-009. Preserve
-                // the current 20xx interpretation in this time-scale change.
-                let year = 2_000_i32.checked_add(year).ok_or_else(|| {
-                    Error::rule("RINEX epoch year exceeds the supported range")
-                })?;
+                let year = expand_rinex_2_year(year)?;
                 builder.set_time_of_clock(GpsCalendarDateTime::new(
                     year, month, day, hour, minute, second,
                 )?);
@@ -98,6 +94,17 @@ fn read_ephemeris(
         }
     }
     Ok(())
+}
+
+/// Expands a RINEX 2 two-digit navigation epoch year to the full year.
+fn expand_rinex_2_year(year: i32) -> Result<i32, Error> {
+    match year {
+        0..=79 => Ok(2_000 + year),
+        80..=99 => Ok(1_900 + year),
+        _ => Err(Error::rule(format!(
+            "RINEX 2 epoch year {year} is outside the two-digit range 0..=99"
+        ))),
+    }
 }
 
 /// Parses the four floating-point values in one RINEX orbit row.

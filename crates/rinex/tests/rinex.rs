@@ -1,10 +1,12 @@
 use pest::Parser;
 use rinex::{error::Error, rule::*};
+
 #[test]
 fn rinex_parser() -> Result<(), Error> {
     let _ = RinexParser::parse(Rule::rinex, RINEX_DATA).map_err(Box::new)?;
     Ok(())
 }
+
 #[test]
 fn rinex_read() -> Result<(), Error> {
     let rinex = Rinex::read_string(RINEX_DATA)?;
@@ -20,10 +22,36 @@ fn rinex_read() -> Result<(), Error> {
     assert!(first.time_of_clock.second.abs() < f64::EPSILON);
     Ok(())
 }
+
 #[test]
-fn rinex_epoch_year_overflow_is_error() {
-    let invalid = RINEX_DATA.replacen(" 1 24  6  1", " 1 2147483647  6  1", 1);
-    assert!(Rinex::read_string(&invalid).is_err());
+fn rinex_epoch_year_uses_rinex_2_pivot() -> Result<(), Error> {
+    for (encoded_year, expected_year) in
+        [("79", 2079), ("80", 1980), ("99", 1999), ("00", 2000)]
+    {
+        let epoch = format!(" 1 {encoded_year}  6  1");
+        let data = RINEX_DATA.replacen(" 1 24  6  1", &epoch, 1);
+        let rinex = Rinex::read_string(&data)?;
+        let first = rinex
+            .ephemerides
+            .first()
+            .ok_or_else(|| Error::rule("missing test ephemeris"))?;
+        assert_eq!(first.time_of_clock.year, expected_year);
+    }
+    Ok(())
+}
+
+#[test]
+fn rinex_epoch_year_outside_two_digit_domain_is_contextual_error() {
+    for encoded_year in ["100", "2147483647"] {
+        let epoch = format!(" 1 {encoded_year}  6  1");
+        let data = RINEX_DATA.replacen(" 1 24  6  1", &epoch, 1);
+        assert!(matches!(
+            Rinex::read_string(&data),
+            Err(Error::Rule(message))
+                if message.contains("RINEX 2 epoch year")
+                    && message.contains(encoded_year)
+        ));
+    }
 }
 const RINEX_DATA: &str = r"     2              NAVIGATION DATA                         RINEX VERSION / TYPE
 CCRINEXN V1.6.0 UX  CDDIS               02-JUN-24 23:31     PGM / RUN BY / DATE

@@ -1,10 +1,11 @@
-use std::{error::Error as StdError, path::PathBuf, time::Duration};
+use std::{error::Error as StdError, fs, path::PathBuf, time::Duration};
 
 use gps::{
     Error, GPS_UTC_LEAP_SECONDS, GpsCalendarDateTime, GpsTime,
     SignalGeneratorBuilder, UtcDateTime, read_navigation_data,
 };
 use jiff::{Timestamp, civil};
+use rinex::Rinex;
 
 type CalendarDate = (i32, i32, i32);
 type LeapVector = (CalendarDate, CalendarDate, i64);
@@ -271,6 +272,38 @@ fn invalid_and_pre_epoch_calendar_inputs_return_typed_errors()
             scale: "GPS calendar"
         })
     ));
+    Ok(())
+}
+
+fn parsed_rinex_epoch_gps_time(
+    navigation: &str, epoch_fields: &str,
+) -> Result<GpsTime, Box<dyn StdError>> {
+    let navigation =
+        navigation.replacen(" 1 22  1  1  0  0  0.0", epoch_fields, 1);
+    let rinex = Rinex::read_string(&navigation)?;
+    let first = rinex.ephemerides.first().ok_or(Error::NoEphemeris)?;
+    let calendar = GpsCalendarDateTime::try_from(&first.time_of_clock)?;
+    Ok(GpsTime::from_gps_calendar(&calendar)?)
+}
+
+#[test]
+fn rinex_2_epoch_pivot_preserves_exact_gps_calendar_time()
+-> Result<(), Box<dyn StdError>> {
+    let navigation_path = PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
+        .join("resources/brdc0010.22n");
+    let navigation = fs::read_to_string(navigation_path)?;
+    let vectors = [
+        (" 1 79  1  1  0  0  0.0", 5_165, 0.0),
+        (" 1 80  1  6  0  0  0.0", 0, 0.0),
+        (" 1 99  8 21 23 59 59.0", 1_023, 604_799.0),
+        (" 1 99  8 22  0  0  0.0", 1_024, 0.0),
+        (" 1 00  1  2  0  0  0.0", 1_043, 0.0),
+    ];
+
+    for (epoch_fields, expected_week, expected_sec) in vectors {
+        let gps = parsed_rinex_epoch_gps_time(&navigation, epoch_fields)?;
+        assert_same_gps(&gps, expected_week, expected_sec);
+    }
     Ok(())
 }
 
