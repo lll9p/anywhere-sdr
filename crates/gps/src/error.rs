@@ -109,6 +109,19 @@ pub enum Error {
     #[error("IQWriter not initialized")]
     IQWriterNotInitialized,
 
+    /// Error retaining both a primary output failure and finalization failure
+    #[error(
+        "output operation failed: {primary}; output finalization also failed: \
+         {finalization}"
+    )]
+    OutputFinalization {
+        /// Primary generation, packing, or write failure
+        #[source]
+        primary: Box<Error>,
+        /// Secondary failure encountered while finalizing the output
+        finalization: Box<Error>,
+    },
+
     /// Error when signal generator is not properly initialized
     #[error("Signal generator not initialized")]
     NotInitialized,
@@ -119,6 +132,13 @@ pub enum Error {
          before starting a new run"
     )]
     FiniteRunInterruptedAtEnd,
+
+    /// Error after direct output failed and cannot safely be resumed
+    #[error(
+        "Finite run output failed; call initialize() before starting another \
+         direct run"
+    )]
+    FiniteRunOutputFailed,
 
     /// Error from the RINEX parsing module
     #[error("RINEX error: {0}")]
@@ -286,6 +306,21 @@ impl Error {
     #[inline]
     pub fn no_current_ephemerides() -> Self {
         Error::NoCurrentEphemerides
+    }
+}
+
+/// Resolves a primary operation and its independently attempted finalization.
+pub(crate) fn resolve_with_finalization<T>(
+    primary: Result<T, Error>, finalization: Result<(), Error>,
+) -> Result<T, Error> {
+    match (primary, finalization) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(primary), Ok(())) => Err(primary),
+        (Ok(_), Err(finalization)) => Err(finalization),
+        (Err(primary), Err(finalization)) => Err(Error::OutputFinalization {
+            primary: Box::new(primary),
+            finalization: Box::new(finalization),
+        }),
     }
 }
 

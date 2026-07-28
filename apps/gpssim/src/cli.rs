@@ -11,6 +11,7 @@ use gps::{IqBlockSizing, SignalGenerator, SignalGeneratorBuilder};
 
 use crate::{
     Error,
+    error::resolve_run_and_finish,
     tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, NullTxSink, TxSink, TxTee},
 };
 
@@ -249,9 +250,7 @@ impl Args {
         let elapsed = time_start.elapsed();
 
         let finish_result = tee.finish();
-
-        streaming_result?;
-        finish_result?;
+        resolve_run_and_finish(streaming_result, finish_result)?;
 
         if cpu_only_bench {
             let maximum_samples_per_block = generator.iq_buffer_size as u64;

@@ -215,10 +215,8 @@ impl SignalGenerator {
     fn generate_and_write_samples(
         &mut self, complex_sample_count: usize,
     ) -> Result<(), Error> {
-        let writer = self
-            .writer
-            .as_mut()
-            .ok_or_else(|| Error::msg("IQWriter not initialized"))?;
+        let writer =
+            self.writer.as_mut().ok_or(Error::IQWriterNotInitialized)?;
         let block_sizing = IqBlockSizing::new(complex_sample_count)?;
         writer.buffer_size = block_sizing.complex_samples();
         writer.buffer.resize(block_sizing.interleaved_i16_len(), 0);

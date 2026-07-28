@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use gps::{DataFormat, IQWriter, IqBlockSizing};
 
-use crate::Error;
+use crate::{Error, error::resolve_finalization_failures};
 
 /// `HackRF` transmission backend.
 mod hackrf;
@@ -53,38 +53,19 @@ impl TxSink for TxTee {
         &mut self, interleaved_iq_i16: &[i16],
     ) -> Result<(), Error> {
         for sink in &mut self.sinks {
-            if let Err(err) = sink.write_block_i16(interleaved_iq_i16) {
-                for other in &mut self.sinks {
-                    if let Err(finish_err) = other.finish() {
-                        tracing::warn!(
-                            backend = other.backend(),
-                            error = %finish_err,
-                            "tx backend finish failed after upstream error"
-                        );
-                    }
-                }
-                return Err(err);
-            }
+            sink.write_block_i16(interleaved_iq_i16)?;
         }
         Ok(())
     }
 
     fn finish(&mut self) -> Result<(), Error> {
-        let mut first_error: Option<Error> = None;
+        let mut failures = Vec::new();
         for sink in &mut self.sinks {
-            if let Err(err) = sink.finish() {
-                if first_error.is_none() {
-                    first_error = Some(err);
-                } else {
-                    tracing::warn!(
-                        backend = sink.backend(),
-                        error = %err,
-                        "tx backend finish failed"
-                    );
-                }
+            if let Err(error) = sink.finish() {
+                failures.push(error);
             }
         }
-        first_error.map_or(Ok(()), Err)
+        resolve_finalization_failures(failures)
     }
 }
 
@@ -201,7 +182,7 @@ impl TxSink for FileTxSink {
     }
 
     fn finish(&mut self) -> Result<(), Error> {
-        self.writer.finish_packing().map_err(|err| {
+        self.writer.finish().map_err(|err| {
             Error::tx_backend_with_source(
                 self.backend(),
                 format!("path={}", self.path.display()),
@@ -296,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn tee_finishes_other_sinks_on_error() -> Result<(), Error> {
+    fn tee_defers_finalization_after_write_error() -> Result<(), Error> {
         let finished_ok = Arc::new(AtomicBool::new(false));
         let writes_ok = Arc::new(AtomicUsize::new(0));
 
@@ -324,6 +305,8 @@ mod tests {
             }
             Err(err) => err,
         };
+        assert!(!finished_ok.load(Ordering::SeqCst));
+        tee.finish()?;
         assert!(finished_ok.load(Ordering::SeqCst));
 
         let error_string = err.to_string();
@@ -469,3 +452,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tx/finalization_tests.rs"]
+mod finalization_tests;

@@ -4,6 +4,7 @@ use geometry::Ecef;
 use super::SignalGenerator;
 use crate::{
     Error, GpsTime, IqBlockSizing,
+    error::resolve_with_finalization,
     generator::{
         MotionMode, motion_control::MotionIntegrator, timeline::TimelineBlock,
         utils::ephemeris_set_matches_time,
@@ -20,6 +21,8 @@ pub(in crate::generator) enum FiniteRunState {
     Interrupted,
     /// An invocation successfully exhausted the finite timeline.
     Completed,
+    /// Direct output failed and cannot safely continue on the same stream.
+    OutputFailed,
 }
 
 impl SignalGenerator {
@@ -115,6 +118,9 @@ impl SignalGenerator {
                     return Err(Error::FiniteRunInterruptedAtEnd);
                 }
             }
+            FiniteRunState::OutputFailed => {
+                return Err(Error::FiniteRunOutputFailed);
+            }
             FiniteRunState::Ready => {}
         }
         self.finite_run_state = FiniteRunState::Interrupted;
@@ -184,6 +190,28 @@ impl SignalGenerator {
         Ok(())
     }
 
+    /// Emits every remaining direct-file timeline block.
+    fn run_direct_blocks(
+        &mut self, emitted_blocks: &mut usize,
+    ) -> Result<(), Error> {
+        while let Some(block) = self.next_timeline_block()? {
+            let current_location = self.finite_block_location(&block)?;
+            self.prepare_block(&block, current_location)?;
+            self.generate_and_write_samples(block.sample_count)?;
+            *emitted_blocks += 1;
+            if self.verbose && emitted_blocks.is_multiple_of(100) {
+                tracing::debug!(
+                    emitted_blocks = *emitted_blocks,
+                    gps_week = self.receiver_gps_time.week,
+                    gps_seconds = self.receiver_gps_time.sec,
+                    "simulation progress"
+                );
+            }
+            self.finish_block(block, current_location)?;
+        }
+        Ok(())
+    }
+
     /// Runs the GPS signal simulation and writes every emitted sample.
     pub fn run_simulation(&mut self) -> Result<(), Error> {
         if !self.initialized {
@@ -195,6 +223,9 @@ impl SignalGenerator {
                  mode",
             ));
         }
+        if self.writer.is_none() {
+            return Err(Error::IQWriterNotInitialized);
+        }
         self.begin_finite_run()?;
 
         tracing::info!(
@@ -203,33 +234,28 @@ impl SignalGenerator {
         );
         let time_start = std::time::Instant::now();
         let mut emitted_blocks = 0usize;
+        let primary_result = self.run_direct_blocks(&mut emitted_blocks);
+        let finalization_result = self
+            .writer
+            .as_mut()
+            .ok_or(Error::IQWriterNotInitialized)
+            .and_then(crate::IQWriter::finish);
 
-        while let Some(block) = self.next_timeline_block()? {
-            let current_location = self.finite_block_location(&block)?;
-            self.prepare_block(&block, current_location)?;
-            self.generate_and_write_samples(block.sample_count)?;
-            emitted_blocks += 1;
-            if self.verbose && emitted_blocks.is_multiple_of(100) {
-                tracing::debug!(
-                    emitted_blocks,
-                    gps_week = self.receiver_gps_time.week,
-                    gps_seconds = self.receiver_gps_time.sec,
-                    "simulation progress"
+        match resolve_with_finalization(primary_result, finalization_result) {
+            Ok(()) => {
+                self.complete_finite_run();
+                tracing::info!(emitted_blocks, "done");
+                tracing::info!(
+                    process_seconds = time_start.elapsed().as_secs_f32(),
+                    "process time"
                 );
+                Ok(())
             }
-            self.finish_block(block, current_location)?;
+            Err(error) => {
+                self.finite_run_state = FiniteRunState::OutputFailed;
+                Err(error)
+            }
         }
-        if let Some(writer) = &mut self.writer {
-            writer.finish_packing()?;
-        }
-        self.complete_finite_run();
-
-        tracing::info!(emitted_blocks, "done");
-        tracing::info!(
-            process_seconds = time_start.elapsed().as_secs_f32(),
-            "process time"
-        );
-        Ok(())
     }
 
     /// Streams interleaved I/Q blocks on the emitted-sample timeline.

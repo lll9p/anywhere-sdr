@@ -1,4 +1,26 @@
+use std::fmt::{self, Display};
+
 use thiserror::Error;
+
+struct FinalizationFailureDisplay<'a>(&'a [Error]);
+
+impl Display for FinalizationFailureDisplay<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, error) in self.0.iter().enumerate() {
+            if index != 0 {
+                formatter.write_str("; ")?;
+            }
+            write!(formatter, "{error}")?;
+        }
+        Ok(())
+    }
+}
+
+fn display_finalization_failures(
+    failures: &[Error],
+) -> FinalizationFailureDisplay<'_> {
+    FinalizationFailureDisplay(failures)
+}
 
 /// Custom error type for the gpssim application
 #[derive(Error, Debug)]
@@ -31,6 +53,32 @@ pub enum Error {
     /// General application error with a message
     #[error("Application error: {0}")]
     Other(String),
+
+    /// Multiple TX sinks failed during ordered finalization
+    #[error(
+        "multiple TX finalization failures: first: {first}; additional: {}",
+        display_finalization_failures(.additional)
+    )]
+    MultipleFinalizationFailures {
+        /// First failure in configured sink order
+        #[source]
+        first: Box<Error>,
+        /// Remaining failures in configured sink order
+        additional: Vec<Error>,
+    },
+
+    /// A run and its output finalization both failed
+    #[error(
+        "run failed: {primary}; output finalization also failed: \
+         {finalization}"
+    )]
+    RunAndFinalizationFailed {
+        /// Primary generation or sink-write failure
+        #[source]
+        primary: Box<Error>,
+        /// Secondary ordered output-finalization failure
+        finalization: Box<Error>,
+    },
 
     /// Error originating from a TX backend (with optional context)
     #[error("TX backend `{backend}` ({context}): {source}")]
@@ -81,6 +129,40 @@ impl Error {
         Error::TxBackendMsg {
             backend,
             message: message.into(),
+        }
+    }
+}
+
+pub(crate) fn resolve_finalization_failures(
+    failures: Vec<Error>,
+) -> Result<(), Error> {
+    let mut failures = failures.into_iter();
+    let Some(first) = failures.next() else {
+        return Ok(());
+    };
+    let Some(second) = failures.next() else {
+        return Err(first);
+    };
+    let mut additional = vec![second];
+    additional.extend(failures);
+    Err(Error::MultipleFinalizationFailures {
+        first: Box::new(first),
+        additional,
+    })
+}
+
+pub(crate) fn resolve_run_and_finish<T>(
+    run: Result<T, Error>, finish: Result<(), Error>,
+) -> Result<T, Error> {
+    match (run, finish) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(run), Ok(())) => Err(run),
+        (Ok(_), Err(finish)) => Err(finish),
+        (Err(primary), Err(finalization)) => {
+            Err(Error::RunAndFinalizationFailed {
+                primary: Box::new(primary),
+                finalization: Box::new(finalization),
+            })
         }
     }
 }

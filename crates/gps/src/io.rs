@@ -116,6 +116,65 @@ pub enum DataFormat {
     Bits16 = 16,
 }
 
+/// Formats and writes one validated interleaved sample block.
+fn write_samples_to<W: Write>(
+    writer: &mut W, format: DataFormat, buffer: &[i16], buffer_size: usize,
+    bits1_state: &mut Bits1PackingState,
+) -> Result<(), Error> {
+    let sizing = IqBlockSizing::from_interleaved_i16_len(buffer.len())?;
+    if sizing.complex_samples() != buffer_size {
+        return Err(Error::unsupported_workload(
+            "I/Q writer buffer size does not match its complex sample count",
+        ));
+    }
+
+    match format {
+        DataFormat::Bits1 => {
+            let packed_capacity = usize::from(bits1_state.pending_bits)
+                .checked_add(sizing.interleaved_i16_len())
+                .ok_or_else(|| {
+                    Error::unsupported_workload("Bits1 capacity overflow")
+                })?
+                / 8;
+            let mut packed = Vec::with_capacity(packed_capacity);
+            let next_state = (*bits1_state).push(buffer, &mut packed);
+            writer.write_all(&packed)?;
+            *bits1_state = next_state;
+        }
+        DataFormat::Bits8 => {
+            let mut packed = vec![0u8; sizing.interleaved_i16_len()];
+            pack_bits8_into(buffer, &mut packed)?;
+            writer.write_all(&packed)?;
+        }
+        DataFormat::Bits16 => {
+            writer.write_all(checked_as_bytes_i16(buffer)?)?;
+        }
+    }
+    Ok(())
+}
+
+/// Writes any pending format-level terminal data.
+fn finish_packing_to<W: Write>(
+    writer: &mut W, format: DataFormat, bits1_state: &mut Bits1PackingState,
+) -> Result<(), Error> {
+    if matches!(format, DataFormat::Bits1) && bits1_state.pending_bits != 0 {
+        let mut packed = Vec::with_capacity(1);
+        let next_state = (*bits1_state).finish(&mut packed);
+        writer.write_all(&packed)?;
+        *bits1_state = next_state;
+    }
+    Ok(())
+}
+
+/// Attempts format completion followed by an unconditional flush.
+fn finish_writer<W: Write>(
+    writer: &mut W, format: DataFormat, bits1_state: &mut Bits1PackingState,
+) -> Result<(), Error> {
+    let packing_result = finish_packing_to(writer, format, bits1_state);
+    let flush_result = writer.flush().map_err(Error::from);
+    crate::error::resolve_with_finalization(packing_result, flush_result)
+}
+
 /// Handles writing I/Q samples to an output file.
 ///
 /// This structure manages the buffering and formatting of I/Q samples
@@ -191,41 +250,13 @@ impl IQWriter {
     /// * Returns an error if writing to the output file fails
     #[inline]
     pub fn write_samples(&mut self) -> Result<(), Error> {
-        let sizing =
-            IqBlockSizing::from_interleaved_i16_len(self.buffer.len())?;
-        if sizing.complex_samples() != self.buffer_size {
-            return Err(Error::unsupported_workload(
-                "I/Q writer buffer size does not match its complex sample \
-                 count",
-            ));
-        }
-        match self.format {
-            DataFormat::Bits1 => {
-                let packed_capacity =
-                    usize::from(self.bits1_state.pending_bits)
-                        .checked_add(sizing.interleaved_i16_len())
-                        .ok_or_else(|| {
-                            Error::unsupported_workload(
-                                "Bits1 capacity overflow",
-                            )
-                        })?
-                        / 8;
-                let mut packed = Vec::with_capacity(packed_capacity);
-                let next_state =
-                    self.bits1_state.push(&self.buffer, &mut packed);
-                self.writer.write_all(&packed)?;
-                self.bits1_state = next_state;
-            }
-            DataFormat::Bits8 => {
-                let mut packed = vec![0u8; sizing.interleaved_i16_len()];
-                pack_bits8_into(&self.buffer, &mut packed)?;
-                self.writer.write_all(&packed)?;
-            }
-            DataFormat::Bits16 => {
-                self.writer.write_all(checked_as_bytes_i16(&self.buffer)?)?;
-            }
-        }
-        Ok(())
+        write_samples_to(
+            &mut self.writer,
+            self.format,
+            &self.buffer,
+            self.buffer_size,
+            &mut self.bits1_state,
+        )
     }
 
     /// Finalizes format-level packing without flushing the buffered file.
@@ -234,17 +265,21 @@ impl IQWriter {
     /// zero-valued low-order padding bits. The broader fallible file-flush
     /// contract is intentionally handled separately.
     pub fn finish_packing(&mut self) -> Result<(), Error> {
-        if matches!(self.format, DataFormat::Bits1)
-            && self.bits1_state.pending_bits != 0
-        {
-            let mut packed = Vec::with_capacity(1);
-            let next_state = self.bits1_state.finish(&mut packed);
-            self.writer.write_all(&packed)?;
-            self.bits1_state = next_state;
-        }
-        Ok(())
+        finish_packing_to(&mut self.writer, self.format, &mut self.bits1_state)
+    }
+
+    /// Completes pending format packing and flushes buffered output.
+    ///
+    /// Flushing is attempted even if final format packing fails. Repeated
+    /// successful calls do not emit duplicate [`DataFormat::Bits1`] padding.
+    pub fn finish(&mut self) -> Result<(), Error> {
+        finish_writer(&mut self.writer, self.format, &mut self.bits1_state)
     }
 }
+
+#[cfg(test)]
+#[path = "io/finalization_tests.rs"]
+mod finalization_tests;
 
 #[cfg(test)]
 mod tests {

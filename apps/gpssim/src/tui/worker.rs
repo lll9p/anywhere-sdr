@@ -17,6 +17,7 @@ use gps::{
 use crate::{
     Error,
     cli::TxBackend,
+    error::resolve_run_and_finish,
     tui_config::TuiConfig,
     tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, NullTxSink, TxSink, TxTee},
 };
@@ -221,7 +222,7 @@ fn run_streaming_worker(
         generator.run_streaming::<_, Error>(&mut on_block)
     };
 
-    tee.finish()?;
+    let finish_result = tee.finish();
 
     let hackrf_underruns = hackrf_underrun_counter
         .as_ref()
@@ -234,16 +235,12 @@ fn run_streaming_worker(
         hackrf_underruns,
     );
 
-    match streaming_result {
+    let run_result = match streaming_result {
         Ok(()) => Ok(WorkerCompletion::Finished(progress)),
-        Err(err) => {
-            if cancelled {
-                Ok(WorkerCompletion::Cancelled(progress))
-            } else {
-                Err(err)
-            }
-        }
-    }
+        Err(_) if cancelled => Ok(WorkerCompletion::Cancelled(progress)),
+        Err(error) => Err(error),
+    };
+    resolve_run_and_finish(run_result, finish_result)
 }
 
 fn compute_progress(
