@@ -16,6 +16,16 @@ pub enum Error {
     #[error("No ephemeris available")]
     NoEphemeris,
 
+    /// Error when navigation data exceeds the fixed ephemeris-set capacity
+    #[error(
+        "Navigation file contains more than {max_supported} ephemeris time \
+         sets"
+    )]
+    TooManyEphemerisSets {
+        /// Maximum number of ephemeris time sets supported by fixed storage
+        max_supported: usize,
+    },
+
     /// Error when no current set of ephemerides is found for the simulation
     /// time
     #[error("No current set of ephemerides found")]

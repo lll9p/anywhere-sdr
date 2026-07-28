@@ -36,6 +36,17 @@ type Data = (
     Box<[[Ephemeris; MAX_SAT]; EPHEM_ARRAY_SIZE]>,
 );
 
+/// Returns whether any valid record in a set is current at `receiver_time`.
+pub(super) fn ephemeris_set_matches_time(
+    ephemerides: &[Ephemeris], receiver_time: &GpsTime,
+) -> bool {
+    ephemerides.iter().any(|ephemeris| {
+        ephemeris.vflg
+            && (-SECONDS_IN_HOUR..SECONDS_IN_HOUR)
+                .contains(&receiver_time.diff_secs(&ephemeris.toc))
+    })
+}
+
 /// Reads ionospheric/UTC parameters and ephemeris data from a RINEX navigation
 /// file.
 ///
@@ -63,6 +74,8 @@ type Data = (
 /// # Errors
 /// * Returns an error if the file cannot be opened
 /// * Returns an error if the RINEX format is invalid
+/// * Returns [`crate::Error::TooManyEphemerisSets`] if the input exceeds fixed
+///   storage capacity
 pub fn read_navigation_data(
     file: &dyn AsRef<Path>,
 ) -> Result<Data, crate::Error> {
@@ -73,6 +86,7 @@ pub fn read_navigation_data(
     let mut iono_utc = IonoUtc::default();
 
     iono_utc.read_from_rinex(&rinex_data);
+    let mut stored_set_count = 0;
     let mut current_set_index = 0;
     let mut current_set_start_time: Option<GpsTime> = None;
 
@@ -99,37 +113,23 @@ pub fn read_navigation_data(
             GpsCalendarDateTime::try_from(&rinex_record.time_of_clock)?;
         let gps_time = GpsTime::from_gps_calendar(&gps_calendar)?;
 
-        // --- Determine which time set this ephemeris belongs to ---
-        let mut update_set = false;
-        match current_set_start_time {
-            Some(ref start_time) => {
-                // If time difference exceeds 1 hour
-                if gps_time.diff_secs(start_time).abs() > SECONDS_IN_HOUR {
-                    update_set = true;
-                }
+        let starts_new_set =
+            current_set_start_time.as_ref().is_some_and(|start_time| {
+                gps_time.diff_secs(start_time).abs() > SECONDS_IN_HOUR
+            });
+        if current_set_start_time.is_none() {
+            stored_set_count = 1;
+            current_set_start_time = Some(gps_time.clone());
+        } else if starts_new_set {
+            if stored_set_count == EPHEM_ARRAY_SIZE {
+                return Err(crate::Error::TooManyEphemerisSets {
+                    max_supported: EPHEM_ARRAY_SIZE,
+                });
             }
-            None => {
-                // First valid ephemeris record, set current set start time
-                current_set_start_time = Some(gps_time.clone());
-                // No need to update index since we start at index 0
-            }
-        }
-
-        if update_set {
-            // Move to next ephemeris set
-            current_set_index += 1;
-            // Check if new set index exceeds bounds
-            if current_set_index >= EPHEM_ARRAY_SIZE {
-                tracing::warn!(
-                    max_sets = EPHEM_ARRAY_SIZE,
-                    "reached maximum ephemeris sets; stopping processing"
-                );
-                break; // Stop processing more records
-            }
-            // Update the start time for the new ephemeris set
+            current_set_index = stored_set_count;
+            stored_set_count += 1;
             current_set_start_time = Some(gps_time.clone());
         }
-        // --- End set index logic ---
 
         // Get a mutable reference to the target Ephemeris structure to populate
         // current_set_index is guaranteed to be in bounds here
@@ -185,8 +185,5 @@ pub fn read_navigation_data(
         eph.omgkdot = eph.omgdot - OMEGA_EARTH;
     }
 
-    if current_set_start_time.is_some() {
-        current_set_index += 1;
-    }
-    Ok((current_set_index, iono_utc, ephemeris_data))
+    Ok((stored_set_count, iono_utc, ephemeris_data))
 }

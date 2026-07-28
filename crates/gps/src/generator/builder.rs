@@ -223,10 +223,7 @@ impl SignalGeneratorBuilder {
     ) -> Result<Self, Error> {
         // Read ephemeris
         if let Some(file) = navigation_file {
-            let (count, iono_utc, ephemerides) = read_navigation_data(&file)
-                .map_err(|_| {
-                    Error::msg("ERROR: ephemeris file not found or error.")
-                })?;
+            let (count, iono_utc, ephemerides) = read_navigation_data(&file)?;
             if count == 0 {
                 return Err(Error::NoEphemeris);
             }

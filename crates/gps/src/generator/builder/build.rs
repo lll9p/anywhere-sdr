@@ -1,4 +1,4 @@
-use constants::{MAX_CHAN, MAX_SAT, SECONDS_IN_HOUR, STATIC_MAX_DURATION};
+use constants::{MAX_CHAN, MAX_SAT, STATIC_MAX_DURATION};
 use geometry::{Ecef, Location};
 
 use super::SignalGeneratorBuilder;
@@ -11,6 +11,7 @@ use crate::{
         timeline::{
             planned_interval_count, validate_duration, validate_update_step,
         },
+        utils::ephemeris_set_matches_time,
     },
 };
 
@@ -152,32 +153,8 @@ impl SignalGeneratorBuilder {
         {
             // Scenario start time has been set.
             if time_override {
-                // Ephemeris time override logic (-T flag):
-                // This logic shifts the ephemerides' TOC/TOE to match the
-                // simulation start time.
-                //
-                // CRITICAL DIFFERENCE vs OLD RUST IMPLEMENTATION:
-                // Previously, the Rust version would greedily select the first
-                // ephemeris set when time_override was enabled,
-                // ignoring the validity of the time window. The
-                // C version, however, correctly searches for the *most
-                // relevant* ephemeris set by checking if the
-                // (adjusted) TOC falls within +/- 2 hours of the simulation
-                // time.
-                //
-                // Correct behavior (C-aligned):
-                // 1. Adjust ALL ephemeris sets by shifting their TOC/TOE.
-                // 2. Later in the code (see "Select the current set of
-                //    ephemerides"), STRICTLY select the ephemeris set where
-                //    |TOC - SimTime| < 2 hours.
-                //
-                // This ensures that even with a time override, we use the
-                // ephemeris parameters that are physically most
-                // relevant to the target orbital position (e.g. choosing
-                // "Monday's" ephemeris for a Monday simulation, even if we
-                // shifted the year).
-
-                // Round to nearest 2-hour boundary (7200 seconds)
+                // Round to the preceding 2-hour boundary before shifting all
+                // stored ToC/ToE values, matching the C override behavior.
                 // This matches the C version's behavior exactly: gtmp.sec =
                 // (double)(((int)(g0.sec)) / 7200) * 7200.0;
                 let mut gtmp = GpsTime {
@@ -213,30 +190,10 @@ impl SignalGeneratorBuilder {
         } else {
             gpstime_min
         };
-        let mut valid_ephemerides_index = None;
-
-        // Select the current set of ephemerides
-        for (i, eph_item) in ephemerides.iter().enumerate().take(count) {
-            for e in eph_item.iter().take(MAX_SAT) {
-                if e.vflg {
-                    let dt = receiver_gps_time.diff_secs(&e.toc);
-                    if (-SECONDS_IN_HOUR..SECONDS_IN_HOUR).contains(&dt) {
-                        valid_ephemerides_index = Some(i);
-                        break;
-                    }
-                }
-            }
-            if valid_ephemerides_index.is_some() {
-                // ieph has been set
-                break;
-            }
-        }
-
-        // If no valid ephemerides found and time_override is true, use the
-        // first set
-        if valid_ephemerides_index.is_none() && time_override && count > 0 {
-            valid_ephemerides_index = Some(0);
-        }
+        let valid_ephemerides_index =
+            ephemerides.iter().take(count).position(|set| {
+                ephemeris_set_matches_time(set, &receiver_gps_time)
+            });
 
         let Some(valid_ephemerides_index) = valid_ephemerides_index else {
             return Err(Error::no_current_ephemerides());

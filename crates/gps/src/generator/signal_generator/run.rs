@@ -1,4 +1,4 @@
-use constants::{MAX_CHAN, MAX_SAT, SECONDS_IN_HOUR};
+use constants::MAX_CHAN;
 use geometry::Ecef;
 
 use super::SignalGenerator;
@@ -6,6 +6,7 @@ use crate::{
     Error, GpsTime, IqBlockSizing,
     generator::{
         MotionMode, motion_control::MotionIntegrator, timeline::TimelineBlock,
+        utils::ephemeris_set_matches_time,
     },
 };
 
@@ -32,30 +33,26 @@ impl SignalGenerator {
             }
         }
 
-        let mut refreshed_ephemerides = false;
-        let next_ephemeris_set_index = self.valid_ephemerides_index + 1;
-        if next_ephemeris_set_index < self.ephemerides.len()
-            && self.ephemerides[next_ephemeris_set_index]
-                .iter()
-                .take(MAX_SAT)
-                .any(|ephemeris| ephemeris.vflg)
-            && self.ephemerides[next_ephemeris_set_index][0].vflg
-        {
-            let difference = self.ephemerides[next_ephemeris_set_index][0]
-                .toc
-                .diff_secs(deadline);
-            if difference.abs() < SECONDS_IN_HOUR {
-                self.valid_ephemerides_index = next_ephemeris_set_index;
-                refreshed_ephemerides = true;
-                tracing::info!(
-                    next_ephemeris_set_index,
-                    "switched to ephemeris set"
-                );
-            }
-        }
+        let next_ephemeris_set_index = self
+            .valid_ephemerides_index
+            .checked_add(1)
+            .filter(|&index| {
+                self.ephemerides.get(index).is_some_and(|set| {
+                    ephemeris_set_matches_time(set, deadline)
+                })
+            });
 
-        if refreshed_ephemerides {
-            let current_ephemeris_set_index = self.valid_ephemerides_index;
+        if let Some(next_ephemeris_set_index) = next_ephemeris_set_index {
+            self.valid_ephemerides_index = next_ephemeris_set_index;
+            tracing::info!(
+                next_ephemeris_set_index,
+                "switched to ephemeris set"
+            );
+
+            let current_ephemerides = self
+                .ephemerides
+                .get(next_ephemeris_set_index)
+                .ok_or_else(|| Error::msg("invalid ephemeris set index"))?;
             for channel in self
                 .channels
                 .iter_mut()
@@ -63,11 +60,15 @@ impl SignalGenerator {
                 .filter(|channel| channel.prn != 0)
             {
                 let satellite_index = channel.prn - 1;
-                channel.generate_navigation_subframes(
-                    &self.ephemerides[current_ephemeris_set_index]
-                        [satellite_index],
-                    &self.ionoutc,
-                );
+                if let Some(ephemeris) = current_ephemerides
+                    .get(satellite_index)
+                    .filter(|ephemeris| ephemeris.vflg)
+                {
+                    channel.generate_navigation_subframes(
+                        ephemeris,
+                        &self.ionoutc,
+                    );
+                }
             }
         }
 
