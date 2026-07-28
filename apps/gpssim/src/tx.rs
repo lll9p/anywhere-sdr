@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use gps::{DataFormat, IQWriter};
+use gps::{DataFormat, IQWriter, IqBlockSizing};
 
 use crate::Error;
 
@@ -186,8 +186,10 @@ impl TxSink for FileTxSink {
             ));
         }
 
-        self.writer.buffer_size = interleaved_iq_i16.len() / 2;
-        self.writer.buffer.resize(interleaved_iq_i16.len(), 0);
+        let sizing =
+            IqBlockSizing::from_interleaved_i16_len(interleaved_iq_i16.len())?;
+        self.writer.buffer_size = sizing.complex_samples();
+        self.writer.buffer.resize(sizing.interleaved_i16_len(), 0);
         self.writer.buffer.copy_from_slice(interleaved_iq_i16);
         self.writer.write_samples().map_err(|err| {
             Error::tx_backend_with_source(

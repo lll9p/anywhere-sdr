@@ -7,12 +7,25 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
-use gps::{SignalGenerator, SignalGeneratorBuilder};
+use gps::{IqBlockSizing, SignalGenerator, SignalGeneratorBuilder};
 
 use crate::{
     Error,
     tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, NullTxSink, TxSink, TxTee},
 };
+
+fn parse_coordinate_triplet(value: &str) -> Result<[f64; 3], String> {
+    let values = value
+        .split(',')
+        .map(|component| {
+            component.parse::<f64>().map_err(|error| error.to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let actual = values.len();
+    values.try_into().map_err(|_| {
+        format!("expected exactly 3 coordinate values, got {actual}")
+    })
+}
 
 /// Transmission output backend selected via `--tx`.
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
@@ -81,13 +94,13 @@ pub struct Args {
 
     /// ECEF X,Y,Z in meters (static mode) e.g.
     /// 3967283.154,1022538.181,4872414.484
-    #[arg(short = 'c', long, value_parser, value_delimiter = ',')]
-    pub(crate) location_ecef: Option<Vec<f64>>,
+    #[arg(short = 'c', long, value_parser = parse_coordinate_triplet)]
+    pub(crate) location_ecef: Option<[f64; 3]>,
 
     /// Latitude/longitude degrees and height meters (static mode), e.g.
     /// 35.681298,139.766247,10.0
-    #[arg(short = 'l', long, value_parser, value_delimiter = ',')]
-    pub(crate) location: Option<Vec<f64>>,
+    #[arg(short = 'l', long, value_parser = parse_coordinate_triplet)]
+    pub(crate) location: Option<[f64; 3]>,
 
     /// User leap future event in GPS week number, day number, next leap second
     /// e.g. 2347,3,19
@@ -211,9 +224,25 @@ impl Args {
         let mut blocks: u64 = 0;
         let mut total_samples: u64 = 0;
         let streaming_result = generator.run_streaming::<_, Error>(|block| {
-            blocks = blocks.wrapping_add(1);
+            blocks = blocks.checked_add(1).ok_or_else(|| {
+                gps::Error::unsupported_workload(
+                    "streaming block count overflow",
+                )
+            })?;
+            let block_samples =
+                IqBlockSizing::from_interleaved_i16_len(block.len())?
+                    .complex_samples();
+            let block_samples = u64::try_from(block_samples).map_err(|_| {
+                gps::Error::unsupported_workload(
+                    "streaming sample count exceeds supported range",
+                )
+            })?;
             total_samples =
-                total_samples.saturating_add((block.len() / 2) as u64);
+                total_samples.checked_add(block_samples).ok_or_else(|| {
+                    gps::Error::unsupported_workload(
+                        "streaming sample count overflow",
+                    )
+                })?;
             tee.write_block_i16(block)
         });
 
@@ -278,8 +307,8 @@ impl Args {
             .user_motion_file(self.user_motion_ecef.clone())?
             .user_motion_llh_file(self.user_motion_llh.clone())?
             .user_motion_nmea_gga_file(self.nmea_gga.clone())?
-            .location_ecef(self.location_ecef.clone())?
-            .location(self.location.clone())?
+            .location_ecef(self.location_ecef.map(|value| value.to_vec()))?
+            .location(self.location.map(|value| value.to_vec()))?
             .leap(self.leap.clone())
             .utc_time(self.time.clone())?
             .time_override(self.time_override)
@@ -374,7 +403,9 @@ impl Args {
             underrun_counter: None,
         };
 
-        HackrfTxSink::new(config, 2 * generator.iq_buffer_size)
+        let expected_i16_len =
+            IqBlockSizing::new(generator.iq_buffer_size)?.interleaved_i16_len();
+        HackrfTxSink::new(config, expected_i16_len)
     }
 }
 
@@ -392,6 +423,27 @@ mod tests {
         assert!(args.ephemerides.is_none());
 
         assert!(Args::try_parse_from(["gpssim"]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn static_coordinates_require_exactly_three_values() -> Result<(), String> {
+        for option in ["--location", "--location-ecef"] {
+            for values in [None, Some("1"), Some("1,2"), Some("1,2,3,4")] {
+                let mut arguments = vec!["gpssim", "--tui", option];
+                if let Some(values) = values {
+                    arguments.push(values);
+                }
+                if Args::try_parse_from(arguments).is_ok() {
+                    return Err(format!(
+                        "{option} unexpectedly accepted {values:?}"
+                    ));
+                }
+            }
+
+            Args::try_parse_from(["gpssim", "--tui", option, "1,2,3"])
+                .map_err(|error| error.to_string())?;
+        }
         Ok(())
     }
 

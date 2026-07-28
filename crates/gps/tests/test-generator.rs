@@ -1,7 +1,7 @@
 #![cfg(not(debug_assertions))]
 use std::path::PathBuf;
 
-use gps::{DataFormat, Error, SignalGeneratorBuilder};
+use gps::{DataFormat, Error, IqBlockSizing, SignalGeneratorBuilder};
 use test_case::test_case;
 mod prepare;
 use prepare::{OUTPUT_DIR, RESOURCES_DIR, prepare_c_bin};
@@ -300,10 +300,11 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
 
     let rust_bytes = std::fs::read(&rust_file)?;
     let c_bytes = std::fs::read(&c_bin_path)?;
+    let block_sizing = IqBlockSizing::new(generator.iq_buffer_size)?;
     let bytes_per_block = match generator.data_format {
-        DataFormat::Bits1 => generator.iq_buffer_size / 4,
-        DataFormat::Bits8 => generator.iq_buffer_size * 2,
-        DataFormat::Bits16 => generator.iq_buffer_size * 4,
+        DataFormat::Bits1 => block_sizing.interleaved_i16_len() / 8,
+        DataFormat::Bits8 => block_sizing.interleaved_i16_len(),
+        DataFormat::Bits16 => block_sizing.interleaved_bytes(),
     };
 
     // The original C loop intentionally remains the compatibility oracle for

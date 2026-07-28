@@ -124,12 +124,25 @@ impl TuiConfig {
     pub(crate) fn apply_overrides_from_args(
         &mut self, args: &Args,
     ) -> Result<(), Error> {
+        let manual_initial_llh = if let Some(location) = args.location {
+            Some(location)
+        } else if let Some(location_ecef) = args.location_ecef {
+            let location = Location::try_from(&Ecef::from(&location_ecef))?;
+            Some([
+                location.latitude_degrees(),
+                location.longitude_degrees(),
+                location.height_meters(),
+            ])
+        } else {
+            None
+        };
+
         self.ephemerides.clone_from(&args.ephemerides);
         self.user_motion_ecef.clone_from(&args.user_motion_ecef);
         self.user_motion_llh.clone_from(&args.user_motion_llh);
         self.nmea_gga.clone_from(&args.nmea_gga);
-        self.location_ecef.clone_from(&args.location_ecef);
-        self.location.clone_from(&args.location);
+        self.location_ecef = args.location_ecef.map(|value| value.to_vec());
+        self.location = args.location.map(|value| value.to_vec());
         self.leap.clone_from(&args.leap);
         self.time.clone_from(&args.time);
         self.time_override = args.time_override;
@@ -151,24 +164,7 @@ impl TuiConfig {
         self.hackrf_queue_blocks = args.hackrf_queue_blocks;
         self.hackrf_prefill_blocks = args.hackrf_prefill_blocks;
         self.hackrf_drop_on_underrun = args.hackrf_drop_on_underrun;
-
-        self.manual_motion.initial_llh = if let Some(location) = &args.location
-        {
-            triplet_from_vec(location)
-        } else if let Some(location_ecef) = &args.location_ecef {
-            if let Some(location_ecef) = triplet_from_vec(location_ecef) {
-                let location = Location::try_from(&Ecef::from(&location_ecef))?;
-                Some([
-                    location.latitude_degrees(),
-                    location.longitude_degrees(),
-                    location.height_meters(),
-                ])
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        self.manual_motion.initial_llh = manual_initial_llh;
         Ok(())
     }
 
@@ -250,8 +246,4 @@ impl TuiConfig {
 
         Ok(())
     }
-}
-
-fn triplet_from_vec(values: &[f64]) -> Option<[f64; 3]> {
-    (values.len() == 3).then(|| [values[0], values[1], values[2]])
 }

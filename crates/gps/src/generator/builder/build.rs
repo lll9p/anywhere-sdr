@@ -1,4 +1,4 @@
-use constants::{MAX_CHAN, MAX_SAT, SECONDS_IN_HOUR};
+use constants::{MAX_CHAN, MAX_SAT, SECONDS_IN_HOUR, STATIC_MAX_DURATION};
 use geometry::{Ecef, Location};
 
 use super::SignalGeneratorBuilder;
@@ -6,8 +6,11 @@ use crate::{
     Error,
     datetime::GpsTime,
     generator::{
-        MotionMode, signal_generator::SignalGenerator,
-        timeline::planned_interval_count,
+        MotionMode,
+        signal_generator::SignalGenerator,
+        timeline::{
+            planned_interval_count, validate_duration, validate_update_step,
+        },
     },
 };
 
@@ -86,23 +89,40 @@ impl SignalGeneratorBuilder {
         };
         // sample_rate, default is 0.1/10HZ
         let sample_rate = self.sample_rate.unwrap_or(0.1);
+        validate_update_step(sample_rate)?;
         // mode
         let mode = self.mode.unwrap_or(MotionMode::Static);
-        // check duration
-        if self.duration.is_some_and(|d| d < 0.0) {
+        validate_duration(self.duration)?;
+        if matches!(mode, MotionMode::Static)
+            && self
+                .duration
+                .is_some_and(|duration| duration > STATIC_MAX_DURATION as f64)
+        {
             return Err(Error::invalid_duration());
         }
-        let requested_interval_count = self
-            .duration
-            .map(|duration| planned_interval_count(duration, sample_rate))
-            .transpose()?;
-        let available_dynamic_intervals = positions.len().saturating_sub(1);
+        let available_dynamic_intervals = positions
+            .len()
+            .checked_sub(1)
+            .ok_or_else(Error::wrong_positions)?;
         let simulation_step_count = match mode {
-            MotionMode::Static => requested_interval_count.unwrap_or(0),
-            MotionMode::Dynamic => requested_interval_count
-                .map_or(available_dynamic_intervals, |requested| {
-                    requested.min(available_dynamic_intervals)
-                }),
+            MotionMode::Static => self
+                .duration
+                .map(|duration| {
+                    planned_interval_count(duration, sample_rate, None)
+                })
+                .transpose()?
+                .unwrap_or(0),
+            MotionMode::Dynamic => self
+                .duration
+                .map(|duration| {
+                    planned_interval_count(
+                        duration,
+                        sample_rate,
+                        Some(available_dynamic_intervals),
+                    )
+                })
+                .transpose()?
+                .unwrap_or(available_dynamic_intervals),
             MotionMode::UserControl => 0,
         };
         // frequency

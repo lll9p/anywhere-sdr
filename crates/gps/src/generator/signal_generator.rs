@@ -5,7 +5,7 @@ use geometry::Ecef;
 
 use super::{motion_control::RuntimeMotionControl, timeline::SampleTimeline};
 use crate::{
-    Error,
+    Error, IqBlockSizing,
     channel::Channel,
     datetime::GpsTime,
     ephemeris::Ephemeris,
@@ -13,9 +13,10 @@ use crate::{
     io::{DataFormat, IQWriter},
     ionoutc::IonoUtc,
     propagation::compute_range,
-    table::ANT_PAT_DB,
 };
 
+/// Initialization and preflight validation.
+mod initialize;
 /// Finite and runtime-controlled sample emission loops.
 mod run;
 
@@ -119,123 +120,6 @@ impl Default for SignalGenerator {
     }
 }
 impl SignalGenerator {
-    /// Initializes the signal generator before simulation.
-    ///
-    /// This method performs the necessary setup steps before running the
-    /// simulation:
-    /// - Displays the simulation mode and initial position
-    /// - Sets up the receiver time
-    /// - Allocates satellite channels based on visibility
-    /// - Initializes the antenna gain pattern
-    /// - Sets up the I/Q sample buffer and writer
-    ///
-    /// This method must be called before `run_simulation()`.
-    ///
-    /// # Returns
-    /// * `Ok(())` - If initialization is successful
-    /// * `Err(Error)` - If there's an error during initialization
-    ///
-    /// # Errors
-    /// * Returns an error if the output file cannot be opened or if there's an
-    ///   issue with the I/Q writer
-    pub fn initialize(&mut self) -> Result<(), Error> {
-        // Initialize channels
-        match self.mode {
-            MotionMode::Static => {
-                tracing::info!("using static location mode");
-            }
-            MotionMode::Dynamic => {
-                tracing::info!("using dynamic location mode");
-            }
-            MotionMode::UserControl => {
-                tracing::info!("using runtime motion control mode");
-                if self.runtime_motion_control.is_none() {
-                    return Err(Error::msg(
-                        "runtime motion control not configured",
-                    ));
-                }
-            }
-        }
-
-        if let Some(first_position) = self.positions.first() {
-            tracing::info!(
-                x = first_position.x,
-                y = first_position.y,
-                z = first_position.z,
-                "initial receiver position (ECEF)"
-            );
-        }
-        let gps_time_start = self.receiver_gps_time.clone();
-        let gps_calendar_start = gps_time_start.to_gps_calendar()?;
-        tracing::info!(
-            year = gps_calendar_start.year(),
-            month = gps_calendar_start.month(),
-            day = gps_calendar_start.day(),
-            hour = gps_calendar_start.hour(),
-            minute = gps_calendar_start.minute(),
-            second = gps_calendar_start.second(),
-            gps_week = gps_time_start.week,
-            gps_seconds = gps_time_start.sec,
-            "start time (GPS calendar)"
-        );
-        // Clear all channels
-        self.channels
-            .iter_mut()
-            .take(MAX_CHAN)
-            .for_each(|ch| ch.prn = 0);
-        // Clear satellite allocation flag
-        self.allocated_satellite
-            .iter_mut()
-            .take(MAX_SAT)
-            .for_each(|s| *s = -1);
-        // Allocate visible satellites at the initial state epoch.
-        self.allocate_channel(self.positions[0])?;
-        if self.verbose {
-            Self::log_channel_status(&self.channels);
-        }
-
-        ////////////////////////////////////////////////////////////
-        // Receiver antenna gain pattern
-        ////////////////////////////////////////////////////////////
-        // for i in 0..37 {
-        for (i, item) in self.antenna_pattern.iter_mut().take(37).enumerate() {
-            *item = 10.0f64.powf(-ANT_PAT_DB[i] / 20.0);
-        }
-
-        let interval_limit = match self.mode {
-            MotionMode::Static if self.duration_seconds.is_none() => {
-                Some(self.simulation_step_count)
-            }
-            MotionMode::Dynamic => Some(self.simulation_step_count),
-            MotionMode::Static | MotionMode::UserControl => None,
-        };
-        let duration_seconds = if matches!(self.mode, MotionMode::UserControl) {
-            None
-        } else {
-            self.duration_seconds
-        };
-        let timeline = SampleTimeline::new(
-            self.receiver_gps_time.clone(),
-            self.sample_frequency,
-            self.sample_rate,
-            duration_seconds,
-            interval_limit,
-        )?;
-        self.iq_buffer_size = timeline.maximum_block_samples()?;
-        self.writer = match &self.output_file {
-            Some(file) => Some(IQWriter::new(
-                file,
-                self.data_format,
-                self.iq_buffer_size,
-            )?),
-            None => None,
-        };
-        self.timeline = Some(timeline);
-        self.finite_run_state = run::FiniteRunState::Ready;
-        self.initialized = true;
-        Ok(())
-    }
-
     /// Allocates satellite channels based on visibility from the current
     /// position.
     ///
@@ -335,8 +219,9 @@ impl SignalGenerator {
             .writer
             .as_mut()
             .ok_or_else(|| Error::msg("IQWriter not initialized"))?;
-        writer.buffer_size = complex_sample_count;
-        writer.buffer.resize(2 * complex_sample_count, 0);
+        let block_sizing = IqBlockSizing::new(complex_sample_count)?;
+        writer.buffer_size = block_sizing.complex_samples();
+        writer.buffer.resize(block_sizing.interleaved_i16_len(), 0);
         Self::generate_samples_into(
             &mut self.channels,
             &self.antenna_gains,

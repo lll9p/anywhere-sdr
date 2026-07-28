@@ -28,6 +28,8 @@ mod io;
 mod ionoutc;
 /// Satellite position and velocity propagation
 mod propagation;
+/// Checked I/Q workload dimensions
+mod sizing;
 /// Lookup tables for signal generation
 mod table;
 
@@ -46,3 +48,4 @@ pub use io::{
 };
 pub use ionoutc::IonoUtc;
 pub use propagation::compute_range;
+pub use sizing::IqBlockSizing;

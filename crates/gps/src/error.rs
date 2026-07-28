@@ -33,9 +33,33 @@ pub enum Error {
     #[error("Cannot set position(s) more than once")]
     DuplicatePositionSetting,
 
+    /// Error when a coordinate vector does not contain exactly three values
+    #[error("Invalid coordinate count: expected 3 values, got {actual}")]
+    InvalidCoordinateCount {
+        /// Number of supplied coordinate values
+        actual: usize,
+    },
+
     /// Error when an invalid simulation duration is specified
     #[error("Invalid duration")]
     InvalidDuration,
+
+    /// Error when the configured state-update step is invalid
+    #[error(
+        "Invalid update step {value}: expected a finite value greater than \
+         zero"
+    )]
+    InvalidUpdateStep {
+        /// Rejected update-step duration in seconds
+        value: f64,
+    },
+
+    /// Error when requested sample generation exceeds supported resource limits
+    #[error("Unsupported workload: {reason}")]
+    UnsupportedWorkload {
+        /// Description of the rejected arithmetic or resource requirement
+        reason: String,
+    },
 
     /// Error when an invalid start time is specified
     #[error("Invalid start time")]
@@ -174,10 +198,30 @@ impl Error {
         Error::DuplicatePositionSetting
     }
 
+    /// Create a new error for invalid coordinate cardinality
+    #[inline]
+    pub fn invalid_coordinate_count(actual: usize) -> Self {
+        Error::InvalidCoordinateCount { actual }
+    }
+
     /// Create a new error for invalid duration
     #[inline]
     pub fn invalid_duration() -> Self {
         Error::InvalidDuration
+    }
+
+    /// Create a new error for an invalid state-update step
+    #[inline]
+    pub fn invalid_update_step(value: f64) -> Self {
+        Error::InvalidUpdateStep { value }
+    }
+
+    /// Create a new error for an unsupported workload
+    #[inline]
+    pub fn unsupported_workload(reason: impl Into<String>) -> Self {
+        Error::UnsupportedWorkload {
+            reason: reason.into(),
+        }
     }
 
     /// Create a new error for invalid start time

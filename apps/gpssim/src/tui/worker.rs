@@ -9,7 +9,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gps::{RuntimeMotionControl, SignalGenerator, SignalGeneratorBuilder};
+use gps::{
+    IqBlockSizing, RuntimeMotionControl, SignalGenerator,
+    SignalGeneratorBuilder,
+};
 
 use crate::{
     Error,
@@ -173,8 +176,23 @@ fn run_streaming_worker(
             return Err(Error::msg("cancelled"));
         }
 
-        blocks = blocks.wrapping_add(1);
-        total_samples = total_samples.saturating_add((block.len() / 2) as u64);
+        blocks = blocks.checked_add(1).ok_or_else(|| {
+            gps::Error::unsupported_workload("streaming block count overflow")
+        })?;
+        let block_samples =
+            IqBlockSizing::from_interleaved_i16_len(block.len())?
+                .complex_samples();
+        let block_samples = u64::try_from(block_samples).map_err(|_| {
+            gps::Error::unsupported_workload(
+                "streaming sample count exceeds supported range",
+            )
+        })?;
+        total_samples =
+            total_samples.checked_add(block_samples).ok_or_else(|| {
+                gps::Error::unsupported_workload(
+                    "streaming sample count overflow",
+                )
+            })?;
 
         if last_progress.elapsed() >= Duration::from_millis(200) {
             let hackrf_underruns = hackrf_underrun_counter
@@ -338,7 +356,9 @@ fn build_hackrf_sink(
         underrun_counter,
     };
 
-    HackrfTxSink::new(tx_config, 2 * generator.iq_buffer_size)
+    let expected_i16_len =
+        IqBlockSizing::new(generator.iq_buffer_size)?.interleaved_i16_len();
+    HackrfTxSink::new(tx_config, expected_i16_len)
 }
 
 #[cfg(test)]

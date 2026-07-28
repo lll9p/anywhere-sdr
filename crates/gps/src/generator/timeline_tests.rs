@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn sub_resolution_update_step_is_rejected() {
+    let result = SampleTimeline::new(
+        GpsTime { week: 1, sec: 0.0 },
+        1_000_000.0,
+        f64::MIN_POSITIVE,
+        None,
+        None,
+    );
+    assert!(matches!(result, Err(Error::UnsupportedWorkload { .. })));
+}
+
+#[test]
 fn fractional_steps_preserve_long_run_sample_total() -> Result<(), Error> {
     let mut timeline = SampleTimeline::new(
         GpsTime { week: 1, sec: 0.0 },

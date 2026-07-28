@@ -1,150 +1,64 @@
 use constants::SECONDS_IN_WEEK;
 
-use crate::{Error, GpsTime};
+use super::rational::{Rational, divide_ceiling};
+use crate::{Error, GpsTime, IqBlockSizing};
 
-/// Largest denominator retained when recovering a configured decimal ratio.
-const MAX_RATIONAL_DENOMINATOR: u128 = 1_000_000_000;
 /// Duration of one complete LNAV frame.
 const FRAME_SECONDS: u64 = 30;
 
-/// Positive reduced rational used for exact sample-boundary calculations.
-#[derive(Clone, Copy, Debug)]
-struct Rational {
-    /// Ratio numerator.
-    numerator: u128,
-    /// Ratio denominator.
-    denominator: u128,
+/// Validates the configured state-update step.
+pub(super) fn validate_update_step(step_seconds: f64) -> Result<(), Error> {
+    if !step_seconds.is_finite() || step_seconds <= 0.0 {
+        return Err(Error::invalid_update_step(step_seconds));
+    }
+    Ok(())
 }
 
-impl Rational {
-    /// Recovers a bounded rational representation of a positive finite value.
-    fn from_positive_f64(value: f64, name: &str) -> Result<Self, Error> {
-        if !value.is_finite() || value <= 0.0 {
-            return Err(Error::msg(format!(
-                "{name} must be finite and greater than zero"
-            )));
-        }
-
-        let mut remainder = value;
-        let mut previous_numerator = 0u128;
-        let mut numerator = 1u128;
-        let mut previous_denominator = 1u128;
-        let mut denominator = 0u128;
-
-        loop {
-            let whole = remainder.floor() as u128;
-            let Some(next_numerator) = whole
-                .checked_mul(numerator)
-                .and_then(|term| term.checked_add(previous_numerator))
-            else {
-                break;
-            };
-            let Some(next_denominator) = whole
-                .checked_mul(denominator)
-                .and_then(|term| term.checked_add(previous_denominator))
-            else {
-                break;
-            };
-            if next_denominator > MAX_RATIONAL_DENOMINATOR {
-                break;
-            }
-
-            previous_numerator = numerator;
-            numerator = next_numerator;
-            previous_denominator = denominator;
-            denominator = next_denominator;
-
-            let approximation = numerator as f64 / denominator as f64;
-            let tolerance = f64::EPSILON * value.abs().max(1.0) * 8.0;
-            if (approximation - value).abs() <= tolerance {
-                break;
-            }
-
-            let fractional = remainder - whole as f64;
-            if fractional <= f64::EPSILON {
-                break;
-            }
-            remainder = fractional.recip();
-        }
-
-        if denominator == 0 {
-            return Err(Error::msg(format!(
-                "could not represent {name} as a rational value"
-            )));
-        }
-
-        let divisor = greatest_common_divisor(numerator, denominator);
-        Ok(Self {
-            numerator: numerator / divisor,
-            denominator: denominator / divisor,
-        })
+/// Validates the common duration domain before mode-specific planning.
+pub(super) fn validate_duration(
+    duration_seconds: Option<f64>,
+) -> Result<(), Error> {
+    if duration_seconds
+        .is_some_and(|duration| !duration.is_finite() || duration < 0.0)
+    {
+        return Err(Error::invalid_duration());
     }
-
-    /// Multiplies and rounds to the nearest whole unit.
-    fn rounded_product(self, multiplier: u128) -> Result<u64, Error> {
-        let scaled =
-            self.numerator.checked_mul(multiplier).ok_or_else(|| {
-                Error::msg("sample timeline multiplication overflow")
-            })?;
-        let rounded = scaled
-            .checked_add(self.denominator / 2)
-            .ok_or_else(|| Error::msg("sample timeline rounding overflow"))?
-            / self.denominator;
-        u64::try_from(rounded)
-            .map_err(|_| Error::msg("sample count exceeds supported range"))
-    }
-
-    /// Multiplies and rounds upward to a whole unit.
-    fn ceiling_product(self, multiplier: u128) -> Result<u64, Error> {
-        let scaled =
-            self.numerator.checked_mul(multiplier).ok_or_else(|| {
-                Error::msg("sample timeline multiplication overflow")
-            })?;
-        let ceiling = divide_ceiling(scaled, self.denominator)?;
-        u64::try_from(ceiling)
-            .map_err(|_| Error::msg("sample count exceeds supported range"))
-    }
-}
-
-/// Returns the greatest common divisor for ratio reduction.
-fn greatest_common_divisor(mut left: u128, mut right: u128) -> u128 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
-}
-
-/// Divides positive integers while rounding upward.
-fn divide_ceiling(numerator: u128, denominator: u128) -> Result<u128, Error> {
-    numerator
-        .checked_add(denominator.saturating_sub(1))
-        .map(|value| value / denominator)
-        .ok_or_else(|| Error::msg("sample timeline ceiling overflow"))
+    Ok(())
 }
 
 /// Returns the number of configured intervals covering a duration.
 pub(super) fn planned_interval_count(
-    duration_seconds: f64, step_seconds: f64,
+    duration_seconds: f64, step_seconds: f64, interval_limit: Option<usize>,
 ) -> Result<usize, Error> {
-    if duration_seconds == 0.0 {
+    validate_duration(Some(duration_seconds))?;
+    validate_update_step(step_seconds)?;
+    if duration_seconds == 0.0 || interval_limit == Some(0) {
         return Ok(0);
     }
-    let duration = Rational::from_positive_f64(duration_seconds, "duration")?;
-    let step = Rational::from_positive_f64(step_seconds, "sample rate")?;
-    let numerator = duration
-        .numerator
-        .checked_mul(step.denominator)
-        .ok_or_else(|| Error::msg("simulation interval count overflow"))?;
-    let denominator = duration
-        .denominator
-        .checked_mul(step.numerator)
-        .ok_or_else(|| Error::msg("simulation interval count overflow"))?;
-    let count = divide_ceiling(numerator, denominator)?;
-    usize::try_from(count).map_err(|_| {
-        Error::msg("simulation interval count exceeds supported range")
-    })
+
+    let ratio = duration_seconds / step_seconds;
+    if let Some(limit) = interval_limit
+        && (!ratio.is_finite() || ratio >= limit as f64)
+    {
+        return Ok(limit);
+    }
+    if !ratio.is_finite() {
+        return Err(Error::unsupported_workload(
+            "simulation interval count exceeds supported range",
+        ));
+    }
+    if ratio == 0.0 {
+        return Ok(1);
+    }
+
+    let ratio = Rational::from_positive_f64(ratio, "duration/step")?;
+    let count = divide_ceiling(ratio.numerator, ratio.denominator)?;
+    let count = usize::try_from(count).map_err(|_| {
+        Error::unsupported_workload(
+            "simulation interval count exceeds supported range",
+        )
+    })?;
+    Ok(interval_limit.map_or(count, |limit| count.min(limit)))
 }
 
 /// One non-empty contiguous range of emitted complex samples.
@@ -217,13 +131,16 @@ impl SampleTimeline {
         start_time: GpsTime, sample_frequency_hz: f64, step_seconds: f64,
         duration_seconds: Option<f64>, interval_limit: Option<usize>,
     ) -> Result<Self, Error> {
+        validate_duration(duration_seconds)?;
+        validate_update_step(step_seconds)?;
+        IqBlockSizing::validate_update_step(sample_frequency_hz, step_seconds)?;
         let sample_frequency_hz = sample_frequency_hz.round() as u64;
-        if sample_frequency_hz == 0 {
-            return Err(Error::msg(
-                "sample frequency must be greater than zero",
+        let step = Rational::from_positive_f64(step_seconds, "sample rate")?;
+        if step.numerator == 0 {
+            return Err(Error::unsupported_workload(
+                "configured update step is below supported timeline resolution",
             ));
         }
-        let step = Rational::from_positive_f64(step_seconds, "sample rate")?;
         let start_seconds = if start_time.sec == 0.0 {
             Rational {
                 numerator: 0,
@@ -233,25 +150,37 @@ impl SampleTimeline {
             Rational::from_positive_f64(start_time.sec, "GPS seconds")?
         };
 
+        let limited_samples = interval_limit
+            .map(|limit| {
+                let limit = u128::try_from(limit).map_err(|_| {
+                    Error::unsupported_workload(
+                        "simulation interval limit exceeds supported range",
+                    )
+                })?;
+                step.rounded_product(
+                    u128::from(sample_frequency_hz)
+                        .checked_mul(limit)
+                        .ok_or_else(|| {
+                            Error::unsupported_workload(
+                                "sample timeline interval limit overflow",
+                            )
+                        })?,
+                )
+            })
+            .transpose()?;
         let duration_samples = duration_seconds
             .map(|duration| {
                 if duration == 0.0 {
-                    Ok(0)
-                } else {
-                    Rational::from_positive_f64(duration, "duration")?
-                        .rounded_product(u128::from(sample_frequency_hz))
+                    return Ok(0);
                 }
-            })
-            .transpose()?;
-        let limited_samples = interval_limit
-            .map(|limit| {
-                step.rounded_product(
-                    u128::from(sample_frequency_hz)
-                        .checked_mul(limit as u128)
-                        .ok_or_else(|| {
-                            Error::msg("sample timeline overflow")
-                        })?,
-                )
+                if let (Some(limit), Some(limited_samples)) =
+                    (interval_limit, limited_samples)
+                    && (duration / step_seconds >= limit as f64)
+                {
+                    return Ok(limited_samples);
+                }
+                Rational::from_positive_f64(duration, "duration")?
+                    .rounded_product(u128::from(sample_frequency_hz))
             })
             .transpose()?;
         let total_samples = match (duration_samples, limited_samples) {
@@ -317,13 +246,17 @@ impl SampleTimeline {
             .is_some_and(|total| self.emitted_samples >= total)
     }
 
-    /// Returns the capacity needed by any unsplit configured update block.
-    pub fn maximum_block_samples(&self) -> Result<usize, Error> {
+    /// Returns checked dimensions for any unsplit configured update block.
+    pub fn maximum_block_sizing(&self) -> Result<IqBlockSizing, Error> {
         let samples = self
             .step
             .ceiling_product(u128::from(self.sample_frequency_hz))?;
-        usize::try_from(samples)
-            .map_err(|_| Error::msg("I/Q block size exceeds supported range"))
+        let samples = usize::try_from(samples).map_err(|_| {
+            Error::unsupported_workload(
+                "I/Q block size exceeds supported range",
+            )
+        })?;
+        IqBlockSizing::new(samples)
     }
 
     /// Advances to the next duration-, step-, or frame-bounded sample block.
@@ -336,20 +269,28 @@ impl SampleTimeline {
             if let Some(step) = self.pending_step {
                 break step;
             }
-            self.next_step_index = self
-                .next_step_index
-                .checked_add(1)
-                .ok_or_else(|| Error::msg("sample timeline step overflow"))?;
+            self.next_step_index =
+                self.next_step_index.checked_add(1).ok_or_else(|| {
+                    Error::unsupported_workload("sample timeline step overflow")
+                })?;
             let previous_step_index = self.next_step_index - 1;
             let start_sample = self.step.rounded_product(
                 u128::from(self.sample_frequency_hz)
                     .checked_mul(u128::from(previous_step_index))
-                    .ok_or_else(|| Error::msg("sample timeline overflow"))?,
+                    .ok_or_else(|| {
+                        Error::unsupported_workload(
+                            "sample timeline step multiplication overflow",
+                        )
+                    })?,
             )?;
             let full_end_sample = self.step.rounded_product(
                 u128::from(self.sample_frequency_hz)
                     .checked_mul(u128::from(self.next_step_index))
-                    .ok_or_else(|| Error::msg("sample timeline overflow"))?,
+                    .ok_or_else(|| {
+                        Error::unsupported_workload(
+                            "sample timeline step multiplication overflow",
+                        )
+                    })?,
             )?;
             let emitted_end_sample = self
                 .total_samples
@@ -384,20 +325,34 @@ impl SampleTimeline {
                     FRAME_SECONDS
                         .checked_mul(self.sample_frequency_hz)
                         .ok_or_else(|| {
-                            Error::msg("GPS frame sample overflow")
+                            Error::unsupported_workload(
+                                "GPS frame sample multiplication overflow",
+                            )
                         })?,
                 )
-                .ok_or_else(|| Error::msg("GPS frame sample overflow"))?;
+                .ok_or_else(|| {
+                    Error::unsupported_workload(
+                        "GPS frame sample offset overflow",
+                    )
+                })?;
             self.next_frame_time = next_frame_time(&self.next_frame_time);
         }
 
         let sample_count = end_sample - start_sample;
+        let sample_count = usize::try_from(sample_count).map_err(|_| {
+            Error::unsupported_workload(
+                "I/Q block size exceeds supported range",
+            )
+        })?;
+        let sample_count = IqBlockSizing::new(sample_count)?.complex_samples();
         Ok(Some(TimelineBlock {
-            sample_count: usize::try_from(sample_count).map_err(|_| {
-                Error::msg("I/Q block size exceeds supported range")
-            })?,
+            sample_count,
             step_index: usize::try_from(self.next_step_index).map_err(
-                |_| Error::msg("simulation step exceeds supported range"),
+                |_| {
+                    Error::unsupported_workload(
+                        "simulation step exceeds supported range",
+                    )
+                },
             )?,
             step_start_sample: pending_step.start_sample,
             step_end_sample: pending_step.full_end_sample,
@@ -420,25 +375,28 @@ impl SampleTimeline {
 fn first_frame_deadline(
     start_time: &GpsTime, start_seconds: Rational, sample_frequency_hz: u64,
 ) -> Result<(u64, GpsTime), Error> {
+    let frame_overflow =
+        || Error::unsupported_workload("GPS frame sample calculation overflow");
     let frame_denominator = start_seconds
         .denominator
         .checked_mul(u128::from(FRAME_SECONDS))
-        .ok_or_else(|| Error::msg("GPS frame calculation overflow"))?;
+        .ok_or_else(&frame_overflow)?;
     let next_frame_seconds = (start_seconds.numerator / frame_denominator + 1)
         .checked_mul(u128::from(FRAME_SECONDS))
-        .ok_or_else(|| Error::msg("GPS frame calculation overflow"))?;
+        .ok_or_else(&frame_overflow)?;
     let difference_numerator = next_frame_seconds
         .checked_mul(start_seconds.denominator)
         .and_then(|value| value.checked_sub(start_seconds.numerator))
-        .ok_or_else(|| Error::msg("GPS frame calculation overflow"))?;
+        .ok_or_else(&frame_overflow)?;
     let next_frame_sample = divide_ceiling(
         difference_numerator
             .checked_mul(u128::from(sample_frequency_hz))
-            .ok_or_else(|| Error::msg("GPS frame calculation overflow"))?,
+            .ok_or_else(&frame_overflow)?,
         start_seconds.denominator,
     )?;
-    let next_frame_sample = u64::try_from(next_frame_sample)
-        .map_err(|_| Error::msg("GPS frame sample exceeds supported range"))?;
+    let next_frame_sample = u64::try_from(next_frame_sample).map_err(|_| {
+        Error::unsupported_workload("GPS frame sample exceeds supported range")
+    })?;
     let next_frame_time = if next_frame_seconds >= SECONDS_IN_WEEK as u128 {
         GpsTime {
             week: start_time.week + 1,

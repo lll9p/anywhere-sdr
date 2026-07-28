@@ -3,7 +3,7 @@ use geometry::Ecef;
 
 use super::SignalGenerator;
 use crate::{
-    Error, GpsTime,
+    Error, GpsTime, IqBlockSizing,
     generator::{
         MotionMode, motion_control::MotionIntegrator, timeline::TimelineBlock,
     },
@@ -248,13 +248,19 @@ impl SignalGenerator {
         }
         self.begin_finite_run().map_err(E::from)?;
 
-        let mut iq_buffer = Vec::with_capacity(2 * self.iq_buffer_size);
+        let buffer_capacity = IqBlockSizing::new(self.iq_buffer_size)
+            .map_err(E::from)?
+            .interleaved_i16_len();
+        let mut iq_buffer = Vec::with_capacity(buffer_capacity);
         while let Some(block) = self.next_timeline_block().map_err(E::from)? {
             let current_location =
                 self.finite_block_location(&block).map_err(E::from)?;
             self.prepare_block(&block, current_location)
                 .map_err(E::from)?;
-            iq_buffer.resize(2 * block.sample_count, 0);
+            let block_len = IqBlockSizing::new(block.sample_count)
+                .map_err(E::from)?
+                .interleaved_i16_len();
+            iq_buffer.resize(block_len, 0);
             Self::generate_samples_into(
                 &mut self.channels,
                 &self.antenna_gains,
@@ -298,7 +304,10 @@ impl SignalGenerator {
             .ok_or_else(Error::wrong_positions)
             .map_err(E::from)?;
         let mut integrator = MotionIntegrator::new(initial_position);
-        let mut iq_buffer = Vec::with_capacity(2 * self.iq_buffer_size);
+        let buffer_capacity = IqBlockSizing::new(self.iq_buffer_size)
+            .map_err(E::from)?
+            .interleaved_i16_len();
+        let mut iq_buffer = Vec::with_capacity(buffer_capacity);
 
         loop {
             let block = self
@@ -314,7 +323,10 @@ impl SignalGenerator {
                 .map_err(E::from)?;
             self.prepare_block(&block, current_location)
                 .map_err(E::from)?;
-            iq_buffer.resize(2 * block.sample_count, 0);
+            let block_len = IqBlockSizing::new(block.sample_count)
+                .map_err(E::from)?
+                .interleaved_i16_len();
+            iq_buffer.resize(block_len, 0);
             Self::generate_samples_into(
                 &mut self.channels,
                 &self.antenna_gains,

@@ -26,19 +26,25 @@ impl SignalGeneratorBuilder {
     /// * `Err(Error)` - If another positioning method was already set
     ///
     /// # Errors
-    /// * Returns an error if another positioning method was already set
-    ///   (duplicate position)
+    /// * Returns an error if the coordinate vector does not contain exactly
+    ///   three values or another positioning method was already set
     pub fn location_ecef(
         mut self, location: Option<Vec<f64>>,
     ) -> Result<Self, Error> {
-        if self.positions.is_some() && location.is_some() {
+        let Some(location) = location else {
+            return Ok(self);
+        };
+        let actual = location.len();
+        let coordinates: [f64; 3] = location
+            .try_into()
+            .map_err(|_| Error::invalid_coordinate_count(actual))?;
+        if self.positions.is_some() {
             return Err(Error::duplicate_position());
         }
-        if let Some(location) = location {
-            self.mode = Some(MotionMode::Static);
-            let location = Ecef::from(&[location[0], location[1], location[2]]);
-            self.positions = Some(vec![location]);
-        }
+
+        let location = Ecef::from(&coordinates);
+        self.mode = Some(MotionMode::Static);
+        self.positions = Some(vec![location]);
         Ok(self)
     }
 
@@ -58,26 +64,27 @@ impl SignalGeneratorBuilder {
     /// * `Err(Error)` - If another positioning method was already set
     ///
     /// # Errors
-    /// * Returns an error if another positioning method was already set
-    ///   (duplicate position)
+    /// * Returns an error if the coordinate vector does not contain exactly
+    ///   three values, geodetic validation fails, or another positioning method
+    ///   was already set
     pub fn location(
         mut self, location: Option<Vec<f64>>,
     ) -> Result<Self, Error> {
-        if self.positions.is_some() && location.is_some() {
+        let Some(location) = location else {
+            return Ok(self);
+        };
+        let actual = location.len();
+        let [latitude, longitude, height]: [f64; 3] = location
+            .try_into()
+            .map_err(|_| Error::invalid_coordinate_count(actual))?;
+        if self.positions.is_some() {
             return Err(Error::duplicate_position());
         }
-        if let Some(location) = location {
-            self.mode = Some(MotionMode::Static);
-            let location = Location::try_from_degrees(
-                location[0],
-                location[1],
-                location[2],
-            )?;
-            let xyz = Ecef::from(&location);
-            // let mut xyz = [0.0, 0.0, 0.0];
-            // llh2xyz(&location, &mut xyz);
-            self.positions = Some(vec![xyz]);
-        }
+
+        let location = Location::try_from_degrees(latitude, longitude, height)?;
+        let xyz = Ecef::from(&location);
+        self.mode = Some(MotionMode::Static);
+        self.positions = Some(vec![xyz]);
         Ok(self)
     }
 

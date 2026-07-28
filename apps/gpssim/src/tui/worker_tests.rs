@@ -42,6 +42,42 @@ fn progress_uses_actual_emitted_samples_for_fractional_blocks() {
 }
 
 #[test]
+fn tui_generator_preserves_coordinate_cardinality_errors() -> Result<(), Error>
+{
+    for actual in [0, 1, 2, 4] {
+        let mut config = TuiConfig {
+            ephemerides: Some(navigation_path()),
+            location: Some(vec![0.0; actual]),
+            ..TuiConfig::default()
+        };
+        let Err(error) = build_generator(&config, None) else {
+            return Err(Error::msg(
+                "invalid LLH coordinate count was accepted",
+            ));
+        };
+        assert!(matches!(
+            error,
+            Error::Gps(gps::Error::InvalidCoordinateCount { actual: count })
+                if count == actual
+        ));
+
+        config.location = None;
+        config.location_ecef = Some(vec![0.0; actual]);
+        let Err(error) = build_generator(&config, None) else {
+            return Err(Error::msg(
+                "invalid ECEF coordinate count was accepted",
+            ));
+        };
+        assert!(matches!(
+            error,
+            Error::Gps(gps::Error::InvalidCoordinateCount { actual: count })
+                if count == actual
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn manual_mode_streaming_runs_without_new_input_until_cancelled()
 -> Result<(), String> {
     let config = manual_config();

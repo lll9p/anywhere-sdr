@@ -6,7 +6,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::Error;
+use crate::{Error, IqBlockSizing};
 
 /// Stateful MSB-first packer for signed I/Q decisions.
 #[derive(Clone, Copy, Debug, Default)]
@@ -48,7 +48,12 @@ impl Bits1PackingState {
 /// unused low-order bits are zero. Semantics match a completed
 /// [`IQWriter`] stream.
 pub fn pack_bits1_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
-    if out.len() != iq.len().div_ceil(8) {
+    IqBlockSizing::checked_i16_byte_len(iq.len())?;
+    let expected_len =
+        iq.len().checked_add(7).ok_or_else(|| {
+            Error::unsupported_workload("Bits1 length overflow")
+        })? / 8;
+    if out.len() != expected_len {
         return Err(Error::msg("Bits1 output length mismatch"));
     }
 
@@ -63,6 +68,7 @@ pub fn pack_bits1_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
 ///
 /// Semantics MUST match `IQWriter::write_samples()` for `DataFormat::Bits8`.
 pub fn pack_bits8_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
+    IqBlockSizing::checked_i16_byte_len(iq.len())?;
     if out.len() != iq.len() {
         return Err(Error::msg("Bits8 output length mismatch"));
     }
@@ -78,10 +84,19 @@ pub fn pack_bits8_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
 ///
 /// Semantics MUST match `IQWriter::write_samples()` for `DataFormat::Bits16`.
 pub fn as_bytes_i16(iq: &[i16]) -> &[u8] {
-    // SAFETY: This is a read-only view of an existing i16 slice.
+    // SAFETY: `size_of_val` describes the same existing slice allocation.
     unsafe {
-        std::slice::from_raw_parts(iq.as_ptr().cast::<u8>(), iq.len() * 2)
+        std::slice::from_raw_parts(
+            iq.as_ptr().cast::<u8>(),
+            std::mem::size_of_val(iq),
+        )
     }
+}
+
+/// Checks the configured block limit before creating a native-endian byte view.
+fn checked_as_bytes_i16(iq: &[i16]) -> Result<&[u8], Error> {
+    IqBlockSizing::checked_i16_byte_len(iq.len())?;
+    Ok(as_bytes_i16(iq))
 }
 
 /// Defines the bit depth format for I/Q sample data.
@@ -145,15 +160,15 @@ impl IQWriter {
     pub fn new(
         path: &PathBuf, format: DataFormat, buffer_size: usize,
     ) -> Result<Self, Error> {
+        let sizing = IqBlockSizing::new(buffer_size)?;
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
-        // Allocate buffer for I/Q samples (2 values per sample: I and Q)
-        let buffer = vec![0; 2 * buffer_size];
+        let buffer = vec![0; sizing.interleaved_i16_len()];
         Ok(Self {
             writer,
             format,
             buffer,
-            buffer_size,
+            buffer_size: sizing.complex_samples(),
             bits1_state: Bits1PackingState::default(),
         })
     }
@@ -176,27 +191,38 @@ impl IQWriter {
     /// * Returns an error if writing to the output file fails
     #[inline]
     pub fn write_samples(&mut self) -> Result<(), Error> {
+        let sizing =
+            IqBlockSizing::from_interleaved_i16_len(self.buffer.len())?;
+        if sizing.complex_samples() != self.buffer_size {
+            return Err(Error::unsupported_workload(
+                "I/Q writer buffer size does not match its complex sample \
+                 count",
+            ));
+        }
         match self.format {
             DataFormat::Bits1 => {
-                let mut packed = Vec::with_capacity(
-                    (usize::from(self.bits1_state.pending_bits)
-                        + self.buffer.len())
-                        / 8,
-                );
+                let packed_capacity =
+                    usize::from(self.bits1_state.pending_bits)
+                        .checked_add(sizing.interleaved_i16_len())
+                        .ok_or_else(|| {
+                            Error::unsupported_workload(
+                                "Bits1 capacity overflow",
+                            )
+                        })?
+                        / 8;
+                let mut packed = Vec::with_capacity(packed_capacity);
                 let next_state =
                     self.bits1_state.push(&self.buffer, &mut packed);
                 self.writer.write_all(&packed)?;
                 self.bits1_state = next_state;
             }
             DataFormat::Bits8 => {
-                // For 8-bit format, convert 16-bit samples to 8-bit
-                let mut packed = vec![0u8; 2 * self.buffer_size];
+                let mut packed = vec![0u8; sizing.interleaved_i16_len()];
                 pack_bits8_into(&self.buffer, &mut packed)?;
                 self.writer.write_all(&packed)?;
             }
             DataFormat::Bits16 => {
-                // For 16-bit format, write samples directly
-                self.writer.write_all(as_bytes_i16(&self.buffer))?;
+                self.writer.write_all(checked_as_bytes_i16(&self.buffer)?)?;
             }
         }
         Ok(())

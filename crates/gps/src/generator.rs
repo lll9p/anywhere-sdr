@@ -10,6 +10,8 @@ mod builder;
 mod motion_control;
 /// Numeric helpers for runtime motion integration
 mod motion_math;
+/// Bounded rational arithmetic for sample planning
+mod rational;
 /// Core signal generation implementation
 mod signal_generator;
 /// Authoritative emitted-sample timeline

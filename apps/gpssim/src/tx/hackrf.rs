@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gps::pack_bits8_into;
+use gps::{IqBlockSizing, pack_bits8_into};
 use libhackrf::hackrf::HackRF;
 
 use super::TxSink;
@@ -81,6 +81,7 @@ impl HackrfTxSink {
                 ),
             ));
         }
+        IqBlockSizing::from_interleaved_i16_len(expected_i16_len)?;
 
         let mut hackrf = if let Some(serial) = &config.serial {
             HackRF::new(serial).map_err(|err| {
@@ -428,8 +429,9 @@ mod tests {
             underrun_counter: None,
         };
 
-        let mut sink = HackrfTxSink::new(config, 2 * 1024)?;
-        let block = vec![0i16; 2 * 1024];
+        let sizing = IqBlockSizing::new(1024)?;
+        let mut sink = HackrfTxSink::new(config, sizing.interleaved_i16_len())?;
+        let block = vec![0i16; sizing.interleaved_i16_len()];
         for _ in 0..10 {
             sink.write_block_i16(&block)?;
         }
