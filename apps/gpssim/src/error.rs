@@ -52,6 +52,21 @@ pub enum Error {
     #[error("Application error: {0}")]
     Other(String),
 
+    /// Exact sentinel for a user-requested streaming cancellation
+    #[error("run cancelled")]
+    RunCancelled,
+
+    /// A worker panicked in an unwind-capable build
+    #[error("worker thread panicked: {message}")]
+    WorkerPanicked {
+        /// String panic payload or a stable fallback
+        message: String,
+    },
+
+    /// A worker exited without sending a terminal event
+    #[error("worker exited without a terminal event")]
+    WorkerExitedWithoutTerminalEvent,
+
     /// Multiple TX sinks failed during ordered finalization
     #[error(
         "multiple TX finalization failures: first: {first}; additional: {}",
@@ -71,7 +86,7 @@ pub enum Error {
          {finalization}"
     )]
     RunAndFinalizationFailed {
-        /// Primary generation or sink-write failure
+        /// Primary generation, sink-write, callback, or cancellation failure
         #[source]
         primary: Box<Error>,
         /// Secondary ordered output-finalization failure
@@ -107,7 +122,7 @@ pub enum Error {
          {cleanup}"
     )]
     TuiAndTerminalCleanupFailed {
-        /// Primary initialization, draw, poll, or read failure
+        /// Primary initialization, event-loop, or completed-run failure
         #[source]
         primary: Box<Error>,
         /// Secondary ordered terminal restoration failure

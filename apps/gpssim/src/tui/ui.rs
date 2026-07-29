@@ -214,8 +214,8 @@ fn last_run_lines(last_run: &LastRun) -> Vec<Line<'static>> {
         Line::from(""),
         labeled_line("last", last_run_label(last_run)),
     ];
-    if let LastRun::Error(message) = last_run {
-        lines.push(Line::from(message.clone()));
+    if let LastRun::Error(error) = last_run {
+        lines.push(Line::from(error.to_string()));
     }
     lines
 }

@@ -1,4 +1,4 @@
-use std::{io, sync::mpsc};
+use std::{any::Any, io, sync::mpsc};
 
 use gps::RuntimeMotionControl;
 
@@ -10,10 +10,19 @@ use super::{
         spawn_worker,
     },
 };
-use crate::tui_config::TuiConfig;
+use crate::{Error, tui_config::TuiConfig};
 
-const WORKER_PANICKED: &str = "worker thread panicked";
-const WORKER_MISSING_TERMINAL: &str = "worker exited without a terminal event";
+const NON_STRING_PANIC_PAYLOAD: &str = "non-string panic payload";
+
+fn panic_message(payload: Box<dyn Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else {
+        NON_STRING_PANIC_PAYLOAD.to_string()
+    }
+}
 
 impl App {
     pub(super) fn drain_worker_events(&mut self) {
@@ -140,9 +149,9 @@ impl App {
                 pending_terminal,
                 PendingTerminalOutcome::Cancelled(progress),
             ),
-            WorkerEvent::Error(message) => self.record_terminal_outcome(
+            WorkerEvent::Error(error) => self.record_terminal_outcome(
                 pending_terminal,
-                PendingTerminalOutcome::Error(message),
+                PendingTerminalOutcome::Error(error),
             ),
         }
     }
@@ -173,11 +182,11 @@ impl App {
             &mut events_disconnected,
         );
 
-        if join_result.is_err() {
-            self.last_run = Some(LastRun::Error(WORKER_PANICKED.to_string()));
-            self.push_log(WORKER_PANICKED);
-        } else {
-            self.apply_terminal_outcome(pending_terminal);
+        match join_result {
+            Ok(()) => self.apply_terminal_outcome(pending_terminal),
+            Err(payload) => self.record_run_error(Error::WorkerPanicked {
+                message: panic_message(payload),
+            }),
         }
         self.run_state = RunState::Idle;
     }
@@ -196,16 +205,18 @@ impl App {
                 self.last_run = Some(LastRun::Cancelled);
                 self.push_log("run cancelled");
             }
-            Some(PendingTerminalOutcome::Error(message)) => {
-                self.last_run = Some(LastRun::Error(message.clone()));
-                self.push_log(format!("run error: {message}"));
+            Some(PendingTerminalOutcome::Error(error)) => {
+                self.record_run_error(error);
             }
             None => {
-                self.last_run =
-                    Some(LastRun::Error(WORKER_MISSING_TERMINAL.to_string()));
-                self.push_log(format!("run error: {WORKER_MISSING_TERMINAL}"));
+                self.record_run_error(Error::WorkerExitedWithoutTerminalEvent);
             }
         }
+    }
+
+    fn record_run_error(&mut self, error: Error) {
+        self.push_log(format!("run error: {error}"));
+        self.last_run = Some(LastRun::Error(error));
     }
 }
 

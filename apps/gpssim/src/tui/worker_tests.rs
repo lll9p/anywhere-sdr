@@ -1,4 +1,5 @@
 use std::{
+    error::Error as StdError,
     path::PathBuf,
     sync::{atomic::Ordering, mpsc},
     thread,
@@ -32,6 +33,10 @@ fn manual_config() -> TuiConfig {
 fn navigation_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../resources/brdc0010.22n")
+}
+
+fn terminal_progress() -> Progress {
+    compute_progress(Instant::now(), 1, 100_000, 1_000_000.0, None)
 }
 
 #[test]
@@ -118,9 +123,9 @@ fn manual_mode_streaming_runs_without_new_input_until_cancelled()
                 saw_cancelled = true;
                 break;
             }
-            Ok(WorkerEvent::Error(message)) => {
+            Ok(WorkerEvent::Error(error)) => {
                 return Err(format!(
-                    "manual worker error after cancel: {message}"
+                    "manual worker error after cancel: {error}"
                 ));
             }
             Ok(
@@ -141,5 +146,68 @@ fn manual_mode_streaming_runs_without_new_input_until_cancelled()
         Err(_) => return Err("join worker thread panicked".to_string()),
     }
     assert!(saw_cancelled, "manual worker did not emit cancel event");
+    Ok(())
+}
+
+#[test]
+fn typed_cancellation_is_clean_only_after_successful_finalization()
+-> Result<(), Error> {
+    let completion = resolve_worker_completion(
+        Err(Error::RunCancelled),
+        Ok(()),
+        terminal_progress(),
+    )?;
+    assert!(matches!(completion, WorkerCompletion::Cancelled(_)));
+    Ok(())
+}
+
+#[test]
+fn cancellation_precedes_finalization_failure() -> Result<(), Error> {
+    let Err(error) = resolve_worker_completion(
+        Err(Error::RunCancelled),
+        Err(Error::tx_backend_msg("finalizer", "finish failed")),
+        terminal_progress(),
+    ) else {
+        return Err(Error::msg(
+            "cancellation plus finalization failure was discarded",
+        ));
+    };
+    let source = StdError::source(&error)
+        .ok_or_else(|| Error::msg("combined error has no primary source"))?;
+    assert_eq!(source.to_string(), "run cancelled");
+    let Error::RunAndFinalizationFailed {
+        primary,
+        finalization,
+    } = error
+    else {
+        return Err(Error::msg("expected combined run/finalization error"));
+    };
+    assert!(matches!(*primary, Error::RunCancelled));
+    assert!(matches!(*finalization, Error::TxBackendMsg {
+        backend: "finalizer",
+        ..
+    }));
+    Ok(())
+}
+
+#[test]
+fn progress_receiver_loss_is_not_user_cancellation() -> Result<(), Error> {
+    let (event_tx, events) = mpsc::channel();
+    drop(events);
+    let progress_error = send_progress(&event_tx, terminal_progress())
+        .err()
+        .ok_or_else(|| Error::msg("closed progress receiver was accepted"))?;
+    let Err(error) = resolve_worker_completion(
+        Err(progress_error),
+        Ok(()),
+        terminal_progress(),
+    ) else {
+        return Err(Error::msg("progress receiver loss was discarded"));
+    };
+    assert!(matches!(
+        error,
+        Error::Other(ref message)
+            if message == PROGRESS_RECEIVER_DISCONNECTED
+    ));
     Ok(())
 }

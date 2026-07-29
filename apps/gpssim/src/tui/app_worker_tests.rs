@@ -166,7 +166,10 @@ fn worker_error_event_preserves_existing_error_state() -> Result<(), String> {
         synthetic_worker(|event_tx, _| {
             send_event(
                 &event_tx,
-                WorkerEvent::Error("synthetic run failure".to_string()),
+                WorkerEvent::Error(Error::tx_backend_msg(
+                    "synthetic",
+                    "run failure",
+                )),
             );
         })
         .map_err(|error| error.to_string())?,
@@ -175,9 +178,9 @@ fn worker_error_event_preserves_existing_error_state() -> Result<(), String> {
     drain_until_idle(&mut app)?;
 
     assert!(matches!(
-        app.last_run,
-        Some(LastRun::Error(ref message))
-            if message == "synthetic run failure"
+        &app.last_run,
+        Some(LastRun::Error(Error::TxBackendMsg { backend, message }))
+            if *backend == "synthetic" && message == "run failure"
     ));
     assert_eq!(app.run_state, RunState::Idle);
     Ok(())
@@ -197,9 +200,8 @@ fn completion_without_terminal_event_unblocks_exit_and_restart()
 
     assert!(app.should_exit());
     assert!(matches!(
-        app.last_run,
-        Some(LastRun::Error(ref message))
-            if message == WORKER_MISSING_TERMINAL
+        &app.last_run,
+        Some(LastRun::Error(Error::WorkerExitedWithoutTerminalEvent))
     ));
 
     app.start_run_with_spawn(|_, _| {
@@ -323,8 +325,9 @@ fn panic_without_terminal_event_is_reaped() -> Result<(), String> {
     drain_until_idle(&mut app)?;
 
     assert!(matches!(
-        app.last_run,
-        Some(LastRun::Error(ref message)) if message == WORKER_PANICKED
+        &app.last_run,
+        Some(LastRun::Error(Error::WorkerPanicked { message }))
+            if message == "synthetic worker panic"
     ));
     assert_eq!(app.run_state, RunState::Idle);
     assert!(app.worker.is_none());
@@ -362,8 +365,9 @@ fn panic_overrides_optimistic_terminal_event() -> Result<(), String> {
     drain_until_idle(&mut app)?;
 
     assert!(matches!(
-        app.last_run,
-        Some(LastRun::Error(ref message)) if message == WORKER_PANICKED
+        &app.last_run,
+        Some(LastRun::Error(Error::WorkerPanicked { message }))
+            if message == "panic after terminal event"
     ));
     assert_eq!(app.run_state, RunState::Idle);
     assert!(app.worker.is_none());
@@ -425,7 +429,7 @@ fn old_worker_events_cannot_leak_into_a_later_run() -> Result<(), String> {
                 return false;
             }
             stale_event_tx
-                .send(WorkerEvent::Error("stale event".to_string()))
+                .send(WorkerEvent::Error(Error::msg("stale event")))
                 .is_err()
         })
         .map_err(|error| error.to_string())?;

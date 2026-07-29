@@ -12,7 +12,7 @@ use super::{
     },
     worker::{Progress, WorkerHandle, describe_sinks},
 };
-use crate::{cli::TxBackend, tui_config::TuiConfig, utils::LogBuffer};
+use crate::{Error, cli::TxBackend, tui_config::TuiConfig, utils::LogBuffer};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ActiveTab {
@@ -60,11 +60,11 @@ pub(super) enum RunState {
     Stopping,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) enum LastRun {
     Finished,
     Cancelled,
-    Error(String),
+    Error(Error),
 }
 
 pub(super) struct App {
@@ -113,6 +113,13 @@ impl App {
 
     pub(super) fn should_exit(&self) -> bool {
         self.exit_requested && self.worker.is_none()
+    }
+
+    pub(super) fn take_session_result(&mut self) -> Result<(), Error> {
+        match self.last_run.take() {
+            Some(LastRun::Error(error)) => Err(error),
+            Some(LastRun::Finished | LastRun::Cancelled) | None => Ok(()),
+        }
     }
 
     pub(super) fn push_log(&mut self, line: impl Into<String>) {

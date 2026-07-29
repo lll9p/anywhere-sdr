@@ -22,6 +22,9 @@ use crate::{
     tx::{FileTxSink, HackrfTxConfig, HackrfTxSink, NullTxSink, TxSink, TxTee},
 };
 
+const PROGRESS_RECEIVER_DISCONNECTED: &str =
+    "TUI progress receiver disconnected";
+
 #[derive(Debug, Clone)]
 pub(super) struct Progress {
     pub(super) blocks: u64,
@@ -38,13 +41,13 @@ pub(super) enum WorkerEvent {
     Progress(Progress),
     Finished(Progress),
     Cancelled(Progress),
-    Error(String),
+    Error(Error),
 }
 
 pub(super) enum PendingTerminalOutcome {
     Finished(Progress),
     Cancelled(Progress),
-    Error(String),
+    Error(Error),
 }
 
 pub(super) struct WorkerHandle {
@@ -143,8 +146,8 @@ fn worker_thread_main(
                 tracing::debug!("ui disconnected before cancelled event");
             }
         }
-        Err(err) => {
-            if event_tx.send(WorkerEvent::Error(err.to_string())).is_err() {
+        Err(error) => {
+            if event_tx.send(WorkerEvent::Error(error)).is_err() {
                 tracing::debug!("ui disconnected before error event");
             }
         }
@@ -154,6 +157,24 @@ fn worker_thread_main(
 enum WorkerCompletion {
     Finished(Progress),
     Cancelled(Progress),
+}
+
+fn send_progress(
+    event_tx: &mpsc::Sender<WorkerEvent>, progress: Progress,
+) -> Result<(), Error> {
+    event_tx
+        .send(WorkerEvent::Progress(progress))
+        .map_err(|_| Error::msg(PROGRESS_RECEIVER_DISCONNECTED))
+}
+
+fn resolve_worker_completion(
+    run: Result<(), Error>, finish: Result<(), Error>, progress: Progress,
+) -> Result<WorkerCompletion, Error> {
+    match resolve_run_and_finish(run, finish) {
+        Ok(()) => Ok(WorkerCompletion::Finished(progress)),
+        Err(Error::RunCancelled) => Ok(WorkerCompletion::Cancelled(progress)),
+        Err(error) => Err(error),
+    }
 }
 
 fn run_streaming_worker(
@@ -191,12 +212,10 @@ fn run_streaming_worker(
 
     let mut blocks: u64 = 0;
     let mut total_samples: u64 = 0;
-    let mut cancelled = false;
 
     let mut on_block = |block: &[i16]| -> Result<(), Error> {
         if cancel.load(Ordering::Relaxed) {
-            cancelled = true;
-            return Err(Error::msg("cancelled"));
+            return Err(Error::RunCancelled);
         }
 
         blocks = blocks.checked_add(1).ok_or_else(|| {
@@ -228,10 +247,7 @@ fn run_streaming_worker(
                 sample_frequency_hz,
                 hackrf_underruns,
             );
-            if event_tx.send(WorkerEvent::Progress(progress)).is_err() {
-                cancelled = true;
-                return Err(Error::msg("ui gone"));
-            }
+            send_progress(event_tx, progress)?;
             last_progress = Instant::now();
         }
 
@@ -257,12 +273,7 @@ fn run_streaming_worker(
         hackrf_underruns,
     );
 
-    let run_result = match streaming_result {
-        Ok(()) => Ok(WorkerCompletion::Finished(progress)),
-        Err(_) if cancelled => Ok(WorkerCompletion::Cancelled(progress)),
-        Err(error) => Err(error),
-    };
-    resolve_run_and_finish(run_result, finish_result)
+    resolve_worker_completion(streaming_result, finish_result, progress)
 }
 
 fn compute_progress(

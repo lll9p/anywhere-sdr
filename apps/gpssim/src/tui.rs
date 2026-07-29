@@ -71,7 +71,8 @@ where
     let mut app = app::App::new(config, log_buffer);
     let mut terminal_guard = terminal::TerminalGuard::acquire(environment)?;
     let tui_result = match terminal_guard.terminal_mut() {
-        Ok(terminal) => run_event_loop(terminal, &mut app, &mut event_source),
+        Ok(terminal) => run_event_loop(terminal, &mut app, &mut event_source)
+            .and_then(|()| app.take_session_result()),
         Err(error) => Err(error),
     };
     let cleanup_result = terminal_guard.restore();
@@ -138,3 +139,7 @@ where
 
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tui/outcome_tests.rs"]
+mod outcome_tests;
