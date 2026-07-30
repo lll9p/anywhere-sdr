@@ -2,21 +2,33 @@
 
 use std::{
     collections::VecDeque,
-    io::Write,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-        mpsc,
-    },
+    io::{self, Write},
+    sync::{Arc, atomic::AtomicU64, mpsc},
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use gps::{IqBlockSizing, pack_bits8_into};
-use libhackrf::hackrf::HackRF;
+use gps::pack_bits8_into;
 
 use super::TxSink;
 use crate::Error;
+
+mod startup;
+mod writer;
+
+#[cfg(test)]
+mod hardware_tests;
+#[cfg(test)]
+mod lifecycle_tests;
+#[cfg(test)]
+mod test_support;
+#[cfg(test)]
+mod validation_tests;
+
+use startup::{
+    ActivationGuard, HackrfDeviceControl, open_real_device, validate_config,
+};
+use writer::writer_thread_main;
 
 #[derive(Clone, Debug)]
 /// Configuration for `HackRF` TX.
@@ -52,19 +64,28 @@ pub struct HackrfTxConfig {
     pub underrun_counter: Option<Arc<AtomicU64>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StartupState {
+    Prepared,
+    Active,
+    Failed,
+    Finished,
+}
+
+type BufferObserver = Arc<dyn Fn(usize) + Send + Sync>;
+type WriterThread = thread::JoinHandle<Result<(), Error>>;
+
 /// A TX sink that streams SC8 samples to a `HackRF` device.
 pub struct HackrfTxSink {
-    /// Backend configuration.
     config: HackrfTxConfig,
-    /// Expected interleaved i16 block length.
     expected_i16_len: usize,
-
-    /// Producer channel used to feed the writer thread.
     sender: Option<mpsc::SyncSender<Vec<u8>>>,
-    /// Writer thread handle.
-    writer_thread: Option<thread::JoinHandle<Result<(), Error>>>,
-    /// Device handle used for best-effort stop on shutdown.
-    hackrf: Option<HackRF>,
+    writer_thread: Option<WriterThread>,
+    activation: ActivationGuard,
+    startup_state: StartupState,
+    prefill: VecDeque<Vec<u8>>,
+    buffered_blocks: usize,
+    buffer_observer: Option<BufferObserver>,
 }
 
 impl HackrfTxSink {
@@ -72,98 +93,53 @@ impl HackrfTxSink {
     pub fn new(
         config: HackrfTxConfig, expected_i16_len: usize,
     ) -> Result<Self, Error> {
-        if expected_i16_len == 0 || !expected_i16_len.is_multiple_of(2) {
-            return Err(Error::tx_backend_msg(
-                "hackrf",
-                format!(
-                    "invalid expected_i16_len={expected_i16_len} (must be \
-                     non-zero and even)"
-                ),
-            ));
-        }
-        IqBlockSizing::from_interleaved_i16_len(expected_i16_len)?;
+        Self::new_with(
+            config,
+            expected_i16_len,
+            open_real_device,
+            spawn_writer_thread,
+            None,
+        )
+    }
 
-        let mut hackrf = if let Some(serial) = &config.serial {
-            HackRF::new(serial).map_err(|err| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    open_context(&config),
-                    err,
-                )
-            })?
-        } else {
-            HackRF::new_auto().map_err(|err| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    open_context(&config),
-                    err,
-                )
-            })?
-        };
+    fn new_with<Open, Spawn>(
+        config: HackrfTxConfig, expected_i16_len: usize, open: Open,
+        spawn: Spawn, buffer_observer: Option<BufferObserver>,
+    ) -> Result<Self, Error>
+    where
+        Open: FnOnce(
+            &HackrfTxConfig,
+        ) -> Result<Box<dyn HackrfDeviceControl>, Error>,
+        Spawn: FnOnce(
+            HackrfTxConfig,
+            mpsc::Receiver<Vec<u8>>,
+            Box<dyn Write + Send>,
+        ) -> io::Result<WriterThread>,
+    {
+        validate_config(&config, expected_i16_len)?;
 
-        hackrf.set_freq(config.rf_freq_hz).map_err(|err| {
-            Error::tx_backend_with_source(
-                "hackrf",
-                config_context(&config),
-                err,
-            )
-        })?;
-        hackrf
-            .set_sample_rate_auto(config.sample_frequency_hz)
-            .map_err(|err| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    config_context(&config),
-                    err,
-                )
-            })?;
-        hackrf.set_amp_enable(config.amp_enable).map_err(|err| {
-            Error::tx_backend_with_source(
-                "hackrf",
-                config_context(&config),
-                err,
-            )
-        })?;
-        hackrf.set_txvga_gain(config.txvga_gain).map_err(|err| {
-            Error::tx_backend_with_source(
-                "hackrf",
-                config_context(&config),
-                err,
-            )
-        })?;
-        hackrf.enter_tx_mode().map_err(|err| {
-            Error::tx_backend_with_source(
-                "hackrf",
-                config_context(&config),
-                err,
-            )
-        })?;
-
-        let endpoint = hackrf.tx_queue().map_err(|err| {
-            Error::tx_backend_with_source(
-                "hackrf",
-                config_context(&config),
-                err,
-            )
-        })?;
-
-        let writer = endpoint
-            .writer(config.usb_transfer_bytes)
-            .with_num_transfers(config.usb_transfers);
+        let device = open(&config)?;
+        let mut activation =
+            ActivationGuard::new(device, config_context(&config));
+        activation.device_mut().set_freq(config.rf_freq_hz)?;
+        activation
+            .device_mut()
+            .set_sample_rate_auto(config.sample_frequency_hz)?;
+        activation.device_mut().set_amp_enable(config.amp_enable)?;
+        activation.device_mut().set_txvga_gain(config.txvga_gain)?;
+        let writer = activation.device_mut().prepare_tx_writer(
+            config.usb_transfer_bytes,
+            config.usb_transfers,
+        )?;
 
         let (sender, receiver) =
             mpsc::sync_channel::<Vec<u8>>(config.queue_blocks);
-        let writer_thread = thread::Builder::new()
-            .name("hackrf-tx".to_string())
-            .spawn({
-                let config = config.clone();
-                move || writer_thread_main(config, receiver, writer)
-            })
-            .map_err(|err| {
+        let writer_thread =
+            spawn(config.clone(), receiver, writer).map_err(|error| {
                 Error::tx_backend_with_source(
                     "hackrf",
                     config_context(&config),
-                    err,
+                    error,
                 )
             })?;
 
@@ -172,13 +148,121 @@ impl HackrfTxSink {
             expected_i16_len,
             sender: Some(sender),
             writer_thread: Some(writer_thread),
-            hackrf: Some(hackrf),
+            activation,
+            startup_state: StartupState::Prepared,
+            prefill: VecDeque::new(),
+            buffered_blocks: 0,
+            buffer_observer,
         })
     }
 
-    /// Returns formatted context used in backend error messages.
     fn backend_context(&self) -> String {
         config_context(&self.config)
+    }
+
+    fn buffer_until_ready(&mut self, block: Vec<u8>) -> Result<(), Error> {
+        self.prefill.push_back(block);
+        self.buffered_blocks = self.buffered_blocks.wrapping_add(1);
+        if let Some(observer) = &self.buffer_observer {
+            observer(self.buffered_blocks);
+        }
+
+        if self.prefill.len() >= self.config.prefill_blocks.max(1) {
+            self.activate_and_dispatch_prefill()?;
+        }
+        Ok(())
+    }
+
+    fn activate_and_dispatch_prefill(&mut self) -> Result<(), Error> {
+        if self.startup_state != StartupState::Prepared {
+            return Err(Error::tx_backend_msg(
+                self.backend(),
+                format!(
+                    "invalid startup activation state {:?} ({})",
+                    self.startup_state,
+                    self.backend_context()
+                ),
+            ));
+        }
+
+        // Make the activation attempt terminal before external mutation so
+        // unwinding cannot retry it from `finish` or `Drop`.
+        self.startup_state = StartupState::Failed;
+        if let Err(error) = self.activation.activate() {
+            self.prefill.clear();
+            return Err(error);
+        }
+        self.startup_state = StartupState::Active;
+
+        while let Some(block) = self.prefill.pop_front() {
+            if let Err(error) = self.send_to_writer(block) {
+                self.enter_failed_state();
+                self.activation.rollback_best_effort();
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    fn send_to_writer(&self, block: Vec<u8>) -> Result<(), Error> {
+        let Some(sender) = &self.sender else {
+            return Err(Error::tx_backend_msg(
+                self.backend(),
+                format!(
+                    "writer channel is closed ({})",
+                    self.backend_context()
+                ),
+            ));
+        };
+        sender.send(block).map_err(|error| {
+            Error::tx_backend_with_source(
+                self.backend(),
+                self.backend_context(),
+                error,
+            )
+        })
+    }
+
+    fn enter_failed_state(&mut self) {
+        self.startup_state = StartupState::Failed;
+        self.prefill.clear();
+    }
+
+    fn fail_block_write(&mut self) {
+        match self.startup_state {
+            StartupState::Prepared => self.enter_failed_state(),
+            StartupState::Active => {
+                self.enter_failed_state();
+                self.activation.rollback_best_effort();
+            }
+            StartupState::Failed | StartupState::Finished => {}
+        }
+    }
+
+    fn join_writer(&mut self, primary: &mut Option<Error>) {
+        let Some(handle) = self.writer_thread.take() else {
+            return;
+        };
+        let writer_error = match handle.join() {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(error),
+            Err(_) => Some(Error::tx_backend_msg(
+                self.backend(),
+                "writer thread panicked".to_string(),
+            )),
+        };
+
+        if let Some(error) = writer_error {
+            if primary.is_none() {
+                *primary = Some(error);
+            } else {
+                tracing::warn!(
+                    error = %error,
+                    context = %self.backend_context(),
+                    "hackrf writer finalization also failed"
+                );
+            }
+        }
     }
 }
 
@@ -193,7 +277,7 @@ impl TxSink for HackrfTxSink {
         if interleaved_iq_i16.len() > self.expected_i16_len
             || !interleaved_iq_i16.len().is_multiple_of(2)
         {
-            return Err(Error::tx_backend_msg(
+            let error = Error::tx_backend_msg(
                 self.backend(),
                 format!(
                     "IQ block length invalid: got {} i16, maximum {} i16 ({})",
@@ -201,183 +285,117 @@ impl TxSink for HackrfTxSink {
                     self.expected_i16_len,
                     self.backend_context(),
                 ),
-            ));
+            );
+            self.fail_block_write();
+            return Err(error);
         }
 
-        let mut out = vec![0u8; interleaved_iq_i16.len()];
-        pack_bits8_into(interleaved_iq_i16, &mut out).map_err(|err| {
-            Error::tx_backend_with_source(
+        let mut out = vec![0_u8; interleaved_iq_i16.len()];
+        if let Err(source) = pack_bits8_into(interleaved_iq_i16, &mut out) {
+            let error = Error::tx_backend_with_source(
                 self.backend(),
                 self.backend_context(),
-                err,
-            )
-        })?;
+                source,
+            );
+            self.fail_block_write();
+            return Err(error);
+        }
 
-        let Some(sender) = &self.sender else {
-            return Err(Error::tx_backend_msg(
+        match self.startup_state {
+            StartupState::Prepared => self.buffer_until_ready(out),
+            StartupState::Active => {
+                if let Err(error) = self.send_to_writer(out) {
+                    self.enter_failed_state();
+                    self.activation.rollback_best_effort();
+                    return Err(error);
+                }
+                Ok(())
+            }
+            StartupState::Failed => Err(Error::tx_backend_msg(
+                self.backend(),
+                format!(
+                    "attempted to write after HackRF startup/stream failure \
+                     ({})",
+                    self.backend_context()
+                ),
+            )),
+            StartupState::Finished => Err(Error::tx_backend_msg(
                 self.backend(),
                 "attempted to write after finish".to_string(),
-            ));
-        };
-
-        sender.send(out).map_err(|err| {
-            Error::tx_backend_with_source(
-                self.backend(),
-                self.backend_context(),
-                err,
-            )
-        })
+            )),
+        }
     }
 
     fn finish(&mut self) -> Result<(), Error> {
-        self.sender.take();
-
-        if let Some(handle) = self.writer_thread.take() {
-            match handle.join() {
-                Ok(Ok(())) => {}
-                Ok(Err(err)) => {
-                    self.stop_tx_best_effort();
-                    return Err(err);
-                }
-                Err(_) => {
-                    self.stop_tx_best_effort();
-                    return Err(Error::tx_backend_msg(
-                        self.backend(),
-                        "writer thread panicked".to_string(),
-                    ));
-                }
-            }
+        if self.startup_state == StartupState::Finished {
+            return Ok(());
         }
 
-        if let Some(mut hackrf) = self.hackrf.take() {
-            tracing::info!(context = %self.backend_context(), "stopping hackrf tx");
-            hackrf.stop_tx().map_err(|err| {
-                Error::tx_backend_with_source(
-                    self.backend(),
-                    self.backend_context(),
-                    err,
-                )
-            })?;
-            tracing::info!(context = %self.backend_context(), "hackrf tx stopped");
+        let mut primary = None;
+        if self.startup_state == StartupState::Prepared
+            && !self.prefill.is_empty()
+        {
+            if let Err(error) = self.activate_and_dispatch_prefill() {
+                primary = Some(error);
+            }
+        } else if self.startup_state == StartupState::Failed {
+            self.prefill.clear();
+        }
+
+        self.sender.take();
+        self.join_writer(&mut primary);
+
+        if let Some(error) = primary {
+            self.enter_failed_state();
+            self.activation.rollback_best_effort();
+            return Err(error);
+        }
+
+        match self.startup_state {
+            StartupState::Active => {
+                tracing::info!(
+                    context = %self.backend_context(),
+                    "stopping hackrf tx"
+                );
+                if let Err(error) = self.activation.stop() {
+                    self.enter_failed_state();
+                    return Err(error);
+                }
+                tracing::info!(
+                    context = %self.backend_context(),
+                    "hackrf tx stopped"
+                );
+                self.startup_state = StartupState::Finished;
+            }
+            StartupState::Prepared => {
+                self.startup_state = StartupState::Finished;
+            }
+            StartupState::Failed => {
+                self.activation.rollback_best_effort();
+            }
+            StartupState::Finished => {}
         }
         Ok(())
     }
 }
 
-impl HackrfTxSink {
-    /// Attempts to stop TX, logging on failure.
-    fn stop_tx_best_effort(&mut self) {
-        if let Some(hackrf) = self.hackrf.as_mut()
-            && let Err(err) = hackrf.stop_tx()
-        {
-            tracing::warn!(error = %err, "failed to stop hackrf tx");
-        }
-    }
-}
-
 impl Drop for HackrfTxSink {
     fn drop(&mut self) {
-        if let Err(err) = self.finish() {
-            tracing::warn!(error = %err, "HackrfTxSink dropped with error");
+        if let Err(error) = self.finish() {
+            tracing::warn!(error = %error, "HackrfTxSink dropped with error");
         }
     }
 }
 
-/// Main loop for the writer thread.
-fn writer_thread_main(
+fn spawn_writer_thread(
     config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
-    mut writer: impl Write,
-) -> Result<(), Error> {
-    let mut buffered: VecDeque<Vec<u8>> = VecDeque::new();
-    for _ in 0..config.prefill_blocks {
-        match receiver.recv() {
-            Ok(block) => buffered.push_back(block),
-            Err(_) => break,
-        }
-    }
-
-    let mut silence: Vec<u8> = Vec::new();
-    let underrun_timeout = Duration::from_secs_f64(
-        (config.step_duration.as_secs_f64() / 2.0).max(0.001),
-    );
-
-    let mut bytes_sent_since_log: u64 = 0;
-    let mut bytes_sent_total: u64 = 0;
-    let mut underruns: u64 = 0;
-    let mut last_log = Instant::now();
-    let mut last_log_total = Instant::now();
-    let log_interval = Duration::from_secs(1);
-
-    loop {
-        let next = if let Some(block) = buffered.pop_front() {
-            Some(block)
-        } else {
-            match receiver.recv_timeout(underrun_timeout) {
-                Ok(block) => Some(block),
-                Err(mpsc::RecvTimeoutError::Timeout) => None,
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-            }
-        };
-
-        if let Some(block) = next {
-            if silence.is_empty() {
-                silence.resize(block.len(), 0);
-            }
-            writer.write_all(&block).map_err(|err| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    config_context(&config),
-                    err,
-                )
-            })?;
-            bytes_sent_since_log += block.len() as u64;
-            bytes_sent_total += block.len() as u64;
-        } else {
-            underruns = underruns.wrapping_add(1);
-            if let Some(counter) = &config.underrun_counter {
-                counter.fetch_add(1, Ordering::Relaxed);
-            }
-
-            if config.silence_on_underrun {
-                if silence.is_empty() {
-                    // Can't fill until we know the block size; keep waiting.
-                    continue;
-                }
-                writer.write_all(&silence).map_err(|err| {
-                    Error::tx_backend_with_source(
-                        "hackrf",
-                        config_context(&config),
-                        err,
-                    )
-                })?;
-                bytes_sent_since_log += silence.len() as u64;
-                bytes_sent_total += silence.len() as u64;
-            }
-        }
-
-        if last_log.elapsed() >= log_interval {
-            let elapsed = last_log_total.elapsed().as_secs_f64().max(1e-6);
-            let mbps =
-                (bytes_sent_since_log as f64 / elapsed) / (1024.0 * 1024.0);
-            tracing::info!(
-                mbps = %format_args!("{mbps:.2}"),
-                underruns,
-                bytes_sent_total,
-                "hackrf tx"
-            );
-            bytes_sent_since_log = 0;
-            last_log = Instant::now();
-            last_log_total = Instant::now();
-        }
-    }
-
-    writer.flush().map_err(|err| {
-        Error::tx_backend_with_source("hackrf", config_context(&config), err)
-    })?;
-    Ok(())
+    writer: Box<dyn Write + Send>,
+) -> io::Result<WriterThread> {
+    thread::Builder::new()
+        .name("hackrf-tx".to_string())
+        .spawn(move || writer_thread_main(config, receiver, writer))
 }
 
-/// Extra context for device open errors (including Windows driver hints).
 fn open_context(config: &HackrfTxConfig) -> String {
     let mut base = config_context(config);
     if cfg!(windows) {
@@ -388,15 +406,15 @@ fn open_context(config: &HackrfTxConfig) -> String {
     base
 }
 
-/// Formats backend configuration for logging/error context.
 fn config_context(config: &HackrfTxConfig) -> String {
     format!(
-        "serial={} rf_freq_hz={} sample_frequency_hz={} txvga_gain={} \
-         amp_enable={} usb_transfer_bytes={} usb_transfers={} queue_blocks={} \
-         prefill_blocks={} silence_on_underrun={}",
+        "serial={} rf_freq_hz={} sample_frequency_hz={} step_duration={:?} \
+         txvga_gain={} amp_enable={} usb_transfer_bytes={} usb_transfers={} \
+         queue_blocks={} prefill_blocks={} silence_on_underrun={}",
         config.serial.as_deref().unwrap_or("auto"),
         config.rf_freq_hz,
         config.sample_frequency_hz,
+        config.step_duration,
         config.txvga_gain,
         config.amp_enable,
         config.usb_transfer_bytes,
@@ -405,37 +423,4 @@ fn config_context(config: &HackrfTxConfig) -> String {
         config.prefill_blocks,
         config.silence_on_underrun,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore = "Requires HackRF hardware"]
-    fn hackrf_tx_smoke() -> Result<(), Error> {
-        let config = HackrfTxConfig {
-            serial: None,
-            rf_freq_hz: 1_575_420_000,
-            sample_frequency_hz: 2_600_000.0,
-            step_duration: Duration::from_millis(100),
-            txvga_gain: 20,
-            amp_enable: false,
-            usb_transfer_bytes: 256 * 1024,
-            usb_transfers: 16,
-            queue_blocks: 8,
-            prefill_blocks: 2,
-            silence_on_underrun: true,
-            underrun_counter: None,
-        };
-
-        let sizing = IqBlockSizing::new(1024)?;
-        let mut sink = HackrfTxSink::new(config, sizing.interleaved_i16_len())?;
-        let block = vec![0i16; sizing.interleaved_i16_len()];
-        for _ in 0..10 {
-            sink.write_block_i16(&block)?;
-        }
-        sink.finish()?;
-        Ok(())
-    }
 }
