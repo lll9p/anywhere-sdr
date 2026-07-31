@@ -13,8 +13,8 @@ use super::{
     BufferObserver, HackrfTxConfig, HackrfTxSink, StartupState, config_context,
     open_context,
     shutdown::{
-        CancellationToken, ShutdownPolicy, WorkerObserver, WriterTerminal,
-        WriterWorker,
+        CancellationToken, ShutdownPolicy, WorkerObserver, WriterResultMailbox,
+        WriterResultPublisher, WriterTerminal, WriterWorker,
     },
     writer::{WriterOutcome, writer_thread_main},
 };
@@ -184,7 +184,7 @@ impl HackrfTxSink {
             mpsc::Receiver<Vec<u8>>,
             Box<dyn Write + Send>,
             CancellationToken,
-            mpsc::Sender<WriterTerminal>,
+            WriterResultPublisher,
             Duration,
         ) -> io::Result<WriterThread>,
     {
@@ -206,7 +206,7 @@ impl HackrfTxSink {
             mpsc::Receiver<Vec<u8>>,
             Box<dyn Write + Send>,
             CancellationToken,
-            mpsc::Sender<WriterTerminal>,
+            WriterResultPublisher,
             Duration,
         ) -> io::Result<WriterThread>,
     {
@@ -229,14 +229,14 @@ impl HackrfTxSink {
 
         let (sender, receiver) =
             mpsc::sync_channel::<Vec<u8>>(config.queue_blocks);
-        let (terminal_sender, terminal_receiver) = mpsc::channel();
+        let (result, result_publisher) = WriterResultMailbox::new();
         let cancellation = CancellationToken::default();
         let writer_thread = spawn(
             config.clone(),
             receiver,
             writer,
             cancellation.clone(),
-            terminal_sender,
+            result_publisher,
             options.policy.enqueue_poll,
         )
         .map_err(|error| {
@@ -248,7 +248,7 @@ impl HackrfTxSink {
         })?;
         let worker = WriterWorker::new(
             sender,
-            terminal_receiver,
+            result,
             writer_thread,
             cancellation,
             options.external_cancellation,
@@ -273,14 +273,14 @@ impl HackrfTxSink {
 fn spawn_writer_thread(
     config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
     writer: Box<dyn Write + Send>, cancellation: CancellationToken,
-    terminal_sender: mpsc::Sender<WriterTerminal>, cancellation_poll: Duration,
+    result_publisher: WriterResultPublisher, cancellation_poll: Duration,
 ) -> io::Result<WriterThread> {
     thread::Builder::new()
         .name("hackrf-tx".to_string())
         .spawn(move || {
             let terminal = match writer_thread_main(
                 config,
-                receiver,
+                &receiver,
                 writer,
                 cancellation,
                 cancellation_poll,
@@ -289,11 +289,8 @@ fn spawn_writer_thread(
                 Ok(WriterOutcome::Cancelled) => WriterTerminal::Cancelled,
                 Err(error) => WriterTerminal::Failed(error),
             };
-            if terminal_sender.send(terminal).is_err() {
-                tracing::debug!(
-                    "hackrf writer owner dropped before terminal result"
-                );
-            }
+            result_publisher.publish(terminal);
+            drop(receiver);
         })
 }
 

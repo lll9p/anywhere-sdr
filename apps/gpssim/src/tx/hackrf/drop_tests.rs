@@ -9,8 +9,8 @@ use std::{
 use super::{
     HackrfTxSink, StartupState, TxSink,
     shutdown::{
-        CancellationToken, ShutdownPolicy, WorkerObservation, WriterTerminal,
-        WriterWorker,
+        CancellationToken, ShutdownPolicy, WorkerObservation,
+        WriterResultMailbox, WriterTerminal, WriterWorker,
     },
     shutdown_test_support::{
         BlockingWriter, RecordingWriter, ReleaseGuard, ShutdownEvent,
@@ -110,11 +110,17 @@ fn writer_error_precedes_stop_failure() {
     };
     assert_eq!(sink.startup_state, StartupState::Failed);
     assert!(error.to_string().contains("synthetic writer failure"));
-    let source = StdError::source(&error)
+    let Error::MultipleFinalizationFailures { first, additional } = error
+    else {
+        panic!("writer and stop failures were not retained together");
+    };
+    let source = StdError::source(first.as_ref())
         .and_then(|source| source.downcast_ref::<io::Error>());
     assert!(
         source.is_some_and(|error| error.kind() == io::ErrorKind::TimedOut)
     );
+    assert_eq!(additional.len(), 1);
+    assert!(additional[0].to_string().contains("synthetic stop failure"));
     let events = log.snapshot();
     let write_index = events
         .iter()
@@ -133,14 +139,14 @@ fn writer_error_precedes_stop_failure() {
 #[test]
 fn successful_worker_without_terminal_result_is_a_protocol_error() {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
+    let (result, result_publisher) = WriterResultMailbox::new();
     let handle = thread::spawn(move || {
+        drop(result_publisher);
         drop(receiver);
-        drop(terminal_sender);
     });
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         None,
@@ -165,16 +171,14 @@ fn successful_worker_without_terminal_result_is_a_protocol_error() {
 #[test]
 fn cancelled_terminal_without_request_is_a_protocol_error() {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
+    let (result, result_publisher) = WriterResultMailbox::new();
     let handle = thread::spawn(move || {
+        result_publisher.publish(WriterTerminal::Cancelled);
         drop(receiver);
-        if terminal_sender.send(WriterTerminal::Cancelled).is_err() {
-            tracing::debug!("cancelled terminal receiver dropped");
-        }
     });
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         None,
@@ -197,12 +201,10 @@ fn cancelled_terminal_without_request_is_a_protocol_error() {
 #[test]
 fn finished_handle_drop_does_not_join_or_consume_result() {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
+    let (result, result_publisher) = WriterResultMailbox::new();
     let (done_sender, done_receiver) = mpsc::channel();
     let handle = thread::spawn(move || {
-        if terminal_sender.send(WriterTerminal::Completed).is_err() {
-            return;
-        }
+        result_publisher.publish(WriterTerminal::Completed);
         drop(receiver);
         if done_sender.send(()).is_err() {
             tracing::debug!("finished-worker observer dropped");
@@ -225,7 +227,7 @@ fn finished_handle_drop_does_not_join_or_consume_result() {
     });
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         None,

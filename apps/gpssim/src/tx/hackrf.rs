@@ -9,7 +9,7 @@ use std::{
 use gps::pack_bits8_into;
 
 use super::TxSink;
-use crate::Error;
+use crate::{Error, error::resolve_finalization_failures};
 
 mod shutdown;
 mod startup;
@@ -21,6 +21,10 @@ mod drop_tests;
 mod hardware_tests;
 #[cfg(test)]
 mod lifecycle_tests;
+#[cfg(test)]
+mod root_error_test_support;
+#[cfg(test)]
+mod root_error_tests;
 #[cfg(test)]
 mod shutdown_test_support;
 #[cfg(test)]
@@ -186,20 +190,6 @@ impl HackrfTxSink {
             StartupState::Failed | StartupState::Finished => {}
         }
     }
-
-    fn record_finalization_error(
-        &self, primary: &mut Option<Error>, error: Error, operation: &str,
-    ) {
-        if primary.is_none() {
-            *primary = Some(error);
-        } else {
-            tracing::warn!(
-                error = %error,
-                context = %self.backend_context(),
-                "hackrf {operation} also failed"
-            );
-        }
-    }
 }
 
 impl TxSink for HackrfTxSink {
@@ -276,7 +266,7 @@ impl TxSink for HackrfTxSink {
         }
 
         let deadline = Instant::now() + self.worker.policy().finish_timeout;
-        let mut primary = None;
+        let mut failures = Vec::new();
         let mut stop_attempted = false;
         let cancellation_requested = self.worker.is_cancel_requested();
 
@@ -290,7 +280,7 @@ impl TxSink for HackrfTxSink {
                     Ok(()) => {}
                     Err(failure) => {
                         stop_attempted = failure.rollback_attempted;
-                        primary = Some(failure.error);
+                        failures.push(failure.error);
                     }
                 }
             }
@@ -299,7 +289,7 @@ impl TxSink for HackrfTxSink {
             self.worker.request_cancel();
         }
 
-        if primary.is_some() {
+        if !failures.is_empty() {
             self.worker.request_cancel();
         }
 
@@ -308,11 +298,7 @@ impl TxSink for HackrfTxSink {
             self.worker
                 .close_and_wait(deadline, self.backend(), &context)
         {
-            self.record_finalization_error(
-                &mut primary,
-                error,
-                "writer finalization",
-            );
+            failures.push(error);
         }
 
         if self.activation.is_armed() && !stop_attempted {
@@ -321,17 +307,11 @@ impl TxSink for HackrfTxSink {
                 Ok(()) => {
                     tracing::info!(context = %context, "hackrf tx stopped");
                 }
-                Err(error) => {
-                    self.record_finalization_error(&mut primary, error, "stop");
-                }
+                Err(error) => failures.push(error),
             }
         }
 
-        if let Some(error) = primary {
-            self.finalization_failed = true;
-            self.enter_failed_state();
-            Err(error)
-        } else {
+        if failures.is_empty() {
             self.prefill.clear();
             self.startup_state = if self.finalization_failed {
                 StartupState::Failed
@@ -339,6 +319,10 @@ impl TxSink for HackrfTxSink {
                 StartupState::Finished
             };
             Ok(())
+        } else {
+            self.finalization_failed = true;
+            self.enter_failed_state();
+            resolve_finalization_failures(failures)
         }
     }
 }

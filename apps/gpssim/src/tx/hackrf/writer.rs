@@ -80,7 +80,7 @@ impl WriterMetrics {
 }
 
 pub(super) fn writer_thread_main(
-    config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
+    config: HackrfTxConfig, receiver: &mpsc::Receiver<Vec<u8>>,
     writer: impl Write, cancellation: CancellationToken,
     cancellation_poll: Duration,
 ) -> Result<WriterOutcome, Error> {
@@ -96,7 +96,7 @@ pub(super) fn writer_thread_main(
 
 #[cfg(test)]
 pub(super) fn writer_thread_main_observed(
-    config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
+    config: HackrfTxConfig, receiver: &mpsc::Receiver<Vec<u8>>,
     writer: impl Write, cancellation: CancellationToken,
     cancellation_poll: Duration, observer: WriterObserver,
 ) -> Result<WriterOutcome, Error> {
@@ -111,7 +111,7 @@ pub(super) fn writer_thread_main_observed(
 }
 
 fn writer_thread_main_with_observer(
-    config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
+    config: HackrfTxConfig, receiver: &mpsc::Receiver<Vec<u8>>,
     mut writer: impl Write, cancellation: CancellationToken,
     cancellation_poll: Duration, observer: Option<WriterObserver>,
 ) -> Result<WriterOutcome, Error> {
@@ -136,7 +136,7 @@ fn writer_thread_main_with_observer(
     };
     stream_blocks(
         &config,
-        &receiver,
+        receiver,
         &mut writer,
         &cancellation,
         cancellation_poll,

@@ -52,7 +52,7 @@ fn writer_observes_receive_silence_and_flush_cancellation_boundaries() {
         let log = ShutdownLog::default();
         let outcome = writer_thread_main_observed(
             config.clone(),
-            receiver,
+            &receiver,
             RecordingWriter::new(log.clone()),
             cancellation,
             Duration::from_millis(1),
@@ -131,7 +131,7 @@ fn cooperative_cancellation_during_flush_is_clean() {
     let log = ShutdownLog::default();
     let outcome = writer_thread_main(
         valid_config(),
-        receiver,
+        &receiver,
         CancelDuringFlush {
             cancellation: cancellation.clone(),
             log: log.clone(),
@@ -154,7 +154,7 @@ fn partial_write_and_write_zero_semantics_are_preserved() {
     let log = ShutdownLog::default();
     let outcome = writer_thread_main(
         valid_config(),
-        receiver,
+        &receiver,
         RecordingWriter::partial(log.clone(), 1),
         CancellationToken::default(),
         Duration::from_millis(1),
@@ -173,7 +173,7 @@ fn partial_write_and_write_zero_semantics_are_preserved() {
     let log = ShutdownLog::default();
     let outcome = writer_thread_main(
         valid_config(),
-        receiver,
+        &receiver,
         CancelAfterFirstWrite {
             cancellation: cancellation.clone(),
             log: log.clone(),
@@ -188,7 +188,7 @@ fn partial_write_and_write_zero_semantics_are_preserved() {
     assert!(sender.send(vec![1]).is_ok());
     let Err(error) = writer_thread_main(
         valid_config(),
-        receiver,
+        &receiver,
         RecordingWriter::zero(ShutdownLog::default()),
         CancellationToken::default(),
         Duration::from_millis(1),

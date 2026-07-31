@@ -13,7 +13,8 @@ use super::{
     shutdown::{
         CancellationToken, EnqueueMode, HACKRF_BULK_WRITE_TIMEOUT,
         HACKRF_DATA_PLANE_FINISH_TIMEOUT, HACKRF_ENQUEUE_CANCEL_POLL,
-        ShutdownPolicy, WorkerObservation, WriterTerminal, WriterWorker,
+        ShutdownPolicy, WorkerObservation, WriterResultMailbox, WriterTerminal,
+        WriterWorker,
     },
     shutdown_test_support::*,
     test_support::{iq_block, valid_config},
@@ -208,11 +209,11 @@ fn disconnected_send_rechecks_external_cancellation() {
             };
         }
     });
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
-    let handle = thread::spawn(move || drop(terminal_sender));
+    let (result, result_publisher) = WriterResultMailbox::new();
+    let handle = thread::spawn(move || drop(result_publisher));
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         Some(external),
@@ -385,13 +386,11 @@ fn blocking_write_and_flush_detach_at_the_absolute_deadline() {
 #[test]
 fn terminal_result_without_thread_exit_is_still_detached() {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
+    let (result, result_publisher) = WriterResultMailbox::new();
     let (release_sender, release_receiver) = mpsc::channel();
     let mut release = ReleaseGuard::new(release_sender);
     let handle = thread::spawn(move || {
-        if terminal_sender.send(WriterTerminal::Completed).is_err() {
-            return;
-        }
+        result_publisher.publish(WriterTerminal::Completed);
         if release_receiver.recv().is_err() {
             tracing::debug!("post-result release sender dropped");
         }
@@ -399,7 +398,7 @@ fn terminal_result_without_thread_exit_is_still_detached() {
     });
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         None,
@@ -421,21 +420,20 @@ fn terminal_result_without_thread_exit_is_still_detached() {
 #[test]
 fn published_writer_failure_precedes_detach_timeout() {
     let (sender, receiver) = mpsc::sync_channel(1);
-    let (terminal_sender, terminal_receiver) = mpsc::channel();
+    let (result, result_publisher) = WriterResultMailbox::new();
     let (release_sender, release_receiver) = mpsc::channel();
     let mut release = ReleaseGuard::new(release_sender);
     let handle = thread::spawn(move || {
         let error = Error::tx_backend_msg("hackrf", "published failure");
-        if terminal_sender.send(WriterTerminal::Failed(error)).is_ok()
-            && release_receiver.recv().is_err()
-        {
+        result_publisher.publish(WriterTerminal::Failed(error));
+        if release_receiver.recv().is_err() {
             tracing::debug!("published-failure release sender dropped");
         }
         drop(receiver);
     });
     let mut worker = WriterWorker::new(
         sender,
-        terminal_receiver,
+        result,
         handle,
         CancellationToken::default(),
         None,

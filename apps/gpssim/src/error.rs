@@ -67,16 +67,16 @@ pub enum Error {
     #[error("worker exited without a terminal event")]
     WorkerExitedWithoutTerminalEvent,
 
-    /// Multiple TX sinks failed during ordered finalization
+    /// Multiple TX finalization operations or sinks failed in order
     #[error(
         "multiple TX finalization failures: first: {first}; additional: {}",
         display_failures(.additional)
     )]
     MultipleFinalizationFailures {
-        /// First failure in configured sink order
+        /// First failure in operation or configured sink order
         #[source]
         first: Box<Error>,
-        /// Remaining failures in configured sink order
+        /// Remaining failures in operation or configured sink order
         additional: Vec<Error>,
     },
 

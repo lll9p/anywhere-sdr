@@ -9,7 +9,7 @@ use super::{
     HackrfTxConfig, HackrfTxSink,
     shutdown::{
         CancellationToken, ShutdownPolicy, WorkerObservation, WorkerObserver,
-        WriterTerminal,
+        WriterResultPublisher, WriterTerminal,
     },
     startup::{ConstructionOptions, HackrfDeviceControl},
     writer::{WriterOutcome, writer_thread_main},
@@ -30,6 +30,7 @@ pub(super) enum ShutdownEvent {
     QueueFull,
     CancelRequested,
     BeforeTrySend,
+    Enqueued,
     ResultObserved,
     Joined,
     Detached(bool),
@@ -108,6 +109,7 @@ where
                 ShutdownEvent::CancelRequested
             }
             WorkerObservation::BeforeTrySend => ShutdownEvent::BeforeTrySend,
+            WorkerObservation::Enqueued => ShutdownEvent::Enqueued,
             WorkerObservation::QueueFull => ShutdownEvent::QueueFull,
             WorkerObservation::ResultObserved => ShutdownEvent::ResultObserved,
             WorkerObservation::Joined => ShutdownEvent::Joined,
@@ -141,7 +143,7 @@ where
 pub(super) fn spawn_standard_writer(
     config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
     writer: Box<dyn Write + Send>, cancellation: CancellationToken,
-    terminal_sender: mpsc::Sender<WriterTerminal>, cancellation_poll: Duration,
+    result_publisher: WriterResultPublisher, cancellation_poll: Duration,
 ) -> io::Result<thread::JoinHandle<()>> {
     thread::Builder::new()
         .name("hackrf-shutdown-test-writer".to_string())
@@ -149,28 +151,26 @@ pub(super) fn spawn_standard_writer(
             publish_terminal(
                 writer_thread_main(
                     config,
-                    receiver,
+                    &receiver,
                     writer,
                     cancellation,
                     cancellation_poll,
                 ),
-                terminal_sender,
+                result_publisher,
             );
         })
 }
 
 pub(super) fn publish_terminal(
     result: Result<WriterOutcome, Error>,
-    terminal_sender: mpsc::Sender<WriterTerminal>,
+    result_publisher: WriterResultPublisher,
 ) {
     let terminal = match result {
         Ok(WriterOutcome::Completed) => WriterTerminal::Completed,
         Ok(WriterOutcome::Cancelled) => WriterTerminal::Cancelled,
         Err(error) => WriterTerminal::Failed(error),
     };
-    if terminal_sender.send(terminal).is_err() {
-        tracing::debug!("shutdown test owner dropped before terminal result");
-    }
+    result_publisher.publish(terminal);
 }
 
 pub(super) struct ShutdownDevice {

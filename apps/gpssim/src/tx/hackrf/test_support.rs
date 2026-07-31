@@ -7,7 +7,7 @@ use std::{
 
 use super::{
     BufferObserver, HackrfTxConfig, HackrfTxSink, config_context,
-    shutdown::{CancellationToken, WriterTerminal},
+    shutdown::{CancellationToken, WriterResultPublisher, WriterTerminal},
     startup::{ActivationGuard, HackrfDeviceControl},
     writer::{WriterOutcome, writer_thread_main},
 };
@@ -162,14 +162,14 @@ pub(super) fn build_sink(
               receiver,
               writer,
               cancellation,
-              terminal_sender,
+              result_publisher,
               cancellation_poll| {
             spawn_scenario_writer(
                 config,
                 receiver,
                 writer,
                 cancellation,
-                terminal_sender,
+                result_publisher,
                 cancellation_poll,
                 SpawnScenario {
                     scenario,
@@ -195,7 +195,7 @@ struct SpawnScenario {
 fn spawn_scenario_writer(
     config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
     writer: Box<dyn Write + Send>, cancellation: CancellationToken,
-    terminal_sender: mpsc::Sender<WriterTerminal>, cancellation_poll: Duration,
+    result_publisher: WriterResultPublisher, cancellation_poll: Duration,
     spawn: SpawnScenario,
 ) -> io::Result<thread::JoinHandle<()>> {
     spawn.spawn_events.push(Event::SpawnWriter);
@@ -206,12 +206,12 @@ fn spawn_scenario_writer(
                 publish_writer_result(
                     writer_thread_main(
                         config,
-                        receiver,
+                        &receiver,
                         writer,
                         cancellation,
                         cancellation_poll,
                     ),
-                    terminal_sender,
+                    result_publisher,
                 );
             }),
         SpawnBehavior::Fail => {
@@ -222,12 +222,12 @@ fn spawn_scenario_writer(
             let handle = thread::Builder::new()
                 .name("hackrf-test-disconnect".to_string())
                 .spawn(move || {
-                    drop(receiver);
                     drop(writer);
                     publish_writer_result(
                         Ok(WriterOutcome::Completed),
-                        terminal_sender,
+                        result_publisher,
                     );
+                    drop(receiver);
                     if ready_sender.send(()).is_err() {
                         tracing::debug!(
                             "disconnect synchronization owner dropped"
@@ -253,7 +253,7 @@ fn spawn_scenario_writer(
                                 config_context(&config),
                                 error,
                             )),
-                            terminal_sender,
+                            result_publisher,
                         );
                         return;
                     }
@@ -261,12 +261,12 @@ fn spawn_scenario_writer(
                 spawn.thread_events.push(Event::Write(
                     block.first().copied().unwrap_or_default(),
                 ));
-                drop(receiver);
                 drop(writer);
                 publish_writer_result(
                     Ok(WriterOutcome::Completed),
-                    terminal_sender,
+                    result_publisher,
                 );
+                drop(receiver);
                 if spawn.closed_sender.send(()).is_err() {
                     tracing::debug!(
                         "receiver-close notification owner dropped"
@@ -410,16 +410,14 @@ impl Write for FakeWriter {
 
 fn publish_writer_result(
     result: Result<WriterOutcome, Error>,
-    terminal_sender: mpsc::Sender<WriterTerminal>,
+    result_publisher: WriterResultPublisher,
 ) {
     let terminal = match result {
         Ok(WriterOutcome::Completed) => WriterTerminal::Completed,
         Ok(WriterOutcome::Cancelled) => WriterTerminal::Cancelled,
         Err(error) => WriterTerminal::Failed(error),
     };
-    if terminal_sender.send(terminal).is_err() {
-        tracing::debug!("test writer owner dropped before terminal result");
-    }
+    result_publisher.publish(terminal);
 }
 
 fn synthetic_error(operation: &str) -> Error {

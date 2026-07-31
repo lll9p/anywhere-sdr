@@ -1,8 +1,8 @@
 use std::{
     sync::{
-        Arc,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, SyncSender, TrySendError},
+        mpsc::{SyncSender, TrySendError},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -52,6 +52,103 @@ pub(super) enum WriterTerminal {
     Failed(Error),
 }
 
+enum WriterResultState {
+    Running,
+    Available(WriterTerminal),
+    FailureConsumed,
+    Finalized,
+}
+
+pub(super) enum WriterFinalResult {
+    Missing,
+    Terminal(WriterTerminal),
+    FailureConsumed,
+}
+
+#[derive(Clone)]
+pub(super) struct WriterResultMailbox {
+    state: Arc<Mutex<WriterResultState>>,
+}
+
+pub(super) struct WriterResultPublisher {
+    state: Arc<Mutex<WriterResultState>>,
+}
+
+impl WriterResultMailbox {
+    pub(super) fn new() -> (Self, WriterResultPublisher) {
+        let state = Arc::new(Mutex::new(WriterResultState::Running));
+        (
+            Self {
+                state: state.clone(),
+            },
+            WriterResultPublisher { state },
+        )
+    }
+
+    pub(super) fn take_failure(&self) -> Option<Error> {
+        let mut state = lock_recover(&self.state);
+        match std::mem::replace(&mut *state, WriterResultState::Running) {
+            WriterResultState::Available(WriterTerminal::Failed(error)) => {
+                *state = WriterResultState::FailureConsumed;
+                Some(error)
+            }
+            previous => {
+                *state = previous;
+                None
+            }
+        }
+    }
+
+    pub(super) fn take_for_finalization(&self) -> WriterFinalResult {
+        let mut state = lock_recover(&self.state);
+        match std::mem::replace(&mut *state, WriterResultState::Finalized) {
+            WriterResultState::Running => {
+                *state = WriterResultState::Running;
+                WriterFinalResult::Missing
+            }
+            WriterResultState::Available(terminal) => {
+                WriterFinalResult::Terminal(terminal)
+            }
+            WriterResultState::FailureConsumed => {
+                WriterFinalResult::FailureConsumed
+            }
+            WriterResultState::Finalized => WriterFinalResult::Missing,
+        }
+    }
+
+    fn is_published(&self) -> bool {
+        matches!(
+            *lock_recover(&self.state),
+            WriterResultState::Available(_)
+                | WriterResultState::FailureConsumed
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn poison_for_test(&self) -> bool {
+        let state = self.state.clone();
+        thread::spawn(move || {
+            let _guard = lock_recover(&state);
+            panic!("synthetic writer-result mailbox poison");
+        })
+        .join()
+        .is_err()
+    }
+}
+
+impl WriterResultPublisher {
+    pub(super) fn publish(self, terminal: WriterTerminal) {
+        *lock_recover(&self.state) = WriterResultState::Available(terminal);
+    }
+}
+
+fn lock_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum EnqueueMode {
     Streaming,
@@ -62,6 +159,7 @@ pub(super) enum EnqueueMode {
 pub(super) enum WorkerObservation {
     CancelRequested,
     BeforeTrySend,
+    Enqueued,
     QueueFull,
     ResultObserved,
     Joined,
@@ -72,7 +170,7 @@ pub(super) type WorkerObserver = Arc<dyn Fn(WorkerObservation) + Send + Sync>;
 
 pub(super) struct WriterWorker {
     sender: Option<SyncSender<Vec<u8>>>,
-    terminal_receiver: Receiver<WriterTerminal>,
+    result: WriterResultMailbox,
     handle: Option<JoinHandle<()>>,
     cancellation: CancellationToken,
     external_cancellation: Option<Arc<AtomicBool>>,
@@ -82,15 +180,14 @@ pub(super) struct WriterWorker {
 
 impl WriterWorker {
     pub(super) fn new(
-        sender: SyncSender<Vec<u8>>,
-        terminal_receiver: Receiver<WriterTerminal>, handle: JoinHandle<()>,
-        cancellation: CancellationToken,
+        sender: SyncSender<Vec<u8>>, result: WriterResultMailbox,
+        handle: JoinHandle<()>, cancellation: CancellationToken,
         external_cancellation: Option<Arc<AtomicBool>>, policy: ShutdownPolicy,
         observer: Option<WorkerObserver>,
     ) -> Self {
         Self {
             sender: Some(sender),
-            terminal_receiver,
+            result,
             handle: Some(handle),
             cancellation,
             external_cancellation,
@@ -117,15 +214,24 @@ impl WriterWorker {
         &self, mut block: Vec<u8>, mode: EnqueueMode, backend: &'static str,
         context: &str,
     ) -> Result<(), Error> {
-        let Some(sender) = &self.sender else {
-            return Err(closed_channel_error(backend, context));
-        };
-
         loop {
             self.check_enqueue_state(mode, backend, context)?;
+            if let Some(error) = self.result.take_failure() {
+                return Err(error);
+            }
+            let Some(sender) = &self.sender else {
+                return Err(closed_channel_error(backend, context));
+            };
+
             self.observe(WorkerObservation::BeforeTrySend);
             match sender.try_send(block) {
-                Ok(()) => return Ok(()),
+                Ok(()) => {
+                    self.observe(WorkerObservation::Enqueued);
+                    return match self.result.take_failure() {
+                        Some(error) => Err(error),
+                        None => Ok(()),
+                    };
+                }
                 Err(TrySendError::Full(returned)) => {
                     block = returned;
                     self.observe(WorkerObservation::QueueFull);
@@ -137,6 +243,9 @@ impl WriterWorker {
                         && self.external_cancelled()
                     {
                         return Err(Error::RunCancelled);
+                    }
+                    if let Some(error) = self.result.take_failure() {
+                        return Err(error);
                     }
                     return Err(Error::tx_backend_with_source(
                         backend,
@@ -155,22 +264,10 @@ impl WriterWorker {
         if self.handle.is_none() {
             return Ok(());
         }
-        let mut terminal = None;
-        let mut terminal_disconnected = false;
+        let mut result_observed = false;
 
         loop {
-            if terminal.is_none() && !terminal_disconnected {
-                match self.terminal_receiver.try_recv() {
-                    Ok(result) => {
-                        terminal = Some(result);
-                        self.observe(WorkerObservation::ResultObserved);
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {}
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        terminal_disconnected = true;
-                    }
-                }
-            }
+            self.observe_result(&mut result_observed);
 
             if self.handle.as_ref().is_some_and(JoinHandle::is_finished) {
                 let Some(handle) = self.handle.take() else {
@@ -183,7 +280,7 @@ impl WriterWorker {
                 self.observe(WorkerObservation::Joined);
                 return self.classify_join(
                     handle.join(),
-                    terminal,
+                    self.result.take_for_finalization(),
                     backend,
                     context,
                 );
@@ -192,26 +289,15 @@ impl WriterWorker {
             let now = Instant::now();
             if now >= deadline {
                 self.request_cancel();
-                if terminal.is_none()
-                    && let Ok(result) = self.terminal_receiver.try_recv()
-                {
-                    terminal = Some(result);
-                    self.observe(WorkerObservation::ResultObserved);
-                }
+                self.observe_result(&mut result_observed);
                 let timeout = shutdown_timeout(backend, context);
                 if let Some(handle) = self.handle.take() {
                     if handle.is_finished() {
-                        if terminal.is_none()
-                            && let Ok(result) =
-                                self.terminal_receiver.try_recv()
-                        {
-                            terminal = Some(result);
-                            self.observe(WorkerObservation::ResultObserved);
-                        }
+                        self.observe_result(&mut result_observed);
                         self.observe(WorkerObservation::Joined);
                         return self.classify_join(
                             handle.join(),
-                            terminal,
+                            self.result.take_for_finalization(),
                             backend,
                             context,
                         );
@@ -221,7 +307,10 @@ impl WriterWorker {
                     });
                     drop(handle);
                 }
-                if let Some(WriterTerminal::Failed(error)) = terminal {
+                if let WriterFinalResult::Terminal(WriterTerminal::Failed(
+                    error,
+                )) = self.result.take_for_finalization()
+                {
                     tracing::warn!(
                         error = %timeout,
                         context,
@@ -232,21 +321,7 @@ impl WriterWorker {
                 return Err(timeout);
             }
 
-            let wait = self.policy.enqueue_poll.min(deadline - now);
-            if terminal.is_none() && !terminal_disconnected {
-                match self.terminal_receiver.recv_timeout(wait) {
-                    Ok(result) => {
-                        terminal = Some(result);
-                        self.observe(WorkerObservation::ResultObserved);
-                    }
-                    Err(mpsc::RecvTimeoutError::Timeout) => {}
-                    Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        terminal_disconnected = true;
-                    }
-                }
-            } else {
-                thread::park_timeout(wait);
-            }
+            thread::park_timeout(self.policy.enqueue_poll.min(deadline - now));
         }
     }
 
@@ -271,7 +346,7 @@ impl WriterWorker {
     }
 
     fn classify_join(
-        &self, join: thread::Result<()>, terminal: Option<WriterTerminal>,
+        &self, join: thread::Result<()>, result: WriterFinalResult,
         backend: &'static str, context: &str,
     ) -> Result<(), Error> {
         if join.is_err() {
@@ -281,24 +356,37 @@ impl WriterWorker {
             ));
         }
 
-        match terminal {
-            Some(WriterTerminal::Completed) => Ok(()),
-            Some(WriterTerminal::Cancelled)
+        match result {
+            WriterFinalResult::Terminal(WriterTerminal::Completed)
+            | WriterFinalResult::FailureConsumed => Ok(()),
+            WriterFinalResult::Terminal(WriterTerminal::Cancelled)
                 if self.cancellation.is_requested() =>
             {
                 Ok(())
             }
-            Some(WriterTerminal::Cancelled) => Err(protocol_error(
-                backend,
-                context,
-                "writer reported cancellation without a cancellation request",
-            )),
-            Some(WriterTerminal::Failed(error)) => Err(error),
-            None => Err(protocol_error(
+            WriterFinalResult::Terminal(WriterTerminal::Cancelled) => {
+                Err(protocol_error(
+                    backend,
+                    context,
+                    "writer reported cancellation without a cancellation \
+                     request",
+                ))
+            }
+            WriterFinalResult::Terminal(WriterTerminal::Failed(error)) => {
+                Err(error)
+            }
+            WriterFinalResult::Missing => Err(protocol_error(
                 backend,
                 context,
                 "writer exited without publishing a terminal result",
             )),
+        }
+    }
+
+    fn observe_result(&self, observed: &mut bool) {
+        if !*observed && self.result.is_published() {
+            *observed = true;
+            self.observe(WorkerObservation::ResultObserved);
         }
     }
 
