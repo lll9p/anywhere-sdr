@@ -7,8 +7,9 @@ use std::{
 
 use super::{
     BufferObserver, HackrfTxConfig, HackrfTxSink, config_context,
+    shutdown::{CancellationToken, WriterTerminal},
     startup::{ActivationGuard, HackrfDeviceControl},
-    writer::writer_thread_main,
+    writer::{WriterOutcome, writer_thread_main},
 };
 use crate::Error;
 
@@ -20,6 +21,7 @@ pub(super) enum Event {
     SetAmp,
     SetGain,
     PrepareWriter,
+    WriterTimeout(Duration),
     SpawnWriter,
     Buffer(usize),
     Activate,
@@ -156,70 +158,122 @@ pub(super) fn build_sink(
                 })),
             }))
         },
-        move |config, receiver, writer| {
-            spawn_events.push(Event::SpawnWriter);
-            match scenario.spawn {
-                SpawnBehavior::Standard => thread::Builder::new()
-                    .name("hackrf-test-writer".to_string())
-                    .spawn(move || {
-                        writer_thread_main(config, receiver, writer)
-                    }),
-                SpawnBehavior::Fail => {
-                    Err(io::Error::other("synthetic writer spawn failure"))
-                }
-                SpawnBehavior::DropReceiver => {
-                    let (ready_sender, ready_receiver) = mpsc::channel();
-                    let handle = thread::Builder::new()
-                        .name("hackrf-test-disconnect".to_string())
-                        .spawn(move || {
-                            drop(receiver);
-                            drop(writer);
-                            ready_sender.send(()).map_err(|error| {
-                                Error::tx_backend_with_source(
-                                    "hackrf",
-                                    config_context(&config),
-                                    error,
-                                )
-                            })?;
-                            Ok(())
-                        })?;
-                    ready_receiver.recv().map_err(|error| {
-                        io::Error::other(format!(
-                            "disconnect synchronization failed: {error}"
-                        ))
-                    })?;
-                    Ok(handle)
-                }
-                SpawnBehavior::DropAfterOne => thread::Builder::new()
-                    .name("hackrf-test-one-block".to_string())
-                    .spawn(move || {
-                        let block = receiver.recv().map_err(|error| {
-                            Error::tx_backend_with_source(
-                                "hackrf",
-                                config_context(&config),
-                                error,
-                            )
-                        })?;
-                        thread_events.push(Event::Write(
-                            block.first().copied().unwrap_or_default(),
-                        ));
-                        drop(receiver);
-                        drop(writer);
-                        closed_sender.send(()).map_err(|error| {
-                            Error::tx_backend_with_source(
-                                "hackrf",
-                                config_context(&config),
-                                error,
-                            )
-                        })?;
-                        Ok(())
-                    }),
-            }
+        move |config,
+              receiver,
+              writer,
+              cancellation,
+              terminal_sender,
+              cancellation_poll| {
+            spawn_scenario_writer(
+                config,
+                receiver,
+                writer,
+                cancellation,
+                terminal_sender,
+                cancellation_poll,
+                SpawnScenario {
+                    scenario,
+                    spawn_events,
+                    thread_events,
+                    closed_sender,
+                },
+            )
         },
         Some(observer),
     );
 
     (result, events, closed_notification)
+}
+
+struct SpawnScenario {
+    scenario: Scenario,
+    spawn_events: EventLog,
+    thread_events: EventLog,
+    closed_sender: mpsc::Sender<()>,
+}
+
+fn spawn_scenario_writer(
+    config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
+    writer: Box<dyn Write + Send>, cancellation: CancellationToken,
+    terminal_sender: mpsc::Sender<WriterTerminal>, cancellation_poll: Duration,
+    spawn: SpawnScenario,
+) -> io::Result<thread::JoinHandle<()>> {
+    spawn.spawn_events.push(Event::SpawnWriter);
+    match spawn.scenario.spawn {
+        SpawnBehavior::Standard => thread::Builder::new()
+            .name("hackrf-test-writer".to_string())
+            .spawn(move || {
+                publish_writer_result(
+                    writer_thread_main(
+                        config,
+                        receiver,
+                        writer,
+                        cancellation,
+                        cancellation_poll,
+                    ),
+                    terminal_sender,
+                );
+            }),
+        SpawnBehavior::Fail => {
+            Err(io::Error::other("synthetic writer spawn failure"))
+        }
+        SpawnBehavior::DropReceiver => {
+            let (ready_sender, ready_receiver) = mpsc::channel();
+            let handle = thread::Builder::new()
+                .name("hackrf-test-disconnect".to_string())
+                .spawn(move || {
+                    drop(receiver);
+                    drop(writer);
+                    publish_writer_result(
+                        Ok(WriterOutcome::Completed),
+                        terminal_sender,
+                    );
+                    if ready_sender.send(()).is_err() {
+                        tracing::debug!(
+                            "disconnect synchronization owner dropped"
+                        );
+                    }
+                })?;
+            ready_receiver.recv().map_err(|error| {
+                io::Error::other(format!(
+                    "disconnect synchronization failed: {error}"
+                ))
+            })?;
+            Ok(handle)
+        }
+        SpawnBehavior::DropAfterOne => thread::Builder::new()
+            .name("hackrf-test-one-block".to_string())
+            .spawn(move || {
+                let block = match receiver.recv() {
+                    Ok(block) => block,
+                    Err(error) => {
+                        publish_writer_result(
+                            Err(Error::tx_backend_with_source(
+                                "hackrf",
+                                config_context(&config),
+                                error,
+                            )),
+                            terminal_sender,
+                        );
+                        return;
+                    }
+                };
+                spawn.thread_events.push(Event::Write(
+                    block.first().copied().unwrap_or_default(),
+                ));
+                drop(receiver);
+                drop(writer);
+                publish_writer_result(
+                    Ok(WriterOutcome::Completed),
+                    terminal_sender,
+                );
+                if spawn.closed_sender.send(()).is_err() {
+                    tracing::debug!(
+                        "receiver-close notification owner dropped"
+                    );
+                }
+            }),
+    }
 }
 
 pub(super) fn fake_activation_guard(
@@ -285,12 +339,14 @@ impl HackrfDeviceControl for FakeDevice {
 
     fn prepare_tx_writer(
         &mut self, _transfer_bytes: usize, _transfers: usize,
+        write_timeout: Duration,
     ) -> Result<Box<dyn Write + Send>, Error> {
         self.operation(
             Event::PrepareWriter,
             FailurePoint::PrepareWriter,
             "prepare writer",
         )?;
+        self.events.push(Event::WriterTimeout(write_timeout));
         self.writer
             .take()
             .ok_or_else(|| synthetic_error("writer already prepared"))
@@ -349,6 +405,20 @@ impl Write for FakeWriter {
         } else {
             Ok(())
         }
+    }
+}
+
+fn publish_writer_result(
+    result: Result<WriterOutcome, Error>,
+    terminal_sender: mpsc::Sender<WriterTerminal>,
+) {
+    let terminal = match result {
+        Ok(WriterOutcome::Completed) => WriterTerminal::Completed,
+        Ok(WriterOutcome::Cancelled) => WriterTerminal::Cancelled,
+        Err(error) => WriterTerminal::Failed(error),
+    };
+    if terminal_sender.send(terminal).is_err() {
+        tracing::debug!("test writer owner dropped before terminal result");
     }
 }
 

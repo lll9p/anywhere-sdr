@@ -179,7 +179,7 @@ fn resolve_worker_completion(
 
 fn run_streaming_worker(
     config: &TuiConfig, manual_control: Option<RuntimeMotionControl>,
-    cancel: &AtomicBool, event_tx: &mpsc::Sender<WorkerEvent>,
+    cancel: &Arc<AtomicBool>, event_tx: &mpsc::Sender<WorkerEvent>,
 ) -> Result<WorkerCompletion, Error> {
     let output_path = resolve_output_path(config);
 
@@ -197,6 +197,7 @@ fn run_streaming_worker(
         &generator,
         output_path,
         hackrf_underrun_counter.clone(),
+        cancel.clone(),
     )?;
     if sinks.is_empty() {
         return Err(Error::cli_error(
@@ -260,7 +261,8 @@ fn run_streaming_worker(
         generator.run_streaming::<_, Error>(&mut on_block)
     };
 
-    let finish_result = tee.finish();
+    let (streaming_result, finish_result) =
+        finish_streaming_run(cancel, &mut tee, streaming_result);
 
     let hackrf_underruns = hackrf_underrun_counter
         .as_ref()
@@ -274,6 +276,19 @@ fn run_streaming_worker(
     );
 
     resolve_worker_completion(streaming_result, finish_result, progress)
+}
+
+fn finish_streaming_run(
+    cancel: &AtomicBool, tee: &mut TxTee, mut run: Result<(), Error>,
+) -> (Result<(), Error>, Result<(), Error>) {
+    if run.is_ok() && cancel.load(Ordering::Relaxed) {
+        run = Err(Error::RunCancelled);
+    }
+    if run.is_err() {
+        tee.request_cancel();
+    }
+    let finish = tee.finish();
+    (run, finish)
 }
 
 fn compute_progress(
@@ -336,6 +351,7 @@ fn build_sinks(
     config: &TuiConfig, generator: &SignalGenerator,
     output_path: Option<PathBuf>,
     hackrf_underrun_counter: Option<Arc<AtomicU64>>,
+    cancellation: Arc<AtomicBool>,
 ) -> Result<Vec<Box<dyn TxSink>>, Error> {
     let mut sinks: Vec<Box<dyn TxSink>> = Vec::new();
 
@@ -354,6 +370,7 @@ fn build_sinks(
                     config,
                     generator,
                     hackrf_underrun_counter.clone(),
+                    cancellation.clone(),
                 )?));
             }
             TxBackend::Null => {
@@ -369,7 +386,7 @@ fn build_sinks(
 
 fn build_hackrf_sink(
     config: &TuiConfig, generator: &SignalGenerator,
-    underrun_counter: Option<Arc<AtomicU64>>,
+    underrun_counter: Option<Arc<AtomicU64>>, cancellation: Arc<AtomicBool>,
 ) -> Result<HackrfTxSink, Error> {
     let tx_config = HackrfTxConfig {
         serial: config.hackrf_serial.clone(),
@@ -388,9 +405,16 @@ fn build_hackrf_sink(
 
     let expected_i16_len =
         IqBlockSizing::new(generator.iq_buffer_size)?.interleaved_i16_len();
-    HackrfTxSink::new(tx_config, expected_i16_len)
+    HackrfTxSink::new_with_cancellation(
+        tx_config,
+        expected_i16_len,
+        cancellation,
+    )
 }
 
+#[cfg(test)]
+#[path = "worker_hackrf_tests.rs"]
+mod hackrf_tests;
 #[cfg(test)]
 #[path = "worker_tests.rs"]
 mod tests;

@@ -2,10 +2,8 @@
 
 use std::{
     collections::VecDeque,
-    io::{self, Write},
-    sync::{Arc, atomic::AtomicU64, mpsc},
-    thread,
-    time::Duration,
+    sync::{Arc, atomic::AtomicU64},
+    time::{Duration, Instant},
 };
 
 use gps::pack_bits8_into;
@@ -13,22 +11,29 @@ use gps::pack_bits8_into;
 use super::TxSink;
 use crate::Error;
 
+mod shutdown;
 mod startup;
 mod writer;
 
+#[cfg(test)]
+mod drop_tests;
 #[cfg(test)]
 mod hardware_tests;
 #[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
+mod shutdown_test_support;
+#[cfg(test)]
+mod shutdown_tests;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod validation_tests;
+#[cfg(test)]
+mod writer_tests;
 
-use startup::{
-    ActivationGuard, HackrfDeviceControl, open_real_device, validate_config,
-};
-use writer::writer_thread_main;
+use shutdown::{EnqueueMode, WriterWorker};
+use startup::ActivationGuard;
 
 #[derive(Clone, Debug)]
 /// Configuration for `HackRF` TX.
@@ -72,90 +77,27 @@ enum StartupState {
     Finished,
 }
 
+struct DispatchFailure {
+    error: Error,
+    rollback_attempted: bool,
+}
+
 type BufferObserver = Arc<dyn Fn(usize) + Send + Sync>;
-type WriterThread = thread::JoinHandle<Result<(), Error>>;
 
 /// A TX sink that streams SC8 samples to a `HackRF` device.
 pub struct HackrfTxSink {
     config: HackrfTxConfig,
     expected_i16_len: usize,
-    sender: Option<mpsc::SyncSender<Vec<u8>>>,
-    writer_thread: Option<WriterThread>,
+    worker: WriterWorker,
     activation: ActivationGuard,
     startup_state: StartupState,
+    finalization_failed: bool,
     prefill: VecDeque<Vec<u8>>,
     buffered_blocks: usize,
     buffer_observer: Option<BufferObserver>,
 }
 
 impl HackrfTxSink {
-    /// Creates a new `HackRF` TX sink.
-    pub fn new(
-        config: HackrfTxConfig, expected_i16_len: usize,
-    ) -> Result<Self, Error> {
-        Self::new_with(
-            config,
-            expected_i16_len,
-            open_real_device,
-            spawn_writer_thread,
-            None,
-        )
-    }
-
-    fn new_with<Open, Spawn>(
-        config: HackrfTxConfig, expected_i16_len: usize, open: Open,
-        spawn: Spawn, buffer_observer: Option<BufferObserver>,
-    ) -> Result<Self, Error>
-    where
-        Open: FnOnce(
-            &HackrfTxConfig,
-        ) -> Result<Box<dyn HackrfDeviceControl>, Error>,
-        Spawn: FnOnce(
-            HackrfTxConfig,
-            mpsc::Receiver<Vec<u8>>,
-            Box<dyn Write + Send>,
-        ) -> io::Result<WriterThread>,
-    {
-        validate_config(&config, expected_i16_len)?;
-
-        let device = open(&config)?;
-        let mut activation =
-            ActivationGuard::new(device, config_context(&config));
-        activation.device_mut().set_freq(config.rf_freq_hz)?;
-        activation
-            .device_mut()
-            .set_sample_rate_auto(config.sample_frequency_hz)?;
-        activation.device_mut().set_amp_enable(config.amp_enable)?;
-        activation.device_mut().set_txvga_gain(config.txvga_gain)?;
-        let writer = activation.device_mut().prepare_tx_writer(
-            config.usb_transfer_bytes,
-            config.usb_transfers,
-        )?;
-
-        let (sender, receiver) =
-            mpsc::sync_channel::<Vec<u8>>(config.queue_blocks);
-        let writer_thread =
-            spawn(config.clone(), receiver, writer).map_err(|error| {
-                Error::tx_backend_with_source(
-                    "hackrf",
-                    config_context(&config),
-                    error,
-                )
-            })?;
-
-        Ok(Self {
-            config,
-            expected_i16_len,
-            sender: Some(sender),
-            writer_thread: Some(writer_thread),
-            activation,
-            startup_state: StartupState::Prepared,
-            prefill: VecDeque::new(),
-            buffered_blocks: 0,
-            buffer_observer,
-        })
-    }
-
     fn backend_context(&self) -> String {
         config_context(&self.config)
     }
@@ -168,59 +110,65 @@ impl HackrfTxSink {
         }
 
         if self.prefill.len() >= self.config.prefill_blocks.max(1) {
-            self.activate_and_dispatch_prefill()?;
+            self.activate_and_dispatch_prefill(EnqueueMode::Streaming)
+                .map_err(|failure| failure.error)?;
         }
         Ok(())
     }
 
-    fn activate_and_dispatch_prefill(&mut self) -> Result<(), Error> {
+    fn activate_and_dispatch_prefill(
+        &mut self, mode: EnqueueMode,
+    ) -> Result<(), DispatchFailure> {
         if self.startup_state != StartupState::Prepared {
-            return Err(Error::tx_backend_msg(
-                self.backend(),
-                format!(
-                    "invalid startup activation state {:?} ({})",
-                    self.startup_state,
-                    self.backend_context()
+            return Err(DispatchFailure {
+                error: Error::tx_backend_msg(
+                    self.backend(),
+                    format!(
+                        "invalid startup activation state {:?} ({})",
+                        self.startup_state,
+                        self.backend_context()
+                    ),
                 ),
-            ));
+                rollback_attempted: false,
+            });
         }
 
-        // Make the activation attempt terminal before external mutation so
-        // unwinding cannot retry it from `finish` or `Drop`.
         self.startup_state = StartupState::Failed;
-        if let Err(error) = self.activation.activate() {
+        if let Err(failure) = self.activation.activate() {
             self.prefill.clear();
-            return Err(error);
+            return Err(DispatchFailure {
+                error: failure.error,
+                rollback_attempted: failure.rollback_attempted,
+            });
         }
         self.startup_state = StartupState::Active;
 
         while let Some(block) = self.prefill.pop_front() {
-            if let Err(error) = self.send_to_writer(block) {
+            let context = self.backend_context();
+            if let Err(error) =
+                self.worker.send(block, mode, self.backend(), &context)
+            {
                 self.enter_failed_state();
-                self.activation.rollback_best_effort();
-                return Err(error);
+                let rollback_attempted = if matches!(error, Error::RunCancelled)
+                {
+                    false
+                } else {
+                    self.activation.rollback_best_effort()
+                };
+                return Err(DispatchFailure {
+                    error,
+                    rollback_attempted,
+                });
             }
         }
         Ok(())
     }
 
-    fn send_to_writer(&self, block: Vec<u8>) -> Result<(), Error> {
-        let Some(sender) = &self.sender else {
-            return Err(Error::tx_backend_msg(
-                self.backend(),
-                format!(
-                    "writer channel is closed ({})",
-                    self.backend_context()
-                ),
-            ));
-        };
-        sender.send(block).map_err(|error| {
-            Error::tx_backend_with_source(
-                self.backend(),
-                self.backend_context(),
-                error,
-            )
-        })
+    fn send_to_writer(
+        &self, block: Vec<u8>, mode: EnqueueMode,
+    ) -> Result<(), Error> {
+        self.worker
+            .send(block, mode, self.backend(), &self.backend_context())
     }
 
     fn enter_failed_state(&mut self) {
@@ -239,29 +187,17 @@ impl HackrfTxSink {
         }
     }
 
-    fn join_writer(&mut self, primary: &mut Option<Error>) {
-        let Some(handle) = self.writer_thread.take() else {
-            return;
-        };
-        let writer_error = match handle.join() {
-            Ok(Ok(())) => None,
-            Ok(Err(error)) => Some(error),
-            Err(_) => Some(Error::tx_backend_msg(
-                self.backend(),
-                "writer thread panicked".to_string(),
-            )),
-        };
-
-        if let Some(error) = writer_error {
-            if primary.is_none() {
-                *primary = Some(error);
-            } else {
-                tracing::warn!(
-                    error = %error,
-                    context = %self.backend_context(),
-                    "hackrf writer finalization also failed"
-                );
-            }
+    fn record_finalization_error(
+        &self, primary: &mut Option<Error>, error: Error, operation: &str,
+    ) {
+        if primary.is_none() {
+            *primary = Some(error);
+        } else {
+            tracing::warn!(
+                error = %error,
+                context = %self.backend_context(),
+                "hackrf {operation} also failed"
+            );
         }
     }
 }
@@ -304,9 +240,13 @@ impl TxSink for HackrfTxSink {
         match self.startup_state {
             StartupState::Prepared => self.buffer_until_ready(out),
             StartupState::Active => {
-                if let Err(error) = self.send_to_writer(out) {
+                if let Err(error) =
+                    self.send_to_writer(out, EnqueueMode::Streaming)
+                {
                     self.enter_failed_state();
-                    self.activation.rollback_best_effort();
+                    if !matches!(error, Error::RunCancelled) {
+                        self.activation.rollback_best_effort();
+                    }
                     return Err(error);
                 }
                 Ok(())
@@ -326,74 +266,88 @@ impl TxSink for HackrfTxSink {
         }
     }
 
+    fn request_cancel(&mut self) {
+        self.worker.request_cancel();
+    }
+
     fn finish(&mut self) -> Result<(), Error> {
         if self.startup_state == StartupState::Finished {
             return Ok(());
         }
 
+        let deadline = Instant::now() + self.worker.policy().finish_timeout;
         let mut primary = None;
-        if self.startup_state == StartupState::Prepared
-            && !self.prefill.is_empty()
-        {
-            if let Err(error) = self.activate_and_dispatch_prefill() {
-                primary = Some(error);
+        let mut stop_attempted = false;
+        let cancellation_requested = self.worker.is_cancel_requested();
+
+        if self.startup_state == StartupState::Prepared {
+            if cancellation_requested {
+                self.prefill.clear();
+            } else if !self.prefill.is_empty() {
+                match self.activate_and_dispatch_prefill(
+                    EnqueueMode::Finalizing { deadline },
+                ) {
+                    Ok(()) => {}
+                    Err(failure) => {
+                        stop_attempted = failure.rollback_attempted;
+                        primary = Some(failure.error);
+                    }
+                }
             }
         } else if self.startup_state == StartupState::Failed {
             self.prefill.clear();
+            self.worker.request_cancel();
         }
 
-        self.sender.take();
-        self.join_writer(&mut primary);
+        if primary.is_some() {
+            self.worker.request_cancel();
+        }
+
+        let context = self.backend_context();
+        if let Err(error) =
+            self.worker
+                .close_and_wait(deadline, self.backend(), &context)
+        {
+            self.record_finalization_error(
+                &mut primary,
+                error,
+                "writer finalization",
+            );
+        }
+
+        if self.activation.is_armed() && !stop_attempted {
+            tracing::info!(context = %context, "stopping hackrf tx");
+            match self.activation.stop() {
+                Ok(()) => {
+                    tracing::info!(context = %context, "hackrf tx stopped");
+                }
+                Err(error) => {
+                    self.record_finalization_error(&mut primary, error, "stop");
+                }
+            }
+        }
 
         if let Some(error) = primary {
+            self.finalization_failed = true;
             self.enter_failed_state();
-            self.activation.rollback_best_effort();
-            return Err(error);
+            Err(error)
+        } else {
+            self.prefill.clear();
+            self.startup_state = if self.finalization_failed {
+                StartupState::Failed
+            } else {
+                StartupState::Finished
+            };
+            Ok(())
         }
-
-        match self.startup_state {
-            StartupState::Active => {
-                tracing::info!(
-                    context = %self.backend_context(),
-                    "stopping hackrf tx"
-                );
-                if let Err(error) = self.activation.stop() {
-                    self.enter_failed_state();
-                    return Err(error);
-                }
-                tracing::info!(
-                    context = %self.backend_context(),
-                    "hackrf tx stopped"
-                );
-                self.startup_state = StartupState::Finished;
-            }
-            StartupState::Prepared => {
-                self.startup_state = StartupState::Finished;
-            }
-            StartupState::Failed => {
-                self.activation.rollback_best_effort();
-            }
-            StartupState::Finished => {}
-        }
-        Ok(())
     }
 }
 
 impl Drop for HackrfTxSink {
     fn drop(&mut self) {
-        if let Err(error) = self.finish() {
-            tracing::warn!(error = %error, "HackrfTxSink dropped with error");
-        }
+        let context = self.backend_context();
+        self.worker.detach_on_drop(&context);
     }
-}
-
-fn spawn_writer_thread(
-    config: HackrfTxConfig, receiver: mpsc::Receiver<Vec<u8>>,
-    writer: Box<dyn Write + Send>,
-) -> io::Result<WriterThread> {
-    thread::Builder::new()
-        .name("hackrf-tx".to_string())
-        .spawn(move || writer_thread_main(config, receiver, writer))
 }
 
 fn open_context(config: &HackrfTxConfig) -> String {

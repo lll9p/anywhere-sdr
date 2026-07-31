@@ -249,6 +249,9 @@ impl Args {
 
         let elapsed = time_start.elapsed();
 
+        if streaming_result.is_err() {
+            tee.request_cancel();
+        }
         let finish_result = tee.finish();
         resolve_run_and_finish(streaming_result, finish_result)?;
 

@@ -225,12 +225,7 @@ fn partial_prefill_activation_failure_is_never_retried() {
             .count(),
         1
     );
-    assert_eq!(events, vec![
-        Event::Buffer(1),
-        Event::Activate,
-        Event::Stop,
-        Event::Flush
-    ]);
+    assert_eq!(events, vec![Event::Buffer(1), Event::Activate, Event::Stop]);
 }
 
 #[test]
@@ -249,7 +244,7 @@ fn prepared_write_failure_discards_prefill_and_never_activates() {
     assert!(sink.finish().is_ok());
     drop(sink);
 
-    assert_eq!(events.snapshot(), vec![Event::Buffer(1), Event::Flush]);
+    assert_eq!(events.snapshot(), vec![Event::Buffer(1)]);
 }
 
 #[test]
@@ -460,8 +455,7 @@ fn activation_panic_in_sink_is_never_retried() {
     assert_eq!(events.snapshot(), vec![
         Event::Buffer(1),
         Event::Activate,
-        Event::Flush,
-        Event::Stop,
+        Event::Stop
     ]);
 }
 

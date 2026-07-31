@@ -22,6 +22,9 @@ pub trait TxSink {
         &mut self, interleaved_iq_i16: &[i16],
     ) -> Result<(), Error>;
 
+    /// Requests abortive cleanup before finalization.
+    fn request_cancel(&mut self) {}
+
     /// Finalizes the backend and releases resources.
     fn finish(&mut self) -> Result<(), Error>;
 }
@@ -56,6 +59,12 @@ impl TxSink for TxTee {
             sink.write_block_i16(interleaved_iq_i16)?;
         }
         Ok(())
+    }
+
+    fn request_cancel(&mut self) {
+        for sink in &mut self.sinks {
+            sink.request_cancel();
+        }
     }
 
     fn finish(&mut self) -> Result<(), Error> {
@@ -453,6 +462,9 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+#[path = "tx/cancellation_tests.rs"]
+mod cancellation_tests;
 #[cfg(test)]
 #[path = "tx/finalization_tests.rs"]
 mod finalization_tests;
