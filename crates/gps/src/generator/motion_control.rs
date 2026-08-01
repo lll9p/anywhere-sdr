@@ -4,7 +4,8 @@ use geometry::{Ecef, Location, Neu};
 
 use super::motion_math::{
     apply_limited_delta, ecef_from_neu, horizontal_speed_mps,
-    normalize_heading_deg, shortest_heading_delta_deg,
+    integrate_constant_acceleration, integrate_target_speed,
+    normalize_heading_deg, shortest_heading_delta_deg, total_speed_mps,
 };
 use crate::Error;
 
@@ -294,22 +295,17 @@ impl MotionIntegrator {
         }
     }
 
-    /// Advance the integrator by one time step.
-    ///
-    /// This applies any pending commands, updates targets/acceleration, updates
-    /// position, and publishes a snapshot back to the controller.
+    /// Advance motion by one interval and publish its endpoint.
     pub(crate) fn step(
         &mut self, dt: f64, control: &RuntimeMotionControl,
     ) -> Result<Ecef, Error> {
         let pending = control.try_take_pending();
         self.apply_pending(pending);
 
-        self.apply_targets(dt);
-        self.apply_acceleration(dt);
-        self.integrate_position(dt)?;
+        let displacement_neu = self.integrate_interval(dt);
+        self.apply_displacement(displacement_neu)?;
 
-        let snapshot = self.snapshot();
-        control.try_publish_snapshot(snapshot);
+        control.try_publish_snapshot(self.snapshot());
         Ok(self.position_ecef)
     }
 
@@ -376,9 +372,9 @@ impl MotionIntegrator {
         }
     }
 
-    /// Apply target heading/speed controllers, respecting per-step limits.
-    fn apply_targets(&mut self, dt: f64) {
-        let horizontal_speed = horizontal_speed_mps(self.velocity_neu);
+    /// Integrate local motion and commit endpoint controller state.
+    fn integrate_interval(&mut self, dt: f64) -> Neu {
+        let speed_mps = horizontal_speed_mps(self.velocity_neu);
 
         if let Some(target_heading) = self.target_heading {
             let current_heading = normalize_heading_deg(self.heading_deg);
@@ -393,48 +389,48 @@ impl MotionIntegrator {
         }
 
         if let Some(target_speed) = self.target_speed {
-            let delta = target_speed.speed_mps - horizontal_speed;
-            let max_delta = (target_speed.accel_limit_mps2.abs() * dt).max(0.0);
-            let applied = apply_limited_delta(delta, max_delta);
-            let new_speed = (horizontal_speed + applied).max(0.0);
-            let climb_mps = self.velocity_neu.up;
-            self.set_heading_speed(self.heading_deg, new_speed, climb_mps);
-        } else if self.target_heading.is_some() {
-            // Heading-only target: rotate the horizontal velocity while keeping
-            // speed.
-            let climb_mps = self.velocity_neu.up;
-            self.set_heading_speed(
-                self.heading_deg,
-                horizontal_speed,
-                climb_mps,
+            let motion = integrate_target_speed(
+                speed_mps,
+                target_speed.speed_mps,
+                target_speed.accel_limit_mps2,
+                dt,
             );
+            let heading_rad = self.heading_deg.to_radians();
+            let climb_mps = self.velocity_neu.up;
+            let endpoint_speed = motion.endpoint_speed;
+            self.set_heading_speed(self.heading_deg, endpoint_speed, climb_mps);
+            return Neu {
+                north: heading_rad.cos() * motion.distance,
+                east: heading_rad.sin() * motion.distance,
+                up: climb_mps * dt,
+            };
         }
-    }
 
-    /// Apply acceleration to velocity when no target controllers are active.
-    fn apply_acceleration(&mut self, dt: f64) {
-        if self.target_speed.is_some() || self.target_heading.is_some() {
-            return;
+        if self.target_heading.is_some() {
+            let climb_mps = self.velocity_neu.up;
+            self.set_heading_speed(self.heading_deg, speed_mps, climb_mps);
+            return Neu {
+                north: self.velocity_neu.north * dt,
+                east: self.velocity_neu.east * dt,
+                up: self.velocity_neu.up * dt,
+            };
         }
 
-        self.velocity_neu.north += self.acceleration_neu.north * dt;
-        self.velocity_neu.east += self.acceleration_neu.east * dt;
-        self.velocity_neu.up += self.acceleration_neu.up * dt;
-
+        let motion = integrate_constant_acceleration(
+            self.velocity_neu,
+            self.acceleration_neu,
+            dt,
+        );
+        self.velocity_neu = motion.endpoint_velocity_neu;
         self.update_heading_from_velocity();
+        motion.displacement_neu
     }
 
-    /// Integrate position using the current velocity.
-    fn integrate_position(&mut self, dt: f64) -> Result<(), Error> {
-        let displacement_neu = Neu {
-            north: self.velocity_neu.north * dt,
-            east: self.velocity_neu.east * dt,
-            up: self.velocity_neu.up * dt,
-        };
-
+    /// Apply one local displacement through the interval-start tangent frame.
+    fn apply_displacement(&mut self, displacement: Neu) -> Result<(), Error> {
         let reference_location = Location::try_from(&self.position_ecef)?;
         let ltcmat = reference_location.ltcmat();
-        let displacement_ecef = ecef_from_neu(displacement_neu, ltcmat);
+        let displacement_ecef = ecef_from_neu(displacement, ltcmat);
 
         self.position_ecef.x += displacement_ecef.x;
         self.position_ecef.y += displacement_ecef.y;
@@ -442,9 +438,9 @@ impl MotionIntegrator {
         Ok(())
     }
 
-    /// Build a snapshot representing the current motion state.
+    /// Build the current endpoint snapshot.
     fn snapshot(&self) -> MotionSnapshot {
-        let speed_mps = horizontal_speed_mps(self.velocity_neu);
+        let speed_mps = total_speed_mps(self.velocity_neu);
         MotionSnapshot {
             position_ecef: self.position_ecef,
             velocity_neu: self.velocity_neu,
@@ -453,13 +449,13 @@ impl MotionIntegrator {
         }
     }
 
-    /// Set NEU velocity and update heading to match horizontal motion.
+    /// Set NEU velocity and derive its horizontal heading.
     fn set_velocity_neu(&mut self, velocity_neu: Neu) {
         self.velocity_neu = velocity_neu;
         self.update_heading_from_velocity();
     }
 
-    /// Set heading (deg), horizontal speed (m/s), and climb rate (m/s).
+    /// Set heading, horizontal speed, and climb rate.
     fn set_heading_speed(
         &mut self, heading_deg: f64, speed_mps: f64, climb_mps: f64,
     ) {
@@ -473,7 +469,7 @@ impl MotionIntegrator {
         self.heading_deg = heading_deg;
     }
 
-    /// Update heading based on the current NEU velocity.
+    /// Derive heading from nonzero horizontal velocity.
     fn update_heading_from_velocity(&mut self) {
         let horizontal_speed = horizontal_speed_mps(self.velocity_neu);
         if horizontal_speed > 0.0 {
@@ -486,7 +482,7 @@ impl MotionIntegrator {
         }
     }
 
-    /// Clear all active target controllers.
+    /// Clear both target controllers.
     fn clear_targets(&mut self) {
         self.target_speed = None;
         self.target_heading = None;
