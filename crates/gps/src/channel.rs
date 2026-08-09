@@ -1,6 +1,6 @@
 use constants::{
-    CA_SEQ_LEN, CA_SEQ_LEN_FLOAT, CARR_TO_CODE, CODE_FREQ, LAMBDA_L1_INV,
-    N_DWRD, N_DWRD_SBF, SPEED_OF_LIGHT_INV,
+    CA_SEQ_LEN, CA_SEQ_LEN_FLOAT, CARR_TO_CODE, CODE_FREQ, LAMBDA_L1,
+    LAMBDA_L1_INV, N_DWRD, N_DWRD_SBF, SPEED_OF_LIGHT_INV,
 };
 use geometry::{Azel, Ecef};
 
@@ -17,6 +17,22 @@ use crate::{
 mod nav_message;
 /// Broadcast ephemeris and ionosphere subframe encoding.
 mod navigation_subframes;
+
+/// Number of effective bits in the fixed-point carrier accumulator.
+const CARRIER_PHASE_BITS: u32 = 25;
+/// Fixed-point accumulator counts per carrier cycle.
+const CARRIER_PHASE_SCALE: f64 = (1_u32 << CARRIER_PHASE_BITS) as f64;
+/// Mask that keeps carrier accumulator state modulo one cycle.
+const CARRIER_PHASE_MASK: u32 = (1_u32 << CARRIER_PHASE_BITS) - 1;
+
+/// Converts modeled pseudorange into a deterministic simulator phase reference.
+///
+/// This reference is zero cycles at zero modeled range; it is not a calibrated
+/// absolute satellite oscillator phase.
+fn carrier_phase_from_range(range_meters: f64) -> u32 {
+    let cycles = (-range_meters / LAMBDA_L1).rem_euclid(1.0);
+    ((CARRIER_PHASE_SCALE * cycles) as u32) & CARRIER_PHASE_MASK
+}
 
 /// Represents a single GPS satellite channel being tracked by the receiver.
 ///
@@ -148,25 +164,8 @@ impl Channel {
         self.generate_nav_msg(receiver_gps_time, true);
         // Initialize pseudorange
         let rho = compute_range(eph, ionoutc, receiver_gps_time, xyz)?;
+        self.carrier_phase = carrier_phase_from_range(rho.range);
         self.rho0 = rho;
-        // Initialize carrier phase
-        // r_xyz = rho.range;
-        // below line does nothing
-        // let _rho =
-        //     compute_range(&eph[sv], ionoutc, grx,
-        // &ref_0); r_ref = rho.
-        // range;
-        // Initialize carrier phase (using a fixed or random value initially)
-        // A random initial phase is often more realistic unless specific
-        // alignment is needed.
-        let mut phase_ini: f64 = 0.0; // TODO: Must initialize properly
-        //phase_ini = (2.0*r_ref - r_xyz)/LAMBDA_L1;
-        // #ifdef FLOAT_CARR_PHASE
-        //                         self.carrier_phase =
-        // phase_ini - floor(phase_ini);
-        // #else
-        phase_ini -= phase_ini.floor();
-        self.carrier_phase = (512.0 * 65536.0 * phase_ini) as u32;
         Ok(())
     }
 
@@ -191,11 +190,9 @@ impl Channel {
         // Calculate code phase (C/A code offset)
         self.compute_code_phase(rho1, dt);
         self.code_phase_step = self.code_frequency * sampling_period;
-        self.carrier_phase_step = (512.0
-            * 65536.0
-            * self.carrier_frequency
-            * sampling_period)
-            .round() as i32;
+        self.carrier_phase_step =
+            (CARRIER_PHASE_SCALE * self.carrier_frequency * sampling_period)
+                .round() as i32;
     }
 
     ///  \brief Compute the code phase for a given channel (satellite)
@@ -368,9 +365,10 @@ impl Channel {
         // #else
         // Step 5: Update carrier phase (using phase accumulator)
 
-        self.carrier_phase =
-            (self.carrier_phase).wrapping_add(self.carrier_phase_step as u32);
-        // self.carrier_phase += self.carrier_phase_step as u32;
+        self.carrier_phase = self
+            .carrier_phase
+            .wrapping_add(self.carrier_phase_step as u32)
+            & CARRIER_PHASE_MASK;
     }
 
     /// Generates the In-phase (I) and Quadrature (Q) signal contributions for
@@ -401,3 +399,7 @@ impl Channel {
         (ip, qp)
     }
 }
+
+#[cfg(test)]
+#[path = "channel/phase_tests.rs"]
+mod phase_tests;

@@ -39,7 +39,6 @@ pub struct TrackedSatellite {
 struct TrackerState {
     prn: usize,
     ephemeris: BroadcastEphemeris,
-    acquisition: AcquisitionMetric,
     ca_code: [i8; constants::CA_SEQ_LEN],
     code_phase: f64,
     code_phase_step: f64,
@@ -78,7 +77,6 @@ impl TrackerState {
         Ok(Self {
             prn: acquisition.prn,
             ephemeris,
-            acquisition,
             ca_code,
             code_phase: acquired_code_phase_chips,
             code_phase_step: 0.0,
@@ -111,9 +109,9 @@ impl TrackerState {
         )?;
         let range_rate =
             (range_next.range - range_now.range) / context.sample_rate_seconds;
-        let carrier_hz = -range_rate * LAMBDA_L1_INV
-            + (self.acquisition.acquired_carrier_hz
-                - self.acquisition.predicted_carrier_hz);
+        // A noncoherent acquisition bin is not a phase-continuous
+        // fine-frequency estimate.
+        let carrier_hz = -range_rate * LAMBDA_L1_INV;
         let code_hz = CODE_FREQ + carrier_hz * CARR_TO_CODE;
         let carrier_phase_step =
             -2.0 * PI * carrier_hz / context.sample_frequency_hz;
@@ -402,9 +400,12 @@ fn predicted_code_phase(
 
 #[cfg(test)]
 mod tests {
-    use gps::GpsTime;
+    use gps::{Error, GpsTime};
 
-    use super::{advance_sample_offset, aligned_navigation_start};
+    use super::{
+        AcquisitionMetric, FixedScenario, TrackerState, TrackingContext,
+        advance_sample_offset, aligned_navigation_start,
+    };
 
     #[test]
     fn navigation_start_floors_fractional_frame_time() {
@@ -430,6 +431,59 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()?;
         assert_eq!(starts, vec![0, 33_333, 66_667]);
         assert_eq!(offset, 100_000);
+        Ok(())
+    }
+
+    #[test]
+    fn aided_tracking_does_not_apply_coarse_acquisition_bin_as_residual()
+    -> Result<(), Error> {
+        let scenario = FixedScenario::new_custom(
+            "2022-01-01T00:00:00Z",
+            0.2,
+            [35.681_298, 139.766_247, 10.0],
+            2_600_000,
+            false,
+            None,
+        )?;
+        let satellite = scenario
+            .visible_satellites()
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                Error::msg("mini-receiver fixture has no visible satellite")
+            })?;
+        let acquisition = AcquisitionMetric {
+            prn: satellite.prn,
+            predicted_carrier_hz: 1_000.0,
+            predicted_code_phase_chips: 400.0,
+            acquired_carrier_hz: 1_000.0,
+            acquired_code_phase_chips: 400.0,
+            peak_ratio: 10.0,
+        };
+        let mut adjacent_bin_acquisition = acquisition.clone();
+        adjacent_bin_acquisition.acquired_carrier_hz += 50.0;
+        let mut base_tracker = TrackerState::new(&scenario, acquisition)?;
+        let mut adjacent_bin_tracker =
+            TrackerState::new(&scenario, adjacent_bin_acquisition)?;
+        let context = TrackingContext {
+            receiver_position: scenario.receiver_position(),
+            ionoutc: scenario.ionoutc().clone(),
+            start_time: scenario.start_time().clone(),
+            sample_frequency_hz: scenario.sample_frequency_hz(),
+            sample_rate_seconds: scenario.sample_rate_seconds(),
+        };
+
+        base_tracker.update_tracking_rates(&context, scenario.start_time())?;
+        adjacent_bin_tracker
+            .update_tracking_rates(&context, scenario.start_time())?;
+
+        assert_eq!(
+            (base_tracker.carrier_step_re, base_tracker.carrier_step_im),
+            (
+                adjacent_bin_tracker.carrier_step_re,
+                adjacent_bin_tracker.carrier_step_im,
+            ),
+        );
         Ok(())
     }
 }

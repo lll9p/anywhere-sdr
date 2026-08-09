@@ -59,8 +59,16 @@ pub struct TimeRange {
     /// Pseudorange measurement in meters, including signal delays.
     pub range: f64,
 
-    /// Range rate in meters per second.
-    pub rate: f64,
+    /// Satellite-only line-of-sight rate approximation in meters per second.
+    ///
+    /// This is the reception-time satellite ECEF velocity projected onto the
+    /// normalized, corrected receiver-to-satellite line of sight. Positive
+    /// values mean the satellite velocity component increases separation.
+    /// Receiver velocity, satellite clock drift, ionosphere rate, and
+    /// consistent transmit-time and Earth-rotation derivatives are excluded.
+    /// This field is not the derivative of [`Self::range`] or
+    /// [`Self::distance`].
+    pub satellite_los_rate_approx_mps: f64,
 
     /// Geometric distance in meters without signal delays.
     pub distance: f64,

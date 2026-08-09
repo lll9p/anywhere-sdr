@@ -1,10 +1,42 @@
 #![cfg(not(debug_assertions))]
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
 use gps::{DataFormat, Error, IqBlockSizing, SignalGeneratorBuilder};
 use test_case::test_case;
+#[path = "test-generator/carrier_phase_golden.rs"]
+mod carrier_phase_golden;
 mod prepare;
+use carrier_phase_golden::{
+    CARRIER_PHASE_GOLDENS, RELEASE_C_CASE_COUNT, RustOutputFingerprint,
+    expected_fingerprint,
+};
 use prepare::{OUTPUT_DIR, RESOURCES_DIR, prepare_c_bin};
+
+fn content_fingerprint(bytes: &[u8]) -> RustOutputFingerprint {
+    let mut hash_a = 0xcbf2_9ce4_8422_2325_u64;
+    let mut hash_b = 0x8422_2325_cbf2_9ce4_u64;
+    for byte in bytes {
+        hash_a ^= u64::from(*byte);
+        hash_a = hash_a.wrapping_mul(0x0000_0100_0000_01b3);
+        hash_b ^= u64::from(*byte);
+        hash_b = hash_b.rotate_left(5).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+    RustOutputFingerprint {
+        length: bytes.len() as u64,
+        hash_a,
+        hash_b,
+    }
+}
+
+#[test]
+fn carrier_phase_goldens_cover_every_release_c_case() {
+    assert_eq!(CARRIER_PHASE_GOLDENS.len(), RELEASE_C_CASE_COUNT);
+    let unique_paths = CARRIER_PHASE_GOLDENS
+        .iter()
+        .map(|(path, _)| *path)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(unique_paths.len(), RELEASE_C_CASE_COUNT);
+}
 #[allow(non_snake_case)]
 fn to_builder(args: &[Vec<String>]) -> Result<SignalGeneratorBuilder, Error> {
     let mut builder = SignalGeneratorBuilder::default();
@@ -121,132 +153,44 @@ fn string_to_args(value: &str) -> Vec<Vec<String>> {
 // -i
 // -p [fixed_gain]
 // -v
+// Every case runs the legacy C fixture for process, length, and explicit
+// zero-phase divergence checks, then validates the Rust output against its
+// reviewed fingerprint. C sample bytes are intentionally not a content oracle.
+
 // Basic data format tests
-/// Test 1-bit I/Q data format
-/// Generate 1-bit I/Q data with default parameters and verify against C version
-/// output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/format_1bit.bin", "output/c_format_1bit.bin"; "test_data_format_1bit")]
-
-/// Test 8-bit I/Q data format
-/// Generate 8-bit I/Q data with default parameters and verify against C version
-/// output
 #[test_case("-e=resources/brdc0010.22n;-b=8;-d=31.0;-o=output/format_8bit.bin", "output/c_format_8bit.bin"; "test_data_format_8bit")]
-
-/// Test 16-bit I/Q data format
-/// Generate 16-bit I/Q data with default parameters and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=16;-d=31.0;-o=output/format_16bit.bin", "output/c_format_16bit.bin"; "test_data_format_16bit")]
 // Sampling frequency tests
-/// Test custom sampling frequency (2MHz)
-/// Generate 1-bit I/Q data with 2MHz sampling frequency and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/freq_2mhz_1bit.bin;-s=2000000", "output/c_freq_2mhz_1bit.bin"; "test_sampling_frequency_2mhz")]
-
-/// Test low sampling frequency (1MHz)
-/// Generate 1-bit I/Q data with 1MHz sampling frequency and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/freq_1mhz_1bit.bin;-s=1000000", "output/c_freq_1mhz_1bit.bin"; "test_sampling_frequency_1mhz")]
-
-/// Test high sampling frequency (5MHz)
-/// Generate 1-bit I/Q data with 5MHz sampling frequency and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/freq_5mhz_1bit.bin;-s=5000000", "output/c_freq_5mhz_1bit.bin"; "test_sampling_frequency_5mhz")]
-
-/// Test 8-bit data format with custom sampling frequency
-/// Generate 8-bit I/Q data with 2MHz sampling frequency and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=8;-d=31.0;-o=output/freq_2mhz_8bit.bin;-s=2000000", "output/c_freq_2mhz_8bit.bin"; "test_data_format_8bit_with_2mhz")]
-
-/// Test 16-bit data format with custom sampling frequency
-/// Generate 16-bit I/Q data with 2MHz sampling frequency and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=16;-d=31.0;-o=output/freq_2mhz_16bit.bin;-s=2000000", "output/c_freq_2mhz_16bit.bin"; "test_data_format_16bit_with_2mhz")]
 // User motion tests
-/// Test NMEA GGA format user motion file
-/// Use triumphv3.txt NMEA GGA file as user motion input and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/motion_nmea_gga.bin;-g=resources/triumphv3.txt", "output/c_motion_nmea_gga.bin"; "test_user_motion_nmea_gga")]
-
-/// Test ECEF format user motion file
-/// Use circle.csv ECEF format file as user motion input and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/motion_ecef_circle.bin;-u=resources/circle.csv", "output/c_motion_ecef_circle.bin"; "test_user_motion_ecef_circle")]
-
-/// Test LLH format user motion file
-/// Use circle_llh.csv LLH format file as user motion input and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/motion_llh_circle.bin;-x=resources/circle_llh.csv", "output/c_motion_llh_circle.bin"; "test_user_motion_llh_circle")]
 // Static location tests
-/// Test LLH format static location (Hangzhou)
-/// Use latitude/longitude/height format static location and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/static_llh_hangzhou.bin;-l=30.286502,120.032669,100", "output/c_static_llh_hangzhou.bin"; "test_static_location_llh_hangzhou")]
-
-/// Test LLH format static location (Tokyo)
-/// Use latitude/longitude/height format static location and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/static_llh_tokyo.bin;-l=35.681298,139.766247,100", "output/c_static_llh_tokyo.bin"; "test_static_location_llh_tokyo")]
-
-/// Test ECEF format static location
-/// Use ECEF XYZ coordinates format static location and verify against C version
-/// output Note: Original gpssim output was incorrect and has been modified to
-/// work properly
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/static_ecef_coords.bin;-c=-3813477.954,3554276.552,3662785.237", "output/c_static_ecef_coords.bin"; "test_static_location_ecef")]
 // Signal gain tests
-/// Test fixed gain (63)
-/// Disable path loss and use fixed gain value 63, verify against C version
-/// output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/gain_fixed_63.bin;-p=63", "output/c_gain_fixed_63.bin"; "test_fixed_gain_63")]
-
-/// Test fixed gain (128)
-/// Disable path loss and use fixed gain value 128, verify against C version
-/// output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/gain_fixed_128.bin;-p=128", "output/c_gain_fixed_128.bin"; "test_fixed_gain_128")]
 // Time setting tests
-/// Test custom start time
-/// Set simulation start time to 2022/01/01 11:45:14 and verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/time_custom_start.bin;-t=2022/01/01,11:45:14", "output/c_time_custom_start.bin"; "test_custom_start_time")]
-
-/// Test time override functionality
-/// Set simulation start time and enable TOC and TOE override, verify against C
-/// version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/time_override_toc_toe.bin;-t=2022/01/01,11:45:14;-T", "output/c_time_override_toc_toe.bin"; "test_time_override_toc_toe")]
-
-/// Test leap second settings
-/// Set leap second parameters and verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/time_leap_second.bin;-l=42.3569048,-71.2564075,0;-t=2022/01/01,23:55;-T;-L=2347,3,17", "output/c_time_leap_second.bin"; "test_leap_second_settings")]
 // Ionospheric and verbose output tests
-/// Test ionospheric delay disable
-/// Disable ionospheric delay calculation and verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/iono_disabled.bin;-i", "output/c_iono_disabled.bin"; "test_ionospheric_delay_disable")]
-
-/// Test verbose output mode
-/// Enable verbose output mode to display satellite channel details and verify
-/// against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/verbose_output.bin;-v", "output/c_verbose_output.bin"; "test_verbose_output_mode")]
 // Duration tests
-/// Test short duration (10 seconds)
-/// Set simulation duration to 10 seconds and verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=10.0;-o=output/duration_10sec.bin", "output/c_duration_10sec.bin"; "test_simulation_duration_10sec")]
-
-/// Test long duration (60 seconds)
-/// Set simulation duration to 60 seconds and verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=60.0;-o=output/duration_60sec.bin", "output/c_duration_60sec.bin"; "test_simulation_duration_60sec")]
 // Parameter combination tests
-/// Test parameter combination: static location + sampling frequency + 8-bit
-/// format Combine Tokyo static location, 2MHz sampling frequency and 8-bit data
-/// format, verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/combo_tokyo_2mhz_8bit.bin;-l=35.681298,139.766247,100;-s=2000000;-b=8", "output/c_combo_tokyo_2mhz_8bit.bin"; "test_combo_tokyo_2mhz_8bit")]
-
-/// Test parameter combination: static location + fixed gain + ionospheric
-/// disable Combine Hangzhou static location, fixed gain 100 and ionospheric
-/// delay disable, verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/combo_hangzhou_gain100_noiono.bin;-l=30.286502,120.032669,100;-p=100;-i", "output/c_combo_hangzhou_gain100_noiono.bin"; "test_combo_hangzhou_gain100_noiono")]
-
-/// Test parameter combination: ECEF position + sampling frequency + 16-bit
-/// format Combine ECEF static position, 3MHz sampling frequency and 16-bit data
-/// format, verify against C version output
 #[test_case("-e=resources/brdc0010.22n;-b=1;-d=31.0;-o=output/combo_ecef_3mhz_16bit.bin;-c=-3813477.954,3554276.552,3662785.237;-s=3000000;-b=16", "output/c_combo_ecef_3mhz_16bit.bin"; "test_combo_ecef_3mhz_16bit")]
 fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
     // Replace paths in the parameters
@@ -307,19 +251,31 @@ fn test_builder(params: &str, c_bin_file: &str) -> Result<(), Error> {
         DataFormat::Bits16 => block_sizing.interleaved_bytes(),
     };
 
-    // The original C loop intentionally remains the compatibility oracle for
-    // sample contents, but it emits one fewer interval than the requested
-    // duration. Rust now emits that final interval by contract.
+    // The legacy C fixture still exercises process and length compatibility,
+    // but its zero-phase samples are not a Rust content oracle. It emits one
+    // fewer interval than requested; Rust emits that final interval by
+    // contract.
     assert_eq!(
         rust_bytes.len(),
         c_bytes.len() + bytes_per_block,
         "Rust output must exceed legacy C output by exactly one block: \
          {rust_file_name}"
     );
-    assert_eq!(
+    assert_ne!(
         &rust_bytes[..c_bytes.len()],
         c_bytes,
-        "Rust compatibility prefix differs from C output: {rust_file_name}"
+        "modeled-range carrier phase must diverge from the zero-phase C \
+         prefix: {rust_file_name}"
+    );
+    let expected = expected_fingerprint(c_bin_file).ok_or_else(|| {
+        Error::msg(format!(
+            "Missing carrier-phase golden for release C case {c_bin_file}"
+        ))
+    })?;
+    assert_eq!(
+        content_fingerprint(&rust_bytes),
+        expected,
+        "Rust carrier-phase golden differs for {rust_file_name}"
     );
     std::fs::remove_file(&rust_file)?;
     Ok(())

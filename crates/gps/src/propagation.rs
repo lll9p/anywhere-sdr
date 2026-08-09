@@ -11,9 +11,10 @@ use crate::{
 
 /// Computes the range between a satellite and the receiver.
 ///
-/// This function calculates the pseudorange, geometric distance, range rate,
-/// azimuth/elevation angles, and ionospheric delay between a satellite and
-/// the receiver at a specific time. It accounts for:
+/// This function calculates the pseudorange, geometric distance,
+/// satellite-only line-of-sight rate approximation, azimuth/elevation angles,
+/// and ionospheric delay between a satellite and the receiver at a specific
+/// time. It accounts for:
 ///
 /// - Satellite motion during signal propagation (light time)
 /// - Earth rotation during signal propagation
@@ -27,9 +28,12 @@ use crate::{
 /// 4. Apply Earth rotation correction
 /// 5. Recalculate geometric range
 /// 6. Apply satellite clock correction to get pseudorange
-/// 7. Calculate range rate (Doppler)
+/// 7. Calculate the satellite-only line-of-sight rate approximation
 /// 8. Calculate azimuth and elevation angles
 /// 9. Add ionospheric delay
+///
+/// Signal generation does not use the approximation as Doppler; channel
+/// Doppler is derived from successive modeled pseudoranges.
 ///
 /// # Arguments
 /// * `eph` - Ephemeris data of the satellite
@@ -68,11 +72,8 @@ pub fn compute_range(
     rho.distance = range;
     // Pseudorange.
     rho.range = range - SPEED_OF_LIGHT * clk[0];
-    // Relative velocity of SV and receiver.
     let vel = Ecef::from(&vel);
-    let rate = vel.dot_prod(&los) / range;
-    // Pseudorange rate.
-    rho.rate = rate; // - SPEED_OF_LIGHT*clk[1];
+    rho.satellite_los_rate_approx_mps = vel.dot_prod(&los) / range;
     // Time of application.
     rho.time = time.clone();
 
