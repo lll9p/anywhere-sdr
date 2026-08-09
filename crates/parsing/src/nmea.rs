@@ -1,149 +1,308 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, str};
 
 use geometry::Ecef;
 
 use crate::{Error, ecef_from_degrees};
 
-/// Parses a string into a floating-point number.
-///
-/// This is a helper function that converts a string representation of a number
-/// into an f64 value, with appropriate error handling.
-///
-/// # Arguments
-/// * `num_string` - String containing a floating-point number
-///
-/// # Returns
-/// * `Ok(f64)` - Successfully parsed floating-point value
-/// * `Err(Error)` - If the string cannot be parsed as a valid number
-///
-/// # Errors
-/// * Returns a `ParseFloatError` wrapped in the crate's Error type if parsing
-///   fails
-#[inline]
-pub fn parse_f64(num_string: &str) -> Result<f64, Error> {
-    num_string.parse().map_err(Error::from)
-}
-
 /// Reads NMEA GGA sentences from a file and converts them to ECEF coordinates.
 ///
-/// This function parses a file containing NMEA GGA sentences (Global
-/// Positioning System Fix Data), extracts the position information, and
-/// converts it to Earth-Centered, Earth-Fixed (ECEF) coordinates for use in the
-/// simulation.
-///
-/// # NMEA GGA Format
-/// Each GGA sentence has the following format:
-/// ```text
-/// $GPGGA,time,lat,lat_dir,lon,lon_dir,quality,num_sats,hdop,alt,alt_units,undulation,und_units,age,station_id*checksum
-/// ```
-/// Where:
-/// - `time` is UTC time in HHMMSS.SS format
-/// - `lat` is latitude in DDMM.MMMM format (degrees + minutes)
-/// - `lat_dir` is N (north) or S (south)
-/// - `lon` is longitude in DDDMM.MMMM format (degrees + minutes)
-/// - `lon_dir` is E (east) or W (west)
-/// - `quality` is fix quality (0=invalid, 1=GPS fix, 2=DGPS fix)
-/// - `num_sats` is number of satellites in use
-/// - `hdop` is horizontal dilution of precision
-/// - `alt` is altitude above mean sea level
-/// - `alt_units` is units of altitude (usually 'M' for meters)
-/// - `undulation` is height of geoid above WGS84 ellipsoid
-/// - `und_units` is units of undulation (usually 'M' for meters)
-/// - `age` is time since last DGPS update
-/// - `station_id` is DGPS station ID
-///
-/// # Arguments
-/// * `filename` - Path to the file containing NMEA GGA sentences
-///
-/// # Returns
-/// * `Ok(Vec<Ecef>)` - Vector of ECEF coordinates converted from the NMEA data
-/// * `Err(Error)` - If the file cannot be read or contains invalid data
+/// Empty physical lines are ignored. Every nonempty line must be a printable
+/// ASCII `GPGGA` or `GNGGA` sentence with a valid checksum and fix.
 ///
 /// # Errors
-/// * Returns an error if the file cannot be opened
-/// * Returns an error if the NMEA format is invalid
-/// * Returns an error if latitude or longitude values cannot be parsed
-/// * Returns an error if latitude or longitude are outside valid ranges
-/// * Returns an error if the file contains no valid NMEA records
+///
+/// Returns an I/O error when the file cannot be read, an NMEA format error with
+/// physical line context when a record is invalid, or a geometry error when
+/// coordinate conversion fails.
 pub fn read_nmea_gga(filename: &PathBuf) -> Result<Vec<Ecef>, Error> {
-    let mut xyz = Vec::new();
-    let content = fs::read_to_string(filename)?;
+    parse_nmea_gga(&fs::read(filename)?)
+}
 
-    // Create a CSV reader with comma delimiter
-    let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(false)
-        .delimiter(b',')
-        .from_reader(content.as_bytes());
+/// Parses a complete byte stream containing physical NMEA lines.
+fn parse_nmea_gga(content: &[u8]) -> Result<Vec<Ecef>, Error> {
+    let mut positions = Vec::new();
 
-    for result in rdr.records() {
-        let record = result?;
-
-        // Ensure we have enough fields
-        if record.len() < 15 {
-            return Err(Error::invalid_nmea(format!(
-                "Expected at least 15 fields, got {}",
-                record.len()
-            )));
+    for (line_index, physical_line) in
+        content.split(|byte| *byte == b'\n').enumerate()
+    {
+        let line = match physical_line.strip_suffix(b"\r") {
+            Some(line) => line,
+            None => physical_line,
+        };
+        if line.is_empty() {
+            continue;
         }
 
-        // Extract fields
-        let lat = record
-            .get(2)
-            .ok_or_else(|| Error::missing_field("latitude"))?;
-        let lat_dir = record
-            .get(3)
-            .ok_or_else(|| Error::missing_field("latitude direction"))?;
-        let lon = record
-            .get(4)
-            .ok_or_else(|| Error::missing_field("longitude"))?;
-        let lon_dir = record
-            .get(5)
-            .ok_or_else(|| Error::missing_field("longitude direction"))?;
-        let alt = record
-            .get(9)
-            .ok_or_else(|| Error::missing_field("altitude"))?;
-        let undulation = record
-            .get(11)
-            .ok_or_else(|| Error::missing_field("undulation"))?;
-
-        // Parse coordinates
-        let mut llh = [0.0f64; 3];
-
-        // Parse latitude: format is DDMM.MMMM (degrees + minutes)
-        if lat.len() < 3 {
-            return Err(Error::invalid_nmea(format!(
-                "Invalid latitude format: {lat}"
-            )));
-        }
-        llh[0] = parse_f64(&lat[..2])? + parse_f64(&lat[2..])? / 60.0;
-
-        // Apply direction
-        if lat_dir == "S" {
-            llh[0] *= -1.0;
-        }
-        // Parse longitude: format is DDDMM.MMMM (degrees + minutes)
-        if lon.len() < 4 {
-            return Err(Error::invalid_nmea(format!(
-                "Invalid longitude format: {lon}"
-            )));
-        }
-        llh[1] = parse_f64(&lon[..3])? + parse_f64(&lon[3..])? / 60.0;
-
-        // Apply direction
-        if lon_dir == "W" {
-            llh[1] *= -1.0;
-        }
-        // Parse altitude and undulation
-        llh[2] = parse_f64(alt)? + parse_f64(undulation)?;
-
-        xyz.push(ecef_from_degrees(llh[0], llh[1], llh[2])?);
+        positions.push(parse_gga_line(line, line_index + 1)?);
     }
 
-    if xyz.is_empty() {
-        return Err(Error::invalid_nmea(
-            "No valid NMEA GGA records found".to_string(),
+    if positions.is_empty() {
+        return Err(Error::invalid_nmea("No valid NMEA GGA records found"));
+    }
+
+    Ok(positions)
+}
+
+/// Parses one validated physical line into an ECEF position.
+fn parse_gga_line(line: &[u8], line_number: usize) -> Result<Ecef, Error> {
+    let payload = validate_framing(line, line_number)?;
+    let fields = payload.split(|byte| *byte == b',').collect::<Vec<_>>();
+    let fields: [&[u8]; 15] =
+        fields.try_into().map_err(|fields: Vec<&[u8]>| {
+            invalid_line(
+                line_number,
+                format!("expected exactly 15 fields, got {}", fields.len()),
+            )
+        })?;
+    let [
+        formatter,
+        _utc,
+        latitude,
+        latitude_direction,
+        longitude,
+        longitude_direction,
+        quality,
+        _satellite_count,
+        _hdop,
+        altitude,
+        altitude_unit,
+        undulation,
+        undulation_unit,
+        _differential_age,
+        _station_id,
+    ] = fields;
+
+    if formatter != b"GPGGA" && formatter != b"GNGGA" {
+        return Err(invalid_line(
+            line_number,
+            "unsupported sentence formatter",
+        ));
+    }
+    if !matches!(quality, [b'1'..=b'8']) {
+        return Err(invalid_line(line_number, "invalid fix quality"));
+    }
+
+    let latitude_sign = match latitude_direction {
+        b"N" => 1.0,
+        b"S" => -1.0,
+        _ => {
+            return Err(invalid_line(
+                line_number,
+                "invalid latitude direction",
+            ));
+        }
+    };
+    let longitude_sign = match longitude_direction {
+        b"E" => 1.0,
+        b"W" => -1.0,
+        _ => {
+            return Err(invalid_line(
+                line_number,
+                "invalid longitude direction",
+            ));
+        }
+    };
+    if altitude_unit != b"M" {
+        return Err(invalid_line(line_number, "invalid altitude unit"));
+    }
+    if undulation_unit != b"M" {
+        return Err(invalid_line(line_number, "invalid geoid undulation unit"));
+    }
+
+    let latitude = parse_coordinate(latitude, 2, 90, "latitude", line_number)?
+        * latitude_sign;
+    let longitude =
+        parse_coordinate(longitude, 3, 180, "longitude", line_number)?
+            * longitude_sign;
+    let altitude = parse_finite_number(altitude, "altitude", line_number)?;
+    let undulation =
+        parse_finite_number(undulation, "geoid undulation", line_number)?;
+    let height = altitude + undulation;
+    if !height.is_finite() {
+        return Err(invalid_line(
+            line_number,
+            "altitude plus geoid undulation must be finite",
         ));
     }
 
-    Ok(xyz)
+    ecef_from_degrees(latitude, longitude, height)
 }
+
+/// Validates ASCII sentence framing and returns the checksummed payload.
+fn validate_framing(line: &[u8], line_number: usize) -> Result<&[u8], Error> {
+    if !line.iter().all(|byte| matches!(byte, b' '..=b'~')) {
+        return Err(invalid_line(
+            line_number,
+            "record contains non-printable ASCII",
+        ));
+    }
+
+    if line.first() != Some(&b'$')
+        || line.iter().skip(1).any(|byte| *byte == b'$')
+    {
+        return Err(invalid_line(
+            line_number,
+            "record must contain exactly one leading '$'",
+        ));
+    }
+
+    let mut stars = line.iter().enumerate().filter(|(_, byte)| **byte == b'*');
+    let star_index = match stars.next() {
+        Some((index, _)) if stars.next().is_none() => index,
+        _ => {
+            return Err(invalid_line(
+                line_number,
+                "record must contain exactly one '*'",
+            ));
+        }
+    };
+
+    let checksum_start = star_index
+        .checked_add(1)
+        .ok_or_else(|| invalid_line(line_number, "invalid checksum framing"))?;
+    let checksum_bytes = line
+        .get(checksum_start..)
+        .ok_or_else(|| invalid_line(line_number, "invalid checksum framing"))?;
+    let [checksum_high, checksum_low] = checksum_bytes else {
+        return Err(invalid_line(
+            line_number,
+            "checksum must be exactly two uppercase hexadecimal digits",
+        ));
+    };
+    let checksum_high =
+        uppercase_hex_value(*checksum_high).ok_or_else(|| {
+            invalid_line(
+                line_number,
+                "checksum must be exactly two uppercase hexadecimal digits",
+            )
+        })?;
+    let checksum_low = uppercase_hex_value(*checksum_low).ok_or_else(|| {
+        invalid_line(
+            line_number,
+            "checksum must be exactly two uppercase hexadecimal digits",
+        )
+    })?;
+    let expected_checksum = (checksum_high << 4) | checksum_low;
+
+    let payload = line
+        .get(1..star_index)
+        .ok_or_else(|| invalid_line(line_number, "invalid sentence framing"))?;
+    if xor_checksum(payload) != expected_checksum {
+        return Err(invalid_line(line_number, "checksum mismatch"));
+    }
+
+    Ok(payload)
+}
+
+/// Parses one unsigned `DDMM` or `DDDMM` coordinate field.
+fn parse_coordinate(
+    field: &[u8], degree_width: usize, maximum_degrees: u16, label: &str,
+    line_number: usize,
+) -> Result<f64, Error> {
+    let mut components = field.split(|byte| *byte == b'.');
+    let Some(integer) = components.next() else {
+        return Err(invalid_line(line_number, invalid_format(label)));
+    };
+    let fraction = components.next();
+    if components.next().is_some()
+        || fraction.is_some_and(<[u8]>::is_empty)
+        || integer.len() != degree_width + 2
+        || !integer.iter().all(u8::is_ascii_digit)
+        || fraction
+            .is_some_and(|fraction| !fraction.iter().all(u8::is_ascii_digit))
+    {
+        return Err(invalid_line(line_number, invalid_format(label)));
+    }
+
+    let degree_bytes = integer
+        .get(..degree_width)
+        .ok_or_else(|| invalid_line(line_number, invalid_format(label)))?;
+    let minute_bytes = field
+        .get(degree_width..)
+        .ok_or_else(|| invalid_line(line_number, invalid_format(label)))?;
+    let degrees = parse_unsigned_integer(degree_bytes, label, line_number)?;
+    let minutes = parse_number(minute_bytes, label, line_number)?;
+
+    if minutes >= 60.0 {
+        return Err(invalid_line(
+            line_number,
+            format!("{label} minutes must be less than 60"),
+        ));
+    }
+    if degrees > maximum_degrees {
+        return Err(invalid_line(
+            line_number,
+            format!("{label} degrees exceed the valid range"),
+        ));
+    }
+    if degrees == maximum_degrees && minutes != 0.0 {
+        return Err(invalid_line(
+            line_number,
+            format!("{label} endpoint requires zero minutes"),
+        ));
+    }
+
+    Ok(f64::from(degrees) + minutes / 60.0)
+}
+
+/// Parses a finite floating-point field with line and field context.
+fn parse_finite_number(
+    field: &[u8], label: &str, line_number: usize,
+) -> Result<f64, Error> {
+    let value = parse_number(field, label, line_number)?;
+    if !value.is_finite() {
+        return Err(invalid_line(
+            line_number,
+            format!("{label} must be finite"),
+        ));
+    }
+    Ok(value)
+}
+
+/// Parses a floating-point field without leaking a context-free parse error.
+fn parse_number(
+    field: &[u8], label: &str, line_number: usize,
+) -> Result<f64, Error> {
+    str::from_utf8(field)
+        .map_err(|_| invalid_line(line_number, invalid_format(label)))?
+        .parse::<f64>()
+        .map_err(|_| invalid_line(line_number, invalid_format(label)))
+}
+
+/// Parses an unsigned integer field with line and field context.
+fn parse_unsigned_integer(
+    field: &[u8], label: &str, line_number: usize,
+) -> Result<u16, Error> {
+    str::from_utf8(field)
+        .map_err(|_| invalid_line(line_number, invalid_format(label)))?
+        .parse::<u16>()
+        .map_err(|_| invalid_line(line_number, invalid_format(label)))
+}
+
+/// Formats the shared lexical error for one semantic field.
+fn invalid_format(label: &str) -> String {
+    format!("invalid {label} format")
+}
+
+/// Converts one uppercase hexadecimal byte to its nibble value.
+fn uppercase_hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Computes the NMEA XOR checksum over a sentence payload.
+fn xor_checksum(payload: &[u8]) -> u8 {
+    payload.iter().fold(0, |checksum, byte| checksum ^ byte)
+}
+
+/// Creates an NMEA format error with physical line context.
+fn invalid_line(line_number: usize, message: impl Into<String>) -> Error {
+    Error::invalid_nmea(format!("line {line_number}: {}", message.into()))
+}
+
+#[cfg(test)]
+#[path = "nmea/tests.rs"]
+mod tests;
