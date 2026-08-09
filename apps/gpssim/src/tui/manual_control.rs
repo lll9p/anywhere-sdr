@@ -35,7 +35,7 @@ impl ManualControlSession {
             heading_deg: target_heading_deg,
             speed_mps: config.cruise_speed_mps,
             climb_mps: 0.0,
-        });
+        })?;
 
         Ok(Self {
             last_snapshot: Some(control.snapshot()),
@@ -54,40 +54,48 @@ impl ManualControlSession {
         }
     }
 
-    pub(super) fn adjust_heading(&mut self, delta_deg: f64) {
-        self.target_heading_deg =
+    pub(super) fn adjust_heading(
+        &mut self, delta_deg: f64,
+    ) -> Result<(), Error> {
+        let target_heading_deg =
             normalize_heading_deg(self.target_heading_deg + delta_deg);
         self.control.submit(MotionCommand::SetTargetHeading {
-            heading_deg: self.target_heading_deg,
+            heading_deg: target_heading_deg,
             turn_rate_limit_dps: self.turn_rate_limit_dps,
-        });
+        })?;
+        self.target_heading_deg = target_heading_deg;
+        Ok(())
     }
 
-    pub(super) fn adjust_speed(&mut self, delta_mps: f64) {
-        self.target_speed_mps = (self.target_speed_mps + delta_mps).max(0.0);
-        if self.target_speed_mps > 0.0 {
-            self.cruise_speed_mps = self.target_speed_mps;
-        }
+    pub(super) fn adjust_speed(&mut self, delta_mps: f64) -> Result<(), Error> {
+        let target_speed_mps = (self.target_speed_mps + delta_mps).max(0.0);
         self.control.submit(MotionCommand::SetTargetSpeed {
-            speed_mps: self.target_speed_mps,
+            speed_mps: target_speed_mps,
             accel_limit_mps2: self.accel_limit_mps2,
-        });
+        })?;
+        self.target_speed_mps = target_speed_mps;
+        if target_speed_mps > 0.0 {
+            self.cruise_speed_mps = target_speed_mps;
+        }
+        Ok(())
     }
 
-    pub(super) fn stop(&mut self) {
-        self.target_speed_mps = 0.0;
+    pub(super) fn stop(&mut self) -> Result<(), Error> {
         self.control.submit(MotionCommand::SetTargetSpeed {
             speed_mps: 0.0,
             accel_limit_mps2: self.accel_limit_mps2,
-        });
+        })?;
+        self.target_speed_mps = 0.0;
+        Ok(())
     }
 
-    pub(super) fn resume_cruise(&mut self) {
-        self.target_speed_mps = self.cruise_speed_mps;
+    pub(super) fn resume_cruise(&mut self) -> Result<(), Error> {
         self.control.submit(MotionCommand::SetTargetSpeed {
-            speed_mps: self.target_speed_mps,
+            speed_mps: self.cruise_speed_mps,
             accel_limit_mps2: self.accel_limit_mps2,
-        });
+        })?;
+        self.target_speed_mps = self.cruise_speed_mps;
+        Ok(())
     }
 
     pub(super) fn actual_position_llh(

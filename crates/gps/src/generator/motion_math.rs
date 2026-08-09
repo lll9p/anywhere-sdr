@@ -20,11 +20,7 @@ pub(super) struct ScalarMotionStep {
 
 /// Limits a signed delta to the configured magnitude.
 pub(super) fn apply_limited_delta(delta: f64, max_delta: f64) -> f64 {
-    if max_delta == 0.0 {
-        delta
-    } else {
-        delta.clamp(-max_delta, max_delta)
-    }
+    delta.clamp(-max_delta, max_delta)
 }
 
 /// Computes horizontal speed magnitude from a NEU velocity vector.
@@ -67,9 +63,26 @@ pub(super) fn integrate_constant_acceleration(
 pub(super) fn integrate_target_speed(
     start_speed: f64, target_speed: f64, accel_limit_mps2: f64, dt: f64,
 ) -> ScalarMotionStep {
+    if accel_limit_mps2 == 0.0
+        && start_speed.is_finite()
+        && start_speed >= 0.0
+        && target_speed.is_finite()
+        && target_speed >= 0.0
+        && dt.is_finite()
+        && dt >= 0.0
+    {
+        let distance = start_speed * dt;
+        if distance.is_finite() {
+            return ScalarMotionStep {
+                distance,
+                endpoint_speed: start_speed,
+            };
+        }
+    }
+
     analytic_target_speed_step(start_speed, target_speed, accel_limit_mps2, dt)
         .unwrap_or_else(|| {
-            legacy_target_speed_step(
+            derived_target_speed_fallback(
                 start_speed,
                 target_speed,
                 accel_limit_mps2,
@@ -163,12 +176,10 @@ fn analytic_target_speed_step(
     }
 }
 
-/// Reproduces the legacy endpoint-distance controller operation by operation.
-fn legacy_target_speed_step(
+/// Contains non-finite arithmetic derived from accepted finite state.
+fn derived_target_speed_fallback(
     start_speed: f64, target_speed: f64, accel_limit_mps2: f64, dt: f64,
 ) -> ScalarMotionStep {
-    // Unsupported command domains retain the existing endpoint controller
-    // until command validation and limit semantics are revised separately.
     let delta = target_speed - start_speed;
     let max_delta = (accel_limit_mps2.abs() * dt).max(0.0);
     let applied = apply_limited_delta(delta, max_delta);
@@ -358,26 +369,22 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_target_speed_domains_use_legacy_endpoint_distance() {
-        let cases = [
-            (0.0, 10.0, 0.0, 1.0, 10.0, 10.0),
-            (0.0, 1.0, -2.0, 0.25, 0.125, 0.5),
-            (1.0, -1.0, 2.0, 0.25, 0.125, 0.5),
-            (1.0, 2.0, f64::NAN, 1.0, 2.0, 2.0),
-            (1.0, 2.0, f64::INFINITY, 1.0, 2.0, 2.0),
-            (f64::NAN, 2.0, 2.0, 1.0, 0.0, 0.0),
-            (1.0, f64::NAN, 2.0, 1.0, 0.0, 0.0),
-        ];
-        for (start, target, limit, dt, distance, endpoint) in cases {
-            let step = integrate_target_speed(start, target, limit, dt);
-            assert_close(step.distance, distance);
-            assert_close(step.endpoint_speed, endpoint);
-        }
+    fn zero_target_speed_limit_freezes_motion() {
+        let step = integrate_target_speed(3.0, 10.0, 0.0, 2.0);
+        assert_close(step.distance, 6.0);
+        assert_close(step.endpoint_speed, 3.0);
+    }
 
+    #[test]
+    fn derived_target_speed_overflow_uses_containment_fallback() {
         assert!(analytic_target_speed_step(1.0, 2.0, f64::MAX, 2.0).is_none());
         let overflow = integrate_target_speed(1.0, 2.0, f64::MAX, 2.0);
         assert_close(overflow.distance, 4.0);
         assert_close(overflow.endpoint_speed, 2.0);
+
+        let non_finite_start = integrate_target_speed(f64::NAN, 2.0, 2.0, 1.0);
+        assert_close(non_finite_start.distance, 0.0);
+        assert_close(non_finite_start.endpoint_speed, 0.0);
     }
 
     #[test]

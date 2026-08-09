@@ -44,8 +44,25 @@ fn generator_initialization_propagates_invalid_ecef() -> Result<(), Error> {
 }
 
 #[test]
-fn runtime_motion_propagates_invalid_ecef_on_the_next_step() -> Result<(), Error>
-{
+fn runtime_motion_rejects_non_finite_ecef_at_submit() {
+    let control = RuntimeMotionControl::new(Ecef::default());
+    assert!(matches!(
+        control.submit(MotionCommand::SetPositionEcef(Ecef::new(
+            f64::NAN,
+            0.0,
+            0.0,
+        ))),
+        Err(Error::NonFiniteMotionCommandValue {
+            command: "SetPositionEcef",
+            field: "x",
+            value,
+        }) if value.is_nan()
+    ));
+}
+
+#[test]
+fn runtime_motion_defers_finite_invalid_ecef_to_the_next_step()
+-> Result<(), Error> {
     let navigation_path = PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
         .join("resources")
         .join("brdc0010.22n");
@@ -63,19 +80,12 @@ fn runtime_motion_propagates_invalid_ecef_on_the_next_step() -> Result<(), Error
     let mut blocks = 0usize;
     let result = generator.run_streaming_user_control::<_, Error>(|_iq| {
         blocks += 1;
-        control.submit(MotionCommand::SetPositionEcef(Ecef::new(
-            f64::NAN,
-            0.0,
-            0.0,
-        )));
+        control.submit(MotionCommand::SetPositionEcef(Ecef::default()))?;
         Ok(())
     });
 
     assert_eq!(blocks, 1);
-    assert!(matches!(
-        result,
-        Err(Error::Geometry(geometry::Error::InvalidEcef { .. }))
-    ));
+    assert!(matches!(result, Err(Error::Geometry(_))));
     Ok(())
 }
 
@@ -106,7 +116,7 @@ fn runtime_streaming_produces_blocks_and_setposition_applies_next_step()
         positions.push(control.snapshot().position_ecef);
 
         if blocks == 2 {
-            control.submit(MotionCommand::SetPositionEcef(new_pos));
+            control.submit(MotionCommand::SetPositionEcef(new_pos))?;
         }
 
         if blocks >= 3 {
@@ -141,7 +151,7 @@ fn runtime_motion_uses_deadline_split_durations() -> Result<(), Error> {
         north: 1.0,
         east: 0.0,
         up: 0.0,
-    }));
+    }))?;
     let builder = SignalGeneratorBuilder::default()
         .navigation_file(Some(navigation_path))?
         .runtime_motion_control(Some(control.clone()))?

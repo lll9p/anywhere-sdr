@@ -179,9 +179,8 @@ pub(super) fn handle_key_event(app: &mut App, key: KeyEvent) {
         KeyCode::Enter => {
             if app.tab == ActiveTab::Config {
                 app.start_run();
-            } else if let Some(session) = running_manual_session_mut(app) {
-                session.resume_cruise();
-                session.refresh_snapshot();
+            } else {
+                apply_manual_action(app, ManualControlSession::resume_cruise);
             }
         }
         KeyCode::Esc => {
@@ -190,38 +189,33 @@ pub(super) fn handle_key_event(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Left => {
-            if let Some(session) = running_manual_session_mut(app) {
-                session.adjust_heading(-MANUAL_HEADING_STEP_DEG);
-                session.refresh_snapshot();
-            }
+            apply_manual_action(app, |session| {
+                session.adjust_heading(-MANUAL_HEADING_STEP_DEG)
+            });
         }
         KeyCode::Right => {
-            if let Some(session) = running_manual_session_mut(app) {
-                session.adjust_heading(MANUAL_HEADING_STEP_DEG);
-                session.refresh_snapshot();
-            }
+            apply_manual_action(app, |session| {
+                session.adjust_heading(MANUAL_HEADING_STEP_DEG)
+            });
         }
         KeyCode::Up => {
-            if let Some(session) = running_manual_session_mut(app) {
-                session.adjust_speed(MANUAL_SPEED_STEP_MPS);
-                session.refresh_snapshot();
-            } else if app.tab == ActiveTab::Logs {
+            if !apply_manual_action(app, |session| {
+                session.adjust_speed(MANUAL_SPEED_STEP_MPS)
+            }) && app.tab == ActiveTab::Logs
+            {
                 app.log_scroll = app.log_scroll.saturating_add(1);
             }
         }
         KeyCode::Down => {
-            if let Some(session) = running_manual_session_mut(app) {
-                session.adjust_speed(-MANUAL_SPEED_STEP_MPS);
-                session.refresh_snapshot();
-            } else if app.tab == ActiveTab::Logs {
+            if !apply_manual_action(app, |session| {
+                session.adjust_speed(-MANUAL_SPEED_STEP_MPS)
+            }) && app.tab == ActiveTab::Logs
+            {
                 app.log_scroll = app.log_scroll.saturating_sub(1);
             }
         }
         KeyCode::Char(' ') => {
-            if let Some(session) = running_manual_session_mut(app) {
-                session.stop();
-                session.refresh_snapshot();
-            }
+            apply_manual_action(app, ManualControlSession::stop);
         }
         KeyCode::Char(ch) => {
             handle_char_shortcut(app, ch);
@@ -285,6 +279,29 @@ fn handle_char_shortcut(app: &mut App, ch: char) {
         }
         _ => {}
     }
+}
+
+fn apply_manual_action<F>(app: &mut App, action: F) -> bool
+where
+    F: FnOnce(&mut ManualControlSession) -> Result<(), Error>,
+{
+    let result = {
+        let Some(session) = running_manual_session_mut(app) else {
+            return false;
+        };
+        let result = action(session);
+        if result.is_ok() {
+            session.refresh_snapshot();
+        }
+        result
+    };
+
+    if let Err(error) = result {
+        let message = format!("manual motion command rejected: {error}");
+        app.message = Some(message.clone());
+        app.push_log(message);
+    }
+    true
 }
 
 fn running_manual_session_mut(

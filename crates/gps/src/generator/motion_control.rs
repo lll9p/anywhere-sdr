@@ -9,43 +9,11 @@ use super::motion_math::{
 };
 use crate::Error;
 
-/// Runtime motion control commands.
-///
-/// Commands are applied at the next simulation step boundary.
-#[derive(Debug, Clone, Copy)]
-pub enum MotionCommand {
-    /// Set absolute receiver position (ECEF meters).
-    SetPositionEcef(Ecef),
-    /// Set receiver velocity in local NEU (m/s).
-    SetVelocityNeu(Neu),
-    /// Set receiver acceleration in local NEU (m/s^2).
-    SetAccelerationNeu(Neu),
-    /// Set heading (deg) and speed (m/s); optional climb rate (m/s).
-    ///
-    /// Heading uses 0=North, 90=East, clockwise.
-    SetHeadingSpeed {
-        heading_deg: f64,
-        speed_mps: f64,
-        climb_mps: f64,
-    },
-    /// Stop motion (speed becomes 0).
-    Stop,
-    /// Start motion from a stopped state.
-    ///
-    /// If `speed_mps` is None, the integrator may resume a previously stored
-    /// speed (implementation-defined but must be predictable).
-    Start { speed_mps: Option<f64> },
-    /// Set a target speed with an acceleration limit (m/s^2).
-    SetTargetSpeed {
-        speed_mps: f64,
-        accel_limit_mps2: f64,
-    },
-    /// Set a target heading with a turn-rate limit (deg/s).
-    SetTargetHeading {
-        heading_deg: f64,
-        turn_rate_limit_dps: f64,
-    },
-}
+/// Runtime command definitions, validation, and pending storage.
+mod commands;
+
+pub use commands::MotionCommand;
+use commands::PendingMotionCommands;
 
 /// Observable motion state snapshot.
 #[derive(Debug, Clone, Copy, Default)]
@@ -60,111 +28,32 @@ pub struct MotionSnapshot {
     pub speed_mps: f64,
 }
 
-/// Pending motion updates aggregated from [`MotionCommand`] submissions.
-///
-/// The generator consumes these updates at step boundaries. When multiple
-/// commands update the same field within one step interval, the latest value
-/// wins.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct PendingMotionUpdates {
-    /// Absolute receiver position override (ECEF meters).
-    pub set_position_ecef: Option<Ecef>,
-    /// Receiver velocity override in local NEU (m/s).
-    pub set_velocity_neu: Option<Neu>,
-    /// Receiver acceleration override in local NEU (m/s^2).
-    pub set_acceleration_neu: Option<Neu>,
-    /// Heading/speed/climb override.
-    ///
-    /// Stored as `(heading_deg, speed_mps, climb_mps)`.
-    pub set_heading_speed: Option<(f64, f64, f64)>,
-    /// Whether a stop command was requested.
-    pub stop: bool,
-    /// Whether a start command was requested.
-    pub start: bool,
-    /// Optional speed to use for the start command (m/s).
-    pub start_speed_mps: Option<f64>,
-    /// Target speed and acceleration limit.
-    ///
-    /// Stored as `(speed_mps, accel_limit_mps2)`.
-    pub set_target_speed: Option<(f64, f64)>,
-    /// Target heading and turn-rate limit.
-    ///
-    /// Stored as `(heading_deg, turn_rate_limit_dps)`.
-    pub set_target_heading: Option<(f64, f64)>,
-}
-
-impl PendingMotionUpdates {
-    /// Apply a single [`MotionCommand`] into this update set.
-    ///
-    /// This is a best-effort, "latest-wins" merge used at step boundaries.
-    fn apply_command(&mut self, command: MotionCommand) {
-        match command {
-            MotionCommand::SetPositionEcef(ecef) => {
-                self.set_position_ecef = Some(ecef);
-            }
-            MotionCommand::SetVelocityNeu(neu) => {
-                self.set_velocity_neu = Some(neu);
-            }
-            MotionCommand::SetAccelerationNeu(neu) => {
-                self.set_acceleration_neu = Some(neu);
-            }
-            MotionCommand::SetHeadingSpeed {
-                heading_deg,
-                speed_mps,
-                climb_mps,
-            } => {
-                self.set_heading_speed =
-                    Some((heading_deg, speed_mps, climb_mps));
-            }
-            MotionCommand::Stop => {
-                self.stop = true;
-            }
-            MotionCommand::Start { speed_mps } => {
-                self.start = true;
-                self.start_speed_mps = speed_mps;
-            }
-            MotionCommand::SetTargetSpeed {
-                speed_mps,
-                accel_limit_mps2,
-            } => {
-                self.set_target_speed = Some((speed_mps, accel_limit_mps2));
-            }
-            MotionCommand::SetTargetHeading {
-                heading_deg,
-                turn_rate_limit_dps,
-            } => {
-                self.set_target_heading =
-                    Some((heading_deg, turn_rate_limit_dps));
-            }
-        }
-    }
-}
-
+/// Shared pending commands and last published snapshot.
 #[derive(Debug)]
-/// Shared runtime motion control state.
 struct MotionShared {
-    /// Pending updates waiting to be consumed by the generator.
-    pending: Mutex<PendingMotionUpdates>,
-    /// Last published motion snapshot.
+    /// Commands waiting for a generator step boundary.
+    pending: Mutex<PendingMotionCommands>,
+    /// Last successfully published endpoint state.
     snapshot: Mutex<MotionSnapshot>,
 }
 
 /// Thread-safe runtime motion control handle.
 ///
 /// - Callers submit commands via [`RuntimeMotionControl::submit`].
-/// - The generator hot path uses non-blocking reads to observe pending updates
+/// - The generator hot path uses non-blocking reads to observe pending commands
 ///   and to publish snapshots.
 #[derive(Clone, Debug)]
 pub struct RuntimeMotionControl {
-    /// Shared pending and snapshot state.
+    /// Shared state used by submitters and the generator.
     shared: Arc<MotionShared>,
 }
 
 impl RuntimeMotionControl {
+    /// Creates a runtime control seeded at an ECEF position.
     pub fn new(initial_position_ecef: Ecef) -> Self {
         Self {
             shared: Arc::new(MotionShared {
-                pending: Mutex::new(PendingMotionUpdates::default()),
+                pending: Mutex::new(PendingMotionCommands::default()),
                 snapshot: Mutex::new(MotionSnapshot {
                     position_ecef: initial_position_ecef,
                     ..MotionSnapshot::default()
@@ -173,7 +62,12 @@ impl RuntimeMotionControl {
         }
     }
 
-    pub fn submit(&self, command: MotionCommand) {
+    /// Validates and retains a command for the next available step boundary.
+    ///
+    /// At most one command per variant is retained. Replacing a variant moves
+    /// it after all other retained variants in replay order.
+    pub fn submit(&self, command: MotionCommand) -> Result<(), Error> {
+        command.validate()?;
         let mut guard = match self.shared.pending.lock() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -181,9 +75,11 @@ impl RuntimeMotionControl {
                 poisoned.into_inner()
             }
         };
-        guard.apply_command(command);
+        guard.push(command);
+        Ok(())
     }
 
+    /// Returns the last published motion snapshot.
     pub fn snapshot(&self) -> MotionSnapshot {
         match self.shared.snapshot.lock() {
             Ok(guard) => *guard,
@@ -194,6 +90,7 @@ impl RuntimeMotionControl {
         }
     }
 
+    /// Attempts to return the last published snapshot without blocking.
     pub fn try_snapshot(&self) -> Option<MotionSnapshot> {
         let guard = match self.shared.snapshot.try_lock() {
             Ok(guard) => guard,
@@ -206,15 +103,12 @@ impl RuntimeMotionControl {
         Some(*guard)
     }
 
-    /// Non-blocking take of all pending updates.
-    ///
-    /// If the generator cannot acquire the pending lock immediately, this
-    /// returns an empty update set.
-    pub(crate) fn try_take_pending(&self) -> PendingMotionUpdates {
+    /// Takes pending commands without blocking the generator hot path.
+    fn try_take_pending(&self) -> PendingMotionCommands {
         let mut guard = match self.shared.pending.try_lock() {
             Ok(guard) => guard,
             Err(TryLockError::WouldBlock) => {
-                return PendingMotionUpdates::default();
+                return PendingMotionCommands::default();
             }
             Err(TryLockError::Poisoned(poisoned)) => {
                 tracing::warn!("motion pending lock poisoned; recovering");
@@ -224,10 +118,8 @@ impl RuntimeMotionControl {
         std::mem::take(&mut *guard)
     }
 
-    /// Non-blocking publish of a new snapshot.
-    ///
-    /// If the snapshot lock is contended, the publish is skipped.
-    pub(crate) fn try_publish_snapshot(&self, snapshot: MotionSnapshot) {
+    /// Publishes an endpoint snapshot without blocking the generator.
+    fn try_publish_snapshot(&self, snapshot: MotionSnapshot) {
         let mut guard = match self.shared.snapshot.try_lock() {
             Ok(guard) => guard,
             Err(TryLockError::WouldBlock) => return,
@@ -240,49 +132,45 @@ impl RuntimeMotionControl {
     }
 }
 
-/// Target speed controller parameters.
+/// Active horizontal speed target and acceleration limit.
 #[derive(Debug, Clone, Copy)]
 struct TargetSpeed {
-    /// Target horizontal speed (m/s).
+    /// Target horizontal speed in meters per second.
     speed_mps: f64,
-    /// Maximum horizontal acceleration magnitude (m/s^2).
+    /// Maximum horizontal acceleration in meters per second squared.
     accel_limit_mps2: f64,
 }
 
-/// Target heading controller parameters.
+/// Active heading target and turn-rate limit.
 #[derive(Debug, Clone, Copy)]
 struct TargetHeading {
-    /// Target heading in degrees (0=North, 90=East, clockwise).
+    /// Normalized target heading in degrees.
     heading_deg: f64,
-    /// Maximum turn rate magnitude (deg/s).
+    /// Maximum turn rate in degrees per second.
     turn_rate_limit_dps: f64,
 }
 
-/// Motion integrator for runtime receiver movement.
-///
-/// The integrator maintains velocity/acceleration in local NEU coordinates and
-/// produces an updated ECEF position each step.
+/// Runtime receiver motion state and interval integrator.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MotionIntegrator {
     /// Current receiver position in ECEF meters.
     position_ecef: Ecef,
-    /// Current receiver velocity in local NEU (m/s).
+    /// Current local NEU velocity in meters per second.
     velocity_neu: Neu,
-    /// Current receiver acceleration in local NEU (m/s^2).
+    /// Current direct local NEU acceleration.
     acceleration_neu: Neu,
-    /// Current receiver heading in degrees.
+    /// Current horizontal heading in degrees.
     heading_deg: f64,
-    /// Speed to resume when receiving a start command without an explicit
-    /// speed.
+    /// Remembered nonzero horizontal speed for a later start command.
     resume_speed_mps: f64,
-    /// Optional target speed controller.
+    /// Optional horizontal speed controller.
     target_speed: Option<TargetSpeed>,
-    /// Optional target heading controller.
+    /// Optional heading controller.
     target_heading: Option<TargetHeading>,
 }
 
 impl MotionIntegrator {
-    /// Create a new integrator seeded at the provided initial position.
+    /// Creates stationary motion state at the initial ECEF position.
     pub(crate) fn new(initial_position_ecef: Ecef) -> Self {
         Self {
             position_ecef: initial_position_ecef,
@@ -295,12 +183,12 @@ impl MotionIntegrator {
         }
     }
 
-    /// Advance motion by one interval and publish its endpoint.
+    /// Advances one interval after replaying all retained commands.
     pub(crate) fn step(
         &mut self, dt: f64, control: &RuntimeMotionControl,
     ) -> Result<Ecef, Error> {
         let pending = control.try_take_pending();
-        self.apply_pending(pending);
+        self.apply_pending(&pending);
 
         let displacement_neu = self.integrate_interval(dt);
         self.apply_displacement(displacement_neu)?;
@@ -309,70 +197,80 @@ impl MotionIntegrator {
         Ok(self.position_ecef)
     }
 
-    /// Apply pending updates collected since the last step.
-    fn apply_pending(&mut self, pending: PendingMotionUpdates) {
-        if let Some(position_ecef) = pending.set_position_ecef {
-            self.position_ecef = position_ecef;
-        }
-
-        if let Some(velocity_neu) = pending.set_velocity_neu {
-            self.set_velocity_neu(velocity_neu);
-            self.clear_targets();
-        }
-
-        if let Some((heading_deg, speed_mps, climb_mps)) =
-            pending.set_heading_speed
-        {
-            self.set_heading_speed(heading_deg, speed_mps, climb_mps);
-            self.clear_targets();
-        }
-
-        if let Some(acceleration_neu) = pending.set_acceleration_neu {
-            self.acceleration_neu = acceleration_neu;
-            self.clear_targets();
-        }
-
-        if let Some((speed_mps, accel_limit_mps2)) = pending.set_target_speed {
-            self.target_speed = Some(TargetSpeed {
-                speed_mps,
-                accel_limit_mps2,
-            });
-            self.acceleration_neu = Neu::default();
-        }
-
-        if let Some((heading_deg, turn_rate_limit_dps)) =
-            pending.set_target_heading
-        {
-            self.target_heading = Some(TargetHeading {
-                heading_deg: normalize_heading_deg(heading_deg),
-                turn_rate_limit_dps,
-            });
-            self.acceleration_neu = Neu::default();
-        }
-
-        if pending.stop {
-            let current_speed = horizontal_speed_mps(self.velocity_neu);
-            if current_speed > 0.0 {
-                self.resume_speed_mps = current_speed;
-            }
-            self.velocity_neu = Neu::default();
-            self.acceleration_neu = Neu::default();
-            self.clear_targets();
-        }
-
-        if pending.start {
-            let speed_mps = match pending.start_speed_mps {
-                Some(speed_mps) => speed_mps,
-                None if self.resume_speed_mps > 0.0 => self.resume_speed_mps,
-                None => 1.0,
-            };
-            self.set_heading_speed(self.heading_deg, speed_mps, 0.0);
-            self.acceleration_neu = Neu::default();
-            self.clear_targets();
+    /// Replays retained variants oldest-to-newest.
+    fn apply_pending(&mut self, pending: &PendingMotionCommands) {
+        for command in pending.iter() {
+            self.apply_command(command);
         }
     }
 
-    /// Integrate local motion and commit endpoint controller state.
+    /// Applies one command's complete state transition.
+    fn apply_command(&mut self, command: MotionCommand) {
+        match command {
+            MotionCommand::SetPositionEcef(position_ecef) => {
+                self.position_ecef = position_ecef;
+            }
+            MotionCommand::SetVelocityNeu(velocity_neu) => {
+                self.set_velocity_neu(velocity_neu);
+                self.clear_targets();
+            }
+            MotionCommand::SetAccelerationNeu(acceleration_neu) => {
+                self.acceleration_neu = acceleration_neu;
+                self.clear_targets();
+            }
+            MotionCommand::SetHeadingSpeed {
+                heading_deg,
+                speed_mps,
+                climb_mps,
+            } => {
+                self.set_heading_speed(heading_deg, speed_mps, climb_mps);
+                self.clear_targets();
+            }
+            MotionCommand::Stop => {
+                let current_speed = horizontal_speed_mps(self.velocity_neu);
+                if current_speed > 0.0 {
+                    self.resume_speed_mps = current_speed;
+                }
+                self.velocity_neu = Neu::default();
+                self.acceleration_neu = Neu::default();
+                self.clear_targets();
+            }
+            MotionCommand::Start { speed_mps } => {
+                let speed_mps = match speed_mps {
+                    Some(speed_mps) => speed_mps,
+                    None if self.resume_speed_mps > 0.0 => {
+                        self.resume_speed_mps
+                    }
+                    None => 1.0,
+                };
+                self.set_heading_speed(self.heading_deg, speed_mps, 0.0);
+                self.acceleration_neu = Neu::default();
+                self.clear_targets();
+            }
+            MotionCommand::SetTargetSpeed {
+                speed_mps,
+                accel_limit_mps2,
+            } => {
+                self.target_speed = Some(TargetSpeed {
+                    speed_mps,
+                    accel_limit_mps2,
+                });
+                self.acceleration_neu = Neu::default();
+            }
+            MotionCommand::SetTargetHeading {
+                heading_deg,
+                turn_rate_limit_dps,
+            } => {
+                self.target_heading = Some(TargetHeading {
+                    heading_deg: normalize_heading_deg(heading_deg),
+                    turn_rate_limit_dps,
+                });
+                self.acceleration_neu = Neu::default();
+            }
+        }
+    }
+
+    /// Integrates controller or direct acceleration state for one interval.
     fn integrate_interval(&mut self, dt: f64) -> Neu {
         let speed_mps = horizontal_speed_mps(self.velocity_neu);
 
@@ -382,8 +280,7 @@ impl MotionIntegrator {
                 current_heading,
                 target_heading.heading_deg,
             );
-            let max_delta =
-                (target_heading.turn_rate_limit_dps.abs() * dt).max(0.0);
+            let max_delta = (target_heading.turn_rate_limit_dps * dt).max(0.0);
             let applied = apply_limited_delta(delta, max_delta);
             self.heading_deg = normalize_heading_deg(current_heading + applied);
         }
@@ -397,8 +294,11 @@ impl MotionIntegrator {
             );
             let heading_rad = self.heading_deg.to_radians();
             let climb_mps = self.velocity_neu.up;
-            let endpoint_speed = motion.endpoint_speed;
-            self.set_heading_speed(self.heading_deg, endpoint_speed, climb_mps);
+            self.set_heading_speed(
+                self.heading_deg,
+                motion.endpoint_speed,
+                climb_mps,
+            );
             return Neu {
                 north: heading_rad.cos() * motion.distance,
                 east: heading_rad.sin() * motion.distance,
@@ -426,7 +326,7 @@ impl MotionIntegrator {
         motion.displacement_neu
     }
 
-    /// Apply one local displacement through the interval-start tangent frame.
+    /// Converts start-local NEU displacement and commits the ECEF endpoint.
     fn apply_displacement(&mut self, displacement: Neu) -> Result<(), Error> {
         let reference_location = Location::try_from(&self.position_ecef)?;
         let ltcmat = reference_location.ltcmat();
@@ -438,24 +338,23 @@ impl MotionIntegrator {
         Ok(())
     }
 
-    /// Build the current endpoint snapshot.
+    /// Builds the current public endpoint snapshot.
     fn snapshot(&self) -> MotionSnapshot {
-        let speed_mps = total_speed_mps(self.velocity_neu);
         MotionSnapshot {
             position_ecef: self.position_ecef,
             velocity_neu: self.velocity_neu,
             heading_deg: normalize_heading_deg(self.heading_deg),
-            speed_mps,
+            speed_mps: total_speed_mps(self.velocity_neu),
         }
     }
 
-    /// Set NEU velocity and derive its horizontal heading.
+    /// Replaces direct velocity and derives horizontal heading.
     fn set_velocity_neu(&mut self, velocity_neu: Neu) {
         self.velocity_neu = velocity_neu;
         self.update_heading_from_velocity();
     }
 
-    /// Set heading, horizontal speed, and climb rate.
+    /// Replaces heading, horizontal speed, and climb rate.
     fn set_heading_speed(
         &mut self, heading_deg: f64, speed_mps: f64, climb_mps: f64,
     ) {
@@ -469,7 +368,7 @@ impl MotionIntegrator {
         self.heading_deg = heading_deg;
     }
 
-    /// Derive heading from nonzero horizontal velocity.
+    /// Updates heading only when horizontal velocity is nonzero.
     fn update_heading_from_velocity(&mut self) {
         let horizontal_speed = horizontal_speed_mps(self.velocity_neu);
         if horizontal_speed > 0.0 {
@@ -482,12 +381,14 @@ impl MotionIntegrator {
         }
     }
 
-    /// Clear both target controllers.
+    /// Clears both target controllers.
     fn clear_targets(&mut self) {
         self.target_speed = None;
         self.target_heading = None;
     }
 }
 
+#[cfg(test)]
+mod command_tests;
 #[cfg(test)]
 mod tests;

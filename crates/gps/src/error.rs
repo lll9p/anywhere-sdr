@@ -140,6 +140,33 @@ pub enum Error {
     )]
     FiniteRunOutputFailed,
 
+    /// Error when a runtime motion command field is not finite
+    #[error(
+        "Motion command {command} field {field} must be finite, got {value}"
+    )]
+    NonFiniteMotionCommandValue {
+        /// Exact Rust command variant name
+        command: &'static str,
+        /// Stable command field label
+        field: &'static str,
+        /// Rejected value
+        value: f64,
+    },
+
+    /// Error when a runtime motion command scalar is negative
+    #[error(
+        "Motion command {command} field {field} must be nonnegative, got \
+         {value}"
+    )]
+    NegativeMotionCommandValue {
+        /// Exact Rust command variant name
+        command: &'static str,
+        /// Stable command field label
+        field: &'static str,
+        /// Rejected value
+        value: f64,
+    },
+
     /// Error from the RINEX parsing module
     #[error("RINEX error: {0}")]
     Rinex(#[from] rinex::error::Error),

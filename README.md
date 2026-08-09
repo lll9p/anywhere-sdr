@@ -242,7 +242,7 @@ fn main() -> Result<(), Error> {
         heading_deg: 90.0, // 0=North, 90=East, clockwise
         speed_mps: 10.0,
         climb_mps: 0.0,
-    });
+    })?;
 
     let mut blocks: usize = 0;
     let _ = generator.run_streaming_user_control::<_, Error>(|_iq| {
@@ -274,8 +274,13 @@ Notes and constraints:
 - The streaming loop runs until the callback returns an error (use this as a
   cancellation mechanism).
 - The generator hot path uses non-blocking reads for pending commands and
-  snapshots; if you submit updates faster than the step rate, it is
-  “latest-wins”.
+  snapshots. Pending storage keeps at most one command per variant; replacing
+  a variant moves it to the newest replay position, and retained variants run
+  oldest-to-newest by their last successful submission.
+- Numeric command fields must be finite. Horizontal/start/target speeds and
+  acceleration/turn-rate limits must also be nonnegative. A zero target limit
+  freezes that transition while keeping the target active; the TUI continues
+  to require positive configured limits.
 
 Extension points:
 

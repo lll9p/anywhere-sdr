@@ -109,6 +109,22 @@ fn manual_mode_preserves_geometry_error_for_invalid_initial_llh() {
 }
 
 #[test]
+fn manual_session_propagates_initial_submit_error() {
+    let mut config = manual_config();
+    config.manual_motion.initial_heading_deg = f64::NAN;
+    assert!(matches!(
+        ManualControlSession::from_config(&config.manual_motion),
+        Err(crate::Error::Gps(
+            gps::Error::NonFiniteMotionCommandValue {
+                command: "SetHeadingSpeed",
+                field: "heading_deg",
+                value,
+            }
+        )) if value.is_nan()
+    ));
+}
+
+#[test]
 fn manual_mode_hotkeys_update_targets() -> Result<(), String> {
     let mut app = new_app(manual_config());
     app.tab = ActiveTab::Run;
@@ -130,6 +146,70 @@ fn manual_mode_hotkeys_update_targets() -> Result<(), String> {
     assert_close(session.target_heading_deg, 95.0);
     assert_close(session.target_speed_mps, 5.0);
     assert_close(session.cruise_speed_mps, 5.0);
+    Ok(())
+}
+
+#[test]
+fn rejected_manual_command_preserves_session_worker_and_last_run()
+-> Result<(), String> {
+    let mut app = new_app(manual_config());
+    app.tab = ActiveTab::Run;
+    app.run_state = RunState::Running;
+    app.last_run = Some(LastRun::Finished);
+    let mut session =
+        ManualControlSession::from_config(&app.config.manual_motion)
+            .map_err(|error| error.to_string())?;
+    session.turn_rate_limit_dps = f64::NAN;
+    app.manual_session = Some(session);
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_thread = cancel.clone();
+    let (event_tx, events) = mpsc::channel();
+    let join = thread::Builder::new()
+        .spawn(move || {
+            let _event_tx = event_tx;
+            while !cancel_for_thread.load(Ordering::Relaxed) {
+                thread::yield_now();
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    app.worker = Some(WorkerHandle {
+        cancel: cancel.clone(),
+        events,
+        join,
+        pending_terminal: None,
+        events_disconnected: false,
+    });
+
+    handle_key_event(&mut app, key(KeyCode::Right));
+
+    let session = app
+        .manual_session
+        .as_ref()
+        .ok_or_else(|| "manual session remains active".to_string())?;
+    assert_close(session.target_heading_deg, 90.0);
+    assert!(app.worker.is_some());
+    assert!(!cancel.load(Ordering::Relaxed));
+    assert_eq!(app.run_state, RunState::Running);
+    assert!(matches!(app.last_run, Some(LastRun::Finished)));
+    assert!(app.message.as_deref().is_some_and(|message| {
+        message.contains("SetTargetHeading")
+            && message.contains("turn_rate_limit_dps")
+    }));
+    assert!(app.log_buffer.snapshot().iter().any(|line| {
+        line.contains("manual motion command rejected")
+            && line.contains("turn_rate_limit_dps")
+    }));
+
+    cancel.store(true, Ordering::Relaxed);
+    let worker = app
+        .worker
+        .take()
+        .ok_or_else(|| "worker remains active".to_string())?;
+    worker
+        .join
+        .join()
+        .map_err(|_| "manual test worker panicked".to_string())?;
     Ok(())
 }
 
