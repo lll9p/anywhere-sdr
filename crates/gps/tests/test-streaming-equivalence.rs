@@ -42,6 +42,14 @@ fn builder(
         .map(|builder| builder.output_file(output_file))
 }
 
+fn fixed_gain_128_bits8_builder(
+    output_file: Option<PathBuf>,
+) -> Result<SignalGeneratorBuilder, Error> {
+    let builder =
+        builder(1.0, 0.1, 8, output_file)?.frequency(Some(2_600_000))?;
+    Ok(builder.path_loss(Some(128)).verbose(Some(false)))
+}
+
 #[test]
 fn fractional_duration_file_and_stream_outputs_match() -> Result<(), Error> {
     let (run_path, stream_path) = unique_paths("rust_stream_equiv_bits8")?;
@@ -82,6 +90,55 @@ fn fractional_duration_file_and_stream_outputs_match() -> Result<(), Error> {
 
     fs::remove_file(&run_path)?;
     fs::remove_file(&stream_path)?;
+    Ok(())
+}
+
+#[test]
+fn fixed_gain_128_bits8_saturates_and_matches_direct_output()
+-> Result<(), Error> {
+    let (run_path, _) = unique_paths("rust_sc8_saturation_fixed128")?;
+    let direct_bytes = {
+        let mut generator =
+            fixed_gain_128_bits8_builder(Some(run_path.clone()))?.build()?;
+        generator.initialize()?;
+        generator.run_simulation()?;
+        fs::read(&run_path)?
+    };
+
+    let mut generator = fixed_gain_128_bits8_builder(None)?.build()?;
+    generator.initialize()?;
+    let mut helper_bytes = Vec::new();
+    let mut independent_bytes = Vec::new();
+    let mut negative_clip_count = 0usize;
+    let mut positive_clip_count = 0usize;
+    generator.run_streaming::<_, Error>(|iq| {
+        let mut packed = vec![0u8; iq.len()];
+        pack_bits8_into(iq, &mut packed)?;
+
+        let block_start = independent_bytes.len();
+        for &sample in iq {
+            let expected = if sample <= -2049 {
+                negative_clip_count += 1;
+                0x80
+            } else if sample >= 2048 {
+                positive_clip_count += 1;
+                0x7f
+            } else {
+                (sample.div_euclid(16) as i8) as u8
+            };
+            independent_bytes.push(expected);
+        }
+        assert_eq!(packed.as_slice(), &independent_bytes[block_start..]);
+        helper_bytes.extend_from_slice(&packed);
+        Ok(())
+    })?;
+
+    assert!(negative_clip_count > 0);
+    assert!(positive_clip_count > 0);
+    assert_eq!(helper_bytes, independent_bytes);
+    assert_eq!(direct_bytes, helper_bytes);
+
+    fs::remove_file(&run_path)?;
     Ok(())
 }
 

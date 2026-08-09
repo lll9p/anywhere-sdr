@@ -74,7 +74,9 @@ pub fn pack_bits8_into(iq: &[i16], out: &mut [u8]) -> Result<(), Error> {
     }
 
     for (dst, &src) in out.iter_mut().zip(iq.iter()) {
-        *dst = (i32::from(src) >> 4) as u8;
+        let shifted = i32::from(src) >> 4;
+        let clipped = shifted.clamp(i32::from(i8::MIN), i32::from(i8::MAX));
+        *dst = (clipped as i8) as u8;
     }
 
     Ok(())
@@ -286,23 +288,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pack_bits8_matches_i8_write_semantics() -> Result<(), Error> {
-        let iq: [i16; 13] = [
-            -32768, -2049, -2048, -17, -16, -1, 0, 1, 15, 16, 2047, 2048, 32767,
+    fn pack_bits8_shifts_then_saturates_at_exact_boundaries()
+    -> Result<(), Error> {
+        let iq: [i16; 17] = [
+            i16::MIN,
+            -2049,
+            -2048,
+            -2033,
+            -2032,
+            -17,
+            -16,
+            -1,
+            0,
+            1,
+            15,
+            16,
+            2031,
+            2032,
+            2047,
+            2048,
+            i16::MAX,
         ];
         let mut out = vec![0u8; iq.len()];
         pack_bits8_into(&iq, &mut out)?;
 
-        let expected: Vec<u8> = iq
-            .iter()
-            .map(|&s| ((i32::from(s) >> 4) as i8) as u8)
-            .collect();
-        assert_eq!(out, expected);
+        assert_eq!(out, [
+            0x80, 0x80, 0x80, 0x80, 0x81, 0xfe, 0xff, 0xff, 0x00, 0x00, 0x00,
+            0x01, 0x7e, 0x7f, 0x7f, 0x7f, 0x7f,
+        ]);
+        Ok(())
+    }
 
-        assert_eq!(out[5], 255); // -1 >> 4 == -1
-        assert_eq!(out[3], 254); // -17 >> 4 == -2
-        assert_eq!(out[11], 128); // 2048 >> 4 == 128 (wraps in i8)
-        assert_eq!(out[12], 255); // 32767 >> 4 == 2047 (wraps in i8)
+    #[test]
+    fn pack_bits8_matches_exhaustive_piecewise_oracle() -> Result<(), Error> {
+        let iq: Vec<i16> = (i16::MIN..=i16::MAX).collect();
+        let mut out = vec![0u8; iq.len()];
+        pack_bits8_into(&iq, &mut out)?;
+
+        let mut negative_clip_count = 0usize;
+        let mut positive_clip_count = 0usize;
+        for (&input, &byte) in iq.iter().zip(out.iter()) {
+            let expected = if input <= -2049 {
+                negative_clip_count += 1;
+                i8::MIN
+            } else if input >= 2048 {
+                positive_clip_count += 1;
+                i8::MAX
+            } else {
+                input.div_euclid(16) as i8
+            };
+            let actual = byte as i8;
+            assert_eq!(actual, expected, "input {input}");
+            if input <= -2049 {
+                assert!(actual < 0, "negative overflow wrapped for {input}");
+            } else if input >= 2048 {
+                assert!(actual >= 0, "positive overflow wrapped for {input}");
+            }
+        }
+        assert!(negative_clip_count > 0);
+        assert!(positive_clip_count > 0);
         Ok(())
     }
 
