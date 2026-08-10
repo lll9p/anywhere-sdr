@@ -116,28 +116,30 @@ gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30
 
 ### Library Usage
 
-```rust
+```rust,no_run
 use std::path::PathBuf;
+
 use gps::SignalGeneratorBuilder;
 
-// Configure the signal generator
-let builder = SignalGeneratorBuilder::default()
-    .navigation_file(Some(PathBuf::from("brdc0010.22n"))).unwrap()
-    .location(Some(vec![35.6813, 139.7662, 10.0])).unwrap()
-    .duration(Some(60.0))
-    .data_format(Some(8)).unwrap()
-    .ionospheric_disable(Some(true))  // Disable ionospheric delay correction
-    .output_file(Some(PathBuf::from("output.bin")));
+fn main() -> Result<(), gps::Error> {
+    let mut generator = SignalGeneratorBuilder::default()
+        .navigation_file(Some(PathBuf::from("brdc0010.22n")))?
+        .location(Some(vec![35.6813, 139.7662, 10.0]))?
+        .duration(Some(60.0))
+        .data_format(Some(8))?
+        .ionospheric_disable(Some(true))
+        .output_file(Some(PathBuf::from("output.bin")))
+        .build()?;
 
-// Build and run the generator
-let mut generator = builder.build().unwrap();
-generator.initialize().unwrap();
-generator.run_simulation().unwrap();
+    generator.initialize()?;
+    generator.run_simulation()?;
+    Ok(())
+}
 ```
 
 ### Command Line Options
 
-- `--tui`: Launch the interactive terminal UI. Other flags prefill the visible effective configuration; each value is marked as editable, toggleable, clearable, or read-only before starting.
+- `--tui`: Launch the interactive terminal UI. The Config tab projects every effective configuration field and marks each one as editable, toggleable, clearable, or a read-only CLI prefill before starting.
 - `-e <gps_nav>`: RINEX navigation file for GPS ephemerides (required)
 - `-u <user_motion>`: User motion file in ECEF x,y,z format (dynamic mode)
 - `-x <user_motion>`: User motion file in latitude/longitude degrees and height meters (dynamic mode)
@@ -190,28 +192,49 @@ gpssim -e brdc0010.22n -l 35.681298,139.766247,10.0 -d 30 -b 8 -o gpssim_sc8.bin
   --tx hackrf
 ```
 
+### Interactive TUI Controls
+
+The Config tab exposes the complete effective configuration, including CLI
+prefills, and labels every field with its available interaction. Select manual
+motion before starting to enable live receiver control.
+
+On the Run tab while a manual run is active, use Left/Right to change heading,
+Up/Down to change speed, Space to stop, Enter to resume the retained cruise
+speed, and `c` or Esc to cancel the run. These controls are available only while
+the run is in the Running state; the first terminal worker outcome removes them.
+On a normal TUI exit, the latest typed run failure is returned to the process
+and produces a nonzero exit status. No run, a finished run, or a cleanly
+cancelled run exits successfully.
+
 ## Direct Sample Access API
 
 The library provides an API for direct sample access without file I/O. This allows integration with other applications or real-time processing:
 
-```rust
-// After initializing the generator
-let mut generator = builder.build().unwrap();
-generator.initialize().unwrap();
+```rust,no_run
+use std::path::PathBuf;
 
-// Instead of run_simulation(), you can process each step individually
-// and access the generated samples directly
-for step in 0..num_steps {
-    // Update satellite parameters for current position
-    generator.update_channel_parameters(current_position);
+use gps::SignalGeneratorBuilder;
 
-    // Generate samples for this step
-    generator.generate_samples();
+fn process_iq_block(_interleaved_iq: &[i16]) {
+    // Forward the interleaved I/Q block to your application.
+}
 
-    // Access the sample buffer directly
-    let samples = generator.get_sample_buffer();
+fn main() -> Result<(), gps::Error> {
+    let mut generator = SignalGeneratorBuilder::default()
+        .navigation_file(Some(PathBuf::from("brdc0010.22n")))?
+        .location(Some(vec![35.6813, 139.7662, 10.0]))?
+        .duration(Some(1.0))
+        .frequency(Some(2_600_000))?
+        .data_format(Some(16))?
+        .output_file(None)
+        .build()?;
 
-    // Process samples as needed...
+    generator.initialize()?;
+    generator.run_streaming::<_, gps::Error>(|interleaved_iq| {
+        process_iq_block(interleaved_iq);
+        Ok(())
+    })?;
+    Ok(())
 }
 ```
 
@@ -221,62 +244,94 @@ The library supports a runtime motion controller that lets you change receiver
 motion while streaming (heading/speed/acceleration, stop/start, and
 target-tracking with limits).
 
-```rust
-use std::path::PathBuf;
+```rust,no_run
+use std::{error::Error as StdError, fmt, path::PathBuf};
 
 use geometry::Ecef;
-use gps::{Error, MotionCommand, RuntimeMotionControl, SignalGeneratorBuilder};
+use gps::{MotionCommand, RuntimeMotionControl, SignalGeneratorBuilder};
 
-fn main() -> Result<(), Error> {
-    // Pick an initial receiver position.
+#[derive(Debug)]
+enum StreamError {
+    Generator(gps::Error),
+    StopRequested,
+}
+
+impl fmt::Display for StreamError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Generator(error) => write!(formatter, "generator failed: {error}"),
+            Self::StopRequested => formatter.write_str("example stop requested"),
+        }
+    }
+}
+
+impl StdError for StreamError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Self::Generator(error) => Some(error),
+            Self::StopRequested => None,
+        }
+    }
+}
+
+impl From<gps::Error> for StreamError {
+    fn from(error: gps::Error) -> Self {
+        Self::Generator(error)
+    }
+}
+
+fn main() -> Result<(), StreamError> {
     let origin = Ecef::new(-3_813_477.954, 3_554_276.552, 3_662_785.237);
     let control = RuntimeMotionControl::new(origin);
 
     let mut generator = SignalGeneratorBuilder::default()
         .navigation_file(Some(PathBuf::from("brdc0010.22n")))?
         .runtime_motion_control(Some(control.clone()))?
+        .frequency(Some(2_600_000))?
+        .data_format(Some(16))?
+        .output_file(None)
         .build()?;
     generator.initialize()?;
 
     control.submit(MotionCommand::SetHeadingSpeed {
-        heading_deg: 90.0, // 0=North, 90=East, clockwise
+        heading_deg: 90.0,
         speed_mps: 10.0,
         climb_mps: 0.0,
     })?;
 
-    let mut blocks: usize = 0;
-    let _ = generator.run_streaming_user_control::<_, Error>(|_iq| {
-        blocks += 1;
-
-        // Read an instantaneous snapshot (may skip if the generator is busy).
+    let mut block_count = 0usize;
+    match generator.run_streaming_user_control::<_, StreamError>(|_iq| {
+        block_count += 1;
         let _snapshot = control.try_snapshot();
 
-        if blocks >= 3 {
-            // Stop the streaming loop by returning an error.
-            return Err(Error::msg("stop"));
+        if block_count >= 3 {
+            return Err(StreamError::StopRequested);
         }
 
         Ok(())
-    });
-
-    Ok(())
+    }) {
+        Err(StreamError::StopRequested) => Ok(()),
+        result => result,
+    }
 }
 ```
 
 Notes and constraints:
 
-- Commands are applied at the next simulation step boundary (`dt = sample_rate`,
-  default 0.1s).
-- This change provides the library API only; wiring it into a TUI or a network
-  control surface is out of scope.
+- Commands take effect at actual emitted-sample simulation-step boundaries
+  (`dt = sample_rate`, default 0.1s).
+- GPSsim's TUI manual mode uses this API for live heading, speed, stop, cruise,
+  and cancellation controls.
 - Some parts of the codebase still assume a ~10 Hz step rate; changing
   `sample_rate` may require additional work.
-- The streaming loop runs until the callback returns an error (use this as a
-  cancellation mechanism).
+- The streaming loop runs until the callback returns an error. Use a dedicated
+  callback error for intentional cancellation and match it exactly so generator
+  failures remain distinct and propagate.
 - The generator hot path uses non-blocking reads for pending commands and
-  snapshots. Pending storage keeps at most one command per variant; replacing
-  a variant moves it to the newest replay position, and retained variants run
-  oldest-to-newest by their last successful submission.
+  snapshots. Pending storage is bounded to one command per variant. A
+  successful replacement removes the older command and moves that variant to
+  the ordered tail; retained variants replay in global oldest-to-newest order
+  by each variant's last successful submission.
 - Numeric command fields must be finite. Horizontal/start/target speeds and
   acceleration/turn-rate limits must also be nonnegative. A zero target limit
   freezes that transition while keeping the target active; the TUI continues

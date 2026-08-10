@@ -10,6 +10,10 @@
 //! configuring all aspects of the simulation before generating the signal with
 //! `SignalGenerator`.
 
+#[cfg(doctest)]
+#[doc = include_str!("../../../README.md")]
+mod readme_examples {}
+
 /// GPS channel simulation and signal generation
 mod channel;
 /// GPS time system representation and utilities
