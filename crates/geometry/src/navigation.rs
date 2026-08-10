@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use constants::WGS84_RADIUS;
 
 use crate::{Error, Location};
@@ -52,18 +54,14 @@ impl NavigationTarget {
         self
     }
 
-    /// Calculates the bearing from the current location in degrees.
+    /// Calculates the initial bearing in the range `[0, 360)` degrees.
     pub fn bearing(&self, location: &Location) -> f64 {
-        let lat1 = self.location.latitude_radians();
-        let lon1 = self.location.longitude_radians();
-        let lat2 = location.latitude_radians();
-        let lon2 = location.longitude_radians();
-        let y = (lat2 - lat1) * (lat2 + lat1).cos();
-        let x = (lon2 - lon1) * (lon2 + lon1).cos();
-        y.atan2(x).to_degrees()
+        self.location.bearing(location)
     }
 
     /// Moves the current location along the current bearing.
+    ///
+    /// The destination longitude is canonicalized to `[-π, π)`.
     pub fn go(&mut self, distance_meters: f64) -> Result<Location, Error> {
         let lat1 = self.location.latitude_radians();
         let lon1 = self.location.longitude_radians();
@@ -75,6 +73,7 @@ impl NavigationTarget {
         let lon2 = lon1
             + (bearing.sin() * angular_distance.sin() * lat1.cos())
                 .atan2(angular_distance.cos() - lat1.sin() * lat2.sin());
+        let lon2 = (lon2 + PI).rem_euclid(2.0 * PI) - PI;
         let new_location = Location::try_from_radians(
             lat2,
             lon2,

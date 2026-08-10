@@ -1,6 +1,8 @@
+use std::f64::consts::PI;
+
 use constants::{WGS84_ECCENTRICITY, WGS84_RADIUS};
 
-use crate::{Azel, Ecef, Error, Location, Neu};
+use crate::{Azel, Ecef, Error, Location, NavigationTarget, Neu};
 
 const JAPAN_LLH_DEGREES: [f64; 3] = [
     35.274_015_989_114_844,
@@ -36,6 +38,80 @@ fn assert_location_close(
         expected.height_meters(),
         height_tolerance,
     );
+}
+
+fn unit_vector(location: &Location) -> [f64; 3] {
+    let (latitude_sine, latitude_cosine) =
+        location.latitude_radians().sin_cos();
+    let (longitude_sine, longitude_cosine) =
+        location.longitude_radians().sin_cos();
+    [
+        latitude_cosine * longitude_cosine,
+        latitude_cosine * longitude_sine,
+        latitude_sine,
+    ]
+}
+
+fn local_basis(location: &Location) -> ([f64; 3], [f64; 3]) {
+    let (latitude_sine, latitude_cosine) =
+        location.latitude_radians().sin_cos();
+    let (longitude_sine, longitude_cosine) =
+        location.longitude_radians().sin_cos();
+    (
+        [
+            -latitude_sine * longitude_cosine,
+            -latitude_sine * longitude_sine,
+            latitude_cosine,
+        ],
+        [-longitude_sine, longitude_cosine, 0.0],
+    )
+}
+
+fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn bearing_oracle(source: &Location, destination: &Location) -> f64 {
+    let destination = unit_vector(destination);
+    let (north, east) = local_basis(source);
+    dot(destination, east)
+        .atan2(dot(destination, north))
+        .to_degrees()
+        .rem_euclid(360.0)
+}
+
+fn destination_oracle(
+    source: &Location, bearing_degrees: f64, distance_meters: f64,
+) -> (f64, f64) {
+    let source_vector = unit_vector(source);
+    let (north, east) = local_basis(source);
+    let bearing = bearing_degrees.to_radians();
+    let angular_distance = distance_meters / WGS84_RADIUS;
+    let direction = [
+        north[0] * bearing.cos() + east[0] * bearing.sin(),
+        north[1] * bearing.cos() + east[1] * bearing.sin(),
+        north[2] * bearing.cos() + east[2] * bearing.sin(),
+    ];
+    let destination = [
+        source_vector[0] * angular_distance.cos()
+            + direction[0] * angular_distance.sin(),
+        source_vector[1] * angular_distance.cos()
+            + direction[1] * angular_distance.sin(),
+        source_vector[2] * angular_distance.cos()
+            + direction[2] * angular_distance.sin(),
+    ];
+    (destination[2].asin(), destination[1].atan2(destination[0]))
+}
+
+fn navigation_target(
+    source: Location, bearing_degrees: u16,
+) -> NavigationTarget {
+    let mut target = NavigationTarget::new();
+    target.set_location(source);
+    for _ in 0..bearing_degrees {
+        target.inc_bearing();
+    }
+    target
 }
 
 #[test]
@@ -334,5 +410,84 @@ fn local_tangent_matrix_round_trips_neu() -> Result<(), Error> {
     assert!(neu.north.is_finite());
     assert!(neu.east.is_finite());
     assert!(neu.up.is_finite());
+    Ok(())
+}
+
+#[test]
+fn navigation_bearings_match_tangent_vector_oracle() -> Result<(), Error> {
+    for (
+        source_latitude,
+        source_longitude,
+        target_latitude,
+        target_longitude,
+        expected_cardinal,
+    ) in [
+        (0.0, 0.0, 10.0, 0.0, Some(0.0)),
+        (0.0, 0.0, 0.0, 10.0, Some(90.0)),
+        (0.0, 0.0, -10.0, 0.0, Some(180.0)),
+        (0.0, 0.0, 0.0, -10.0, Some(270.0)),
+        (0.0, 0.0, 10.0, 10.0, None),
+        (80.0, -60.0, 82.0, 40.0, None),
+        (10.0, 179.0, 12.0, -179.0, None),
+    ] {
+        let source =
+            Location::try_from_degrees(source_latitude, source_longitude, 0.0)?;
+        let destination =
+            Location::try_from_degrees(target_latitude, target_longitude, 0.0)?;
+        let mut target = NavigationTarget::new();
+        target.set_location(source);
+        let actual = target.bearing(&destination);
+        assert_close(actual, bearing_oracle(&source, &destination), 1.0e-10);
+        if let Some(expected_cardinal) = expected_cardinal {
+            assert_close(actual, expected_cardinal, 1.0e-10);
+        }
+        assert!((0.0..360.0).contains(&actual));
+    }
+    let source = Location::try_from_degrees(45.0, 90.0, 0.0)?;
+    assert_close(navigation_target(source, 0).bearing(&source), 0.0, 0.0);
+    Ok(())
+}
+
+#[test]
+fn navigation_destinations_match_unit_vector_oracle() -> Result<(), Error> {
+    for (latitude, longitude, bearing, distance) in [
+        (10.0, 179.0, 90, 400_000.0),
+        (-10.0, -179.0, 270, 400_000.0),
+        (89.5, 30.0, 15, 200_000.0),
+        (-89.5, -30.0, 345, 200_000.0),
+        (35.0, 40.0, 225, -750_000.0),
+        (23.0, -170.0, 123, WGS84_RADIUS * (4.0 * PI + 0.7)),
+    ] {
+        let source = Location::try_from_degrees(latitude, longitude, 123.4)?;
+        let (expected_latitude, expected_longitude) =
+            destination_oracle(&source, f64::from(bearing), distance);
+        let actual = navigation_target(source, bearing).go(distance)?;
+        assert_close(actual.latitude_radians(), expected_latitude, 2.0e-12);
+        assert_close(actual.longitude_radians(), expected_longitude, 2.0e-12);
+        assert_close(actual.height_meters(), source.height_meters(), 0.0);
+        assert!((-PI..PI).contains(&actual.longitude_radians()));
+    }
+    Ok(())
+}
+
+#[test]
+fn navigation_canonicalizes_antimeridian_and_mutates_only_on_success()
+-> Result<(), Error> {
+    let source = Location::try_from_degrees(0.0, 0.0, -50.0)?;
+    let mut target = navigation_target(source, 90);
+    let destination = target.go(PI * WGS84_RADIUS)?;
+    assert_close(destination.latitude_radians(), 0.0, 1.0e-12);
+    assert_close(destination.longitude_radians(), -PI, 0.0);
+    assert_close(destination.height_meters(), source.height_meters(), 0.0);
+    assert_location_close(&target.go(0.0)?, &destination, 0.0, 0.0);
+
+    let mut target = navigation_target(source, 45);
+    for distance in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert!(matches!(
+            target.go(distance),
+            Err(Error::InvalidCoordinates { .. })
+        ));
+    }
+    assert_location_close(&target.go(0.0)?, &source, 0.0, 0.0);
     Ok(())
 }
