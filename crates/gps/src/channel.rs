@@ -1,6 +1,6 @@
 use constants::{
-    CA_SEQ_LEN, CA_SEQ_LEN_FLOAT, CARR_TO_CODE, CODE_FREQ, LAMBDA_L1,
-    LAMBDA_L1_INV, N_DWRD, N_DWRD_SBF, SPEED_OF_LIGHT_INV,
+    CA_SEQ_LEN, CA_SEQ_LEN_FLOAT, CODE_FREQ, CODE_TO_CARRIER_FREQUENCY_RATIO,
+    LAMBDA_L1, LAMBDA_L1_INV, N_DWRD, N_DWRD_SBF, SPEED_OF_LIGHT_INV,
 };
 use geometry::{Azel, Ecef};
 
@@ -214,7 +214,8 @@ impl Channel {
         let rhorate = (rho1.range - self.rho0.range) / dt;
         // Carrier and code frequency.
         self.carrier_frequency = -rhorate * LAMBDA_L1_INV;
-        self.code_frequency = CODE_FREQ + self.carrier_frequency * CARR_TO_CODE;
+        self.code_frequency = CODE_FREQ
+            + self.carrier_frequency * CODE_TO_CARRIER_FREQUENCY_RATIO;
         // Initial code phase and data bit counters.
         let ms = (self.rho0.time.diff_secs(&self.nav_message_start_time) + 6.0
             - self.rho0.range * SPEED_OF_LIGHT_INV)

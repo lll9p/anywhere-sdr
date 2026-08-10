@@ -1,4 +1,6 @@
-use constants::{MAX_CHAN, MAX_SAT, STATIC_MAX_DURATION};
+use constants::{
+    MAX_CHAN, MAX_SAT, SIMULATION_STEP_SECONDS, STATIC_MAX_DURATION,
+};
 use geometry::{Ecef, Location};
 
 use super::SignalGeneratorBuilder;
@@ -90,8 +92,8 @@ impl SignalGeneratorBuilder {
             // llh2xyz(&llh, &mut xyz);
             vec![xyz]
         };
-        // sample_rate, default is 0.1/10HZ
-        let sample_rate = self.sample_rate.unwrap_or(0.1);
+        // sample_rate is the simulation update step in seconds.
+        let sample_rate = self.sample_rate.unwrap_or(SIMULATION_STEP_SECONDS);
         validate_update_step(sample_rate)?;
         // mode
         let mode = self.mode.unwrap_or(MotionMode::Static);

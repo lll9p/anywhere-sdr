@@ -147,10 +147,10 @@ pub const CARR_FREQ: f64 = 1575.42e6;
 /// C/A code chipping rate in Hz (1.023 MHz)
 pub const CODE_FREQ: f64 = 1.023e6;
 
-/// Ratio between carrier frequency and code frequency
-/// Equal to 1/1540, as the L1 carrier (1575.42 MHz) is 1540 times the C/A code
-/// rate (1.023 MHz)
-pub const CARR_TO_CODE: f64 = 1.0 / 1540.0;
+/// Dimensionless ratio of GPS C/A code frequency to L1 carrier frequency.
+/// Converts a carrier Doppler shift in hertz to the corresponding code Doppler
+/// shift in chips per second.
+pub const CODE_TO_CARRIER_FREQUENCY_RATIO: f64 = CODE_FREQ / CARR_FREQ;
 
 /// Sampling data format: 1-bit I/Q samples
 /// Used for compact file size at the cost of signal quality
@@ -170,5 +170,40 @@ pub const SC16: i32 = 16;
 /// Each element represents approximately 1.6 hours of data
 pub const EPHEM_ARRAY_SIZE: usize = 15;
 
-/// Default sample rate for simulation updates in seconds (10 Hz)
-pub const SAMPLE_RATE: f64 = 0.1;
+/// Default duration in seconds between simulation state updates (0.1 s, 10 Hz).
+pub const SIMULATION_STEP_SECONDS: f64 = 0.1;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LEGACY_CARR_TO_CODE_BITS: u64 = 0x3f45_4725_e6bb_82fe;
+    const LEGACY_SAMPLE_RATE_BITS: u64 = 0x3fb9_9999_9999_999a;
+
+    #[test]
+    fn frequency_ratio_has_code_over_carrier_direction() {
+        assert_eq!(
+            CODE_TO_CARRIER_FREQUENCY_RATIO.to_bits(),
+            (CODE_FREQ / CARR_FREQ).to_bits(),
+        );
+        assert!(
+            (CODE_TO_CARRIER_FREQUENCY_RATIO * CARR_FREQ - CODE_FREQ).abs()
+                <= f64::EPSILON
+        );
+        assert!((CARR_FREQ / CODE_FREQ - 1540.0).abs() <= f64::EPSILON);
+    }
+
+    #[test]
+    fn frequency_ratio_preserves_legacy_bits() {
+        assert_eq!(
+            CODE_TO_CARRIER_FREQUENCY_RATIO.to_bits(),
+            LEGACY_CARR_TO_CODE_BITS,
+        );
+    }
+
+    #[test]
+    fn simulation_step_preserves_period_and_reciprocal_rate() {
+        assert_eq!(SIMULATION_STEP_SECONDS.to_bits(), LEGACY_SAMPLE_RATE_BITS,);
+        assert!((SIMULATION_STEP_SECONDS.recip() - 10.0).abs() <= f64::EPSILON);
+    }
+}

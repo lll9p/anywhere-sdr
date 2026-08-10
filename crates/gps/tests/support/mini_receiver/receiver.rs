@@ -1,8 +1,8 @@
 use std::f64::consts::PI;
 
 use constants::{
-    CA_SEQ_LEN_FLOAT, CARR_TO_CODE, CODE_FREQ, LAMBDA_L1_INV, MAX_SAT,
-    SPEED_OF_LIGHT_INV,
+    CA_SEQ_LEN_FLOAT, CODE_FREQ, CODE_TO_CARRIER_FREQUENCY_RATIO,
+    LAMBDA_L1_INV, MAX_SAT, SPEED_OF_LIGHT_INV,
 };
 use geometry::Ecef;
 use gps::{BroadcastEphemeris, Error, GpsTime, IonoUtc, compute_range};
@@ -112,7 +112,7 @@ impl TrackerState {
         // A noncoherent acquisition bin is not a phase-continuous
         // fine-frequency estimate.
         let carrier_hz = -range_rate * LAMBDA_L1_INV;
-        let code_hz = CODE_FREQ + carrier_hz * CARR_TO_CODE;
+        let code_hz = CODE_FREQ + carrier_hz * CODE_TO_CARRIER_FREQUENCY_RATIO;
         let carrier_phase_step =
             -2.0 * PI * carrier_hz / context.sample_frequency_hz;
 
