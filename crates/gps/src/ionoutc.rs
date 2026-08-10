@@ -93,24 +93,157 @@ impl IonoUtc {
     /// # Arguments
     /// * `rinex` - A reference to a parsed RINEX navigation file
     pub fn read_from_rinex(&mut self, rinex: &rinex::Rinex) {
-        // Extract ionospheric model parameters (Klobuchar model)
-        self.alpha0 = rinex.ion_alpha[0];
-        self.alpha1 = rinex.ion_alpha[1];
-        self.alpha2 = rinex.ion_alpha[2];
-        self.alpha3 = rinex.ion_alpha[3];
-        self.beta0 = rinex.ion_beta[0];
-        self.beta1 = rinex.ion_beta[1];
-        self.beta2 = rinex.ion_beta[2];
-        self.beta3 = rinex.ion_beta[3];
+        let [alpha0, alpha1, alpha2, alpha3] =
+            rinex.ion_alpha.unwrap_or_default();
+        self.alpha0 = alpha0;
+        self.alpha1 = alpha1;
+        self.alpha2 = alpha2;
+        self.alpha3 = alpha3;
 
-        // Extract UTC parameters
-        self.A0 = rinex.delta_utc.a0;
-        self.A1 = rinex.delta_utc.a1;
-        self.tot = rinex.delta_utc.time;
-        self.week_number = rinex.delta_utc.week;
-        self.dtls = rinex.leap_seconds;
+        let [beta0, beta1, beta2, beta3] = rinex.ion_beta.unwrap_or_default();
+        self.beta0 = beta0;
+        self.beta1 = beta1;
+        self.beta2 = beta2;
+        self.beta3 = beta3;
 
-        // Set validity flag (tot should be a multiple of 4096 seconds)
-        self.vflg = self.tot % 4096 == 0;
+        if let Some(delta_utc) = &rinex.delta_utc {
+            self.A0 = delta_utc.a0;
+            self.A1 = delta_utc.a1;
+            self.tot = delta_utc.time;
+            self.week_number = delta_utc.week;
+        } else {
+            self.A0 = 0.0;
+            self.A1 = 0.0;
+            self.tot = 0;
+            self.week_number = 0;
+        }
+        self.dtls = rinex.leap_seconds.unwrap_or_default();
+
+        self.vflg = rinex.ion_alpha.is_some()
+            && rinex.ion_beta.is_some()
+            && rinex.delta_utc.is_some()
+            && self.tot % 4096 == 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rinex::{Rinex, ephemeris::Ephemeris, utc::DeltaUtc};
+
+    use super::IonoUtc;
+
+    #[test]
+    fn missing_optional_rinex_corrections_keep_defaults_and_are_invalid() {
+        let mut iono_utc = IonoUtc {
+            alpha0: 1.0,
+            beta0: 2.0,
+            A0: 3.0,
+            dtls: 18,
+            tot: 4096,
+            week_number: 2_317,
+            vflg: true,
+            ..IonoUtc::default()
+        };
+        iono_utc.read_from_rinex(&rinex(None, None, None, None));
+
+        assert_close(iono_utc.alpha0, 0.0);
+        assert_close(iono_utc.beta0, 0.0);
+        assert_close(iono_utc.A0, 0.0);
+        assert_eq!(iono_utc.dtls, 0);
+        assert_eq!(iono_utc.tot, 0);
+        assert_eq!(iono_utc.week_number, 0);
+        assert!(!iono_utc.vflg);
+    }
+
+    #[test]
+    fn complete_rinex_corrections_copy_exact_values_and_set_validity() {
+        let mut iono_utc = IonoUtc::default();
+        iono_utc.read_from_rinex(&rinex(
+            Some([1.0, 2.0, 3.0, 4.0]),
+            Some([5.0, 6.0, 7.0, 8.0]),
+            Some(DeltaUtc::new(9.0, 10.0, 4096, 2_317)),
+            Some(18),
+        ));
+
+        for (actual, expected) in [
+            iono_utc.alpha0,
+            iono_utc.alpha1,
+            iono_utc.alpha2,
+            iono_utc.alpha3,
+        ]
+        .into_iter()
+        .zip([1.0, 2.0, 3.0, 4.0])
+        {
+            assert_close(actual, expected);
+        }
+        for (actual, expected) in [
+            iono_utc.beta0,
+            iono_utc.beta1,
+            iono_utc.beta2,
+            iono_utc.beta3,
+        ]
+        .into_iter()
+        .zip([5.0, 6.0, 7.0, 8.0])
+        {
+            assert_close(actual, expected);
+        }
+        assert_close(iono_utc.A0, 9.0);
+        assert_close(iono_utc.A1, 10.0);
+        assert_eq!(iono_utc.tot, 4096);
+        assert_eq!(iono_utc.week_number, 2_317);
+        assert_eq!(iono_utc.dtls, 18);
+        assert!(iono_utc.vflg);
+    }
+
+    #[test]
+    fn validity_requires_model_records_but_not_leap_seconds() {
+        for (has_alpha, has_beta, has_delta_utc, expected_valid) in [
+            (false, true, true, false),
+            (true, false, true, false),
+            (true, true, false, false),
+            (true, true, true, true),
+        ] {
+            let mut iono_utc = IonoUtc::default();
+            iono_utc.read_from_rinex(&rinex(
+                has_alpha.then_some([1.0; 4]),
+                has_beta.then_some([2.0; 4]),
+                has_delta_utc.then(|| DeltaUtc::new(3.0, 4.0, 4096, 2_317)),
+                None,
+            ));
+            assert_eq!(iono_utc.vflg, expected_valid);
+            assert_eq!(iono_utc.dtls, 0);
+        }
+
+        let mut iono_utc = IonoUtc::default();
+        iono_utc.read_from_rinex(&rinex(
+            Some([1.0; 4]),
+            Some([2.0; 4]),
+            Some(DeltaUtc::new(3.0, 4.0, 4095, 2_317)),
+            Some(18),
+        ));
+        assert!(!iono_utc.vflg);
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < f64::EPSILON);
+    }
+
+    fn rinex(
+        ion_alpha: Option<[f64; 4]>, ion_beta: Option<[f64; 4]>,
+        delta_utc: Option<DeltaUtc>, leap_seconds: Option<i32>,
+    ) -> Rinex {
+        Rinex {
+            version: "2.11".to_string(),
+            type_: "N".to_string(),
+            program: "test".to_string(),
+            agency: "test".to_string(),
+            update: "test".to_string(),
+            comments: Vec::new(),
+            ion_alpha,
+            ion_beta,
+            delta_utc,
+            leap_seconds,
+            ephemerides: Vec::<Ephemeris>::new(),
+        }
     }
 }

@@ -115,28 +115,33 @@ fn expected_error<T>(result: Result<T, Error>) -> Result<Error, Error> {
 }
 
 #[test]
-fn reader_returns_exact_stored_set_counts() -> Result<(), Error> {
+fn reader_returns_exact_stored_set_counts_and_rejects_invalid_prns()
+-> Result<(), Error> {
     let directory = TestDirectory::create()?;
-    for expected_count in [0, 1, 14, 15] {
-        let navigation = if expected_count == 0 {
-            navigation(&[(0, 0)])
-        } else {
-            navigation_with_set_count(expected_count)
-        };
+    for expected_count in [1, 14, 15] {
         let path = directory.write_navigation(
             &format!("count-{expected_count}.nav"),
-            &navigation,
+            &navigation_with_set_count(expected_count),
         )?;
         let (actual_count, ..) = read_navigation_data(&path)?;
         assert_eq!(actual_count, expected_count);
     }
 
-    let empty_path = directory
-        .write_navigation("builder-empty.nav", &navigation(&[(0, 0)]))?;
-    assert!(matches!(
-        SignalGeneratorBuilder::default().navigation_file(Some(empty_path)),
-        Err(Error::NoEphemeris)
-    ));
+    let invalid_path = directory
+        .write_navigation("invalid-prn.nav", &navigation(&[(0, 0)]))?;
+    for error in [
+        expected_error(read_navigation_data(&invalid_path))?,
+        expected_error(
+            SignalGeneratorBuilder::default()
+                .navigation_file(Some(invalid_path)),
+        )?,
+    ] {
+        assert!(matches!(
+            error,
+            Error::Rinex(rinex::Error::Rule(message))
+                if message.contains("GPS PRN 0")
+        ));
+    }
     Ok(())
 }
 

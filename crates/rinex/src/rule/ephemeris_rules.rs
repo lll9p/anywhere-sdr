@@ -38,7 +38,20 @@ fn read_ephemeris(
 ) -> Result<(), Error> {
     for rule in rules {
         match rule.as_rule() {
-            Rule::prn => builder.set_prn(to_usize(rule.as_str())?),
+            Rule::prn => {
+                let prn_text = rule.as_str().trim();
+                let prn = to_usize(prn_text).map_err(|error| {
+                    Error::rule(format!(
+                        "invalid GPS PRN {prn_text:?}: {error}"
+                    ))
+                })?;
+                if !(1..=32).contains(&prn) {
+                    return Err(Error::rule(format!(
+                        "GPS PRN {prn} is outside the supported range 1..=32"
+                    )));
+                }
+                builder.set_prn(prn);
+            }
             Rule::epoch => {
                 let mut epoch_rules = rule.into_inner();
                 let year = to_int(next_str(&mut epoch_rules, "epoch year")?)?;

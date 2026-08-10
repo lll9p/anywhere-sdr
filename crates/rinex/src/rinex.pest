@@ -18,7 +18,7 @@ header_end_token       = _{ "END OF HEADER" }
 header_tokens          = _{ header_version_token | header_program_token | header_comment_token | header_ion_alpha_token | header_ion_beta_token | header_delta_utc_token | header_leap_secs_token | header_end_token }
 
 /* version */
-version        =  { NUMBER }
+version        =  { ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
 header_char    = _{ !header_tokens ~ ASCII }
 file_type      =  { header_char* }
 header_version =  { WHITESPACE* ~ version ~ file_type ~ header_version_token ~ NEWLINE }
@@ -56,7 +56,8 @@ header_delta_utc =  { WHITESPACE* ~ utc_a0 ~ utc_a1 ~ utc_t ~ utc_w ~ header_del
 leap_secs        = ${ integer }
 header_leap_secs =  { WHITESPACE* ~ leap_secs ~ header_leap_secs_token ~ NEWLINE }
 
-header = { header_version? ~ header_program? ~ header_comment? ~ header_ion_alpha? ~ header_ion_beta? ~ header_delta_utc? ~ header_leap_secs? ~ header_end_token ~ NEWLINE }
+header_record = _{ header_version | header_program | header_comment | header_ion_alpha | header_ion_beta | header_delta_utc | header_leap_secs }
+header = { header_record* ~ header_end_token ~ NEWLINE }
 
 /* records definitions */
 
