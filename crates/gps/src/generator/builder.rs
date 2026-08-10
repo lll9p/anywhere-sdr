@@ -69,6 +69,8 @@ pub struct SignalGeneratorBuilder {
     leap: Option<Vec<i32>>,
     /// Receiver positions (static or dynamic)
     positions: Option<Vec<Ecef>>,
+    /// Optional elapsed timestamp knots for ECEF/LLH motion files
+    motion_elapsed_seconds: Option<Vec<f64>>,
     /// Sample rate for position updates in seconds
     sample_rate: Option<f64>,
     /// Motion mode (static or dynamic)

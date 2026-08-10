@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use geometry::{Ecef, Location};
-use parsing::{read_nmea_gga, read_user_motion, read_user_motion_llh};
+use parsing::{
+    UserMotionSample, read_nmea_gga, read_user_motion, read_user_motion_llh,
+};
 
 use super::SignalGeneratorBuilder;
 use crate::{
@@ -10,6 +12,16 @@ use crate::{
 };
 
 impl SignalGeneratorBuilder {
+    /// Stores parsed motion positions and their normalized elapsed knots.
+    fn set_timestamped_motion(&mut self, samples: Vec<UserMotionSample>) {
+        let (positions, elapsed_seconds) = samples
+            .into_iter()
+            .map(|sample| (sample.position_ecef, sample.elapsed_seconds))
+            .unzip();
+        self.positions = Some(positions);
+        self.motion_elapsed_seconds = Some(elapsed_seconds);
+    }
+
     /// Sets a static location in ECEF (Earth-Centered, Earth-Fixed)
     /// coordinates.
     ///
@@ -125,10 +137,11 @@ impl SignalGeneratorBuilder {
 
     /// Sets a user motion file in ECEF coordinates for dynamic positioning.
     ///
-    /// This method loads a file containing user motion data in Earth-Centered,
-    /// Earth-Fixed (ECEF) coordinate format. The file should contain
-    /// position data for each time step of the simulation. When this option
-    /// is used, the simulation will use dynamic positioning mode.
+    /// This method loads timestamped user motion data in Earth-Centered,
+    /// Earth-Fixed (ECEF) coordinates. Positions are linearly interpolated
+    /// from elapsed CSV timestamps while the configured sample rate controls
+    /// state-update blocks. When this option is used, the simulation uses
+    /// dynamic positioning mode.
     ///
     /// # Arguments
     /// * `file` - Optional path to a user motion file in ECEF format
@@ -151,19 +164,20 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_user_motion(&file)?);
+            let samples = read_user_motion(&file)?;
+            self.set_timestamped_motion(samples);
         }
         Ok(self)
     }
 
     /// Sets a user motion file in LLH coordinates for dynamic positioning.
     ///
-    /// This method loads a file containing user motion data in Latitude,
-    /// Longitude, Height (LLH) coordinate format. The file should contain
-    /// position data for each time step of the simulation.
-    /// The LLH coordinates will be automatically converted to ECEF coordinates
-    /// for internal use. When this option is used, the simulation will use
-    /// dynamic positioning mode.
+    /// This method loads timestamped user motion data in Latitude, Longitude,
+    /// Height (LLH) coordinates. Positions are linearly interpolated from
+    /// elapsed CSV timestamps while the configured sample rate controls
+    /// state-update blocks. LLH coordinates are converted to ECEF coordinates
+    /// for internal use. When this option is used, the simulation uses dynamic
+    /// positioning mode.
     ///
     /// # Arguments
     /// * `file` - Optional path to a user motion file in LLH format
@@ -187,7 +201,8 @@ impl SignalGeneratorBuilder {
         }
         if let Some(file) = file {
             self.mode = Some(MotionMode::Dynamic);
-            self.positions = Some(read_user_motion_llh(&file)?);
+            let samples = read_user_motion_llh(&file)?;
+            self.set_timestamped_motion(samples);
         }
         Ok(self)
     }

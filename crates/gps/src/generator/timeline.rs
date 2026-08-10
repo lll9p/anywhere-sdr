@@ -74,6 +74,8 @@ pub(super) struct TimelineBlock {
     pub step_end_sample: u64,
     /// Sample offset of this block's endpoint.
     pub end_sample: u64,
+    /// Exact sample-derived elapsed time at this block endpoint.
+    pub end_elapsed_seconds: f64,
     /// Exact sample-derived duration of this block.
     pub duration_seconds: f64,
     /// GPS epoch after the final sample in this block.
@@ -357,6 +359,8 @@ impl SampleTimeline {
             step_start_sample: pending_step.start_sample,
             step_end_sample: pending_step.full_end_sample,
             end_sample,
+            end_elapsed_seconds: end_sample as f64
+                / self.sample_frequency_hz as f64,
             duration_seconds: sample_count as f64
                 / self.sample_frequency_hz as f64,
             end_time: self.time_at_sample(end_sample),

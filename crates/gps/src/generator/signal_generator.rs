@@ -46,8 +46,10 @@ pub struct SignalGenerator {
     /// Tracking which satellites are allocated to which channels (-1 = not
     /// allocated)
     pub allocated_satellite: [i32; MAX_SAT],
-    /// Receiver positions in ECEF coordinates (one per configured update step)
+    /// Receiver positions in ECEF coordinates (one per motion epoch)
     pub positions: Vec<Ecef>,
+    /// Optional elapsed timestamp knots for ECEF/LLH motion files
+    pub motion_elapsed_seconds: Option<Vec<f64>>,
     /// Total number of emitted intervals to simulate
     pub simulation_step_count: usize,
     /// Requested emitted waveform duration in seconds
@@ -96,6 +98,7 @@ impl Default for SignalGenerator {
             ionoutc: IonoUtc::default(),
             allocated_satellite: [0; MAX_SAT],
             positions: Vec::new(),
+            motion_elapsed_seconds: None,
             simulation_step_count: usize::default(),
             duration_seconds: None,
             receiver_gps_time: GpsTime::default(),

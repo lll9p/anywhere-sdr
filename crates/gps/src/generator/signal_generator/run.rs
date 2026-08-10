@@ -132,6 +132,61 @@ impl SignalGenerator {
         self.finite_run_state = FiniteRunState::Completed;
     }
 
+    /// Interpolates one ECEF endpoint along a linear segment.
+    fn interpolate_ecef(start: &Ecef, end: &Ecef, fraction: f64) -> Ecef {
+        Ecef::new(
+            start.x + (end.x - start.x) * fraction,
+            start.y + (end.y - start.y) * fraction,
+            start.z + (end.z - start.z) * fraction,
+        )
+    }
+
+    /// Resolves a sample-derived endpoint against timestamped motion knots.
+    fn timestamped_block_location(
+        &self, block: &TimelineBlock, elapsed_knots: &[f64],
+    ) -> Result<Ecef, Error> {
+        if elapsed_knots.len() != self.positions.len()
+            || elapsed_knots.is_empty()
+        {
+            return Err(Error::wrong_positions());
+        }
+
+        let end_index = elapsed_knots
+            .partition_point(|elapsed| *elapsed <= block.end_elapsed_seconds);
+        if end_index == 0 {
+            return self
+                .positions
+                .first()
+                .copied()
+                .ok_or_else(Error::wrong_positions);
+        }
+        if end_index == elapsed_knots.len() {
+            return self
+                .positions
+                .last()
+                .copied()
+                .ok_or_else(Error::wrong_positions);
+        }
+        let end_elapsed = *elapsed_knots
+            .get(end_index)
+            .ok_or_else(Error::wrong_positions)?;
+        let start_index = end_index - 1;
+        let start_elapsed = *elapsed_knots
+            .get(start_index)
+            .ok_or_else(Error::wrong_positions)?;
+        let fraction = (block.end_elapsed_seconds - start_elapsed)
+            / (end_elapsed - start_elapsed);
+        let start = self
+            .positions
+            .get(start_index)
+            .ok_or_else(Error::wrong_positions)?;
+        let end = self
+            .positions
+            .get(end_index)
+            .ok_or_else(Error::wrong_positions)?;
+        Ok(Self::interpolate_ecef(start, end, fraction))
+    }
+
     /// Resolves the receiver position used at a finite block endpoint.
     fn finite_block_location(
         &self, block: &TimelineBlock,
@@ -143,6 +198,11 @@ impl SignalGenerator {
                 .copied()
                 .ok_or_else(Error::wrong_positions),
             MotionMode::Dynamic => {
+                if let Some(elapsed_knots) = &self.motion_elapsed_seconds {
+                    return self
+                        .timestamped_block_location(block, elapsed_knots);
+                }
+
                 let start_index = block
                     .step_index
                     .checked_sub(1)
@@ -155,11 +215,10 @@ impl SignalGenerator {
                     .positions
                     .get(block.step_index)
                     .ok_or_else(Error::wrong_positions)?;
-                let fraction = block.step_endpoint_fraction();
-                Ok(Ecef::new(
-                    start.x + (end.x - start.x) * fraction,
-                    start.y + (end.y - start.y) * fraction,
-                    start.z + (end.z - start.z) * fraction,
+                Ok(Self::interpolate_ecef(
+                    start,
+                    end,
+                    block.step_endpoint_fraction(),
                 ))
             }
             MotionMode::UserControl => Err(Error::msg(

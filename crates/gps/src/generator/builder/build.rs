@@ -69,8 +69,10 @@ impl SignalGeneratorBuilder {
             }
         }
         // positions
-        let positions = if let Some(positions) = self.positions {
+        let motion_elapsed_seconds = self.motion_elapsed_seconds.take();
+        let positions = if let Some(positions) = self.positions.take() {
             if positions.len() == 1
+                && motion_elapsed_seconds.is_none()
                 && !matches!(self.mode, Some(MotionMode::UserControl))
             {
                 self.mode = Some(MotionMode::Static);
@@ -105,16 +107,34 @@ impl SignalGeneratorBuilder {
             .len()
             .checked_sub(1)
             .ok_or_else(Error::wrong_positions)?;
+        let timestamped_duration = motion_elapsed_seconds
+            .as_ref()
+            .and_then(|elapsed_seconds| elapsed_seconds.last())
+            .copied();
+        let duration_seconds = if matches!(mode, MotionMode::Dynamic) {
+            timestamped_duration.map_or(self.duration, |available_duration| {
+                Some(self.duration.map_or(available_duration, |requested| {
+                    requested.min(available_duration)
+                }))
+            })
+        } else {
+            self.duration
+        };
         let simulation_step_count = match mode {
-            MotionMode::Static => self
-                .duration
+            MotionMode::Static => duration_seconds
                 .map(|duration| {
                     planned_interval_count(duration, sample_rate, None)
                 })
                 .transpose()?
                 .unwrap_or(0),
-            MotionMode::Dynamic => self
-                .duration
+            MotionMode::Dynamic if timestamped_duration.is_some() => {
+                planned_interval_count(
+                    duration_seconds.ok_or_else(Error::wrong_positions)?,
+                    sample_rate,
+                    None,
+                )?
+            }
+            MotionMode::Dynamic => duration_seconds
                 .map(|duration| {
                     planned_interval_count(
                         duration,
@@ -211,8 +231,9 @@ impl SignalGeneratorBuilder {
             valid_ephemerides_index,
             ionoutc,
             positions,
+            motion_elapsed_seconds,
             simulation_step_count,
-            duration_seconds: self.duration,
+            duration_seconds,
             receiver_gps_time,
             antenna_gains,
             antenna_pattern,

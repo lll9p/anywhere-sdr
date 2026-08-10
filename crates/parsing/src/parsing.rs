@@ -17,7 +17,9 @@ mod user_motion;
 pub use error::Error;
 use geometry::{Ecef, Location};
 pub use nmea::read_nmea_gga;
-pub use user_motion::{read_user_motion, read_user_motion_llh};
+pub use user_motion::{
+    UserMotionSample, read_user_motion, read_user_motion_llh,
+};
 
 /// Validates degree-based LLH input and converts it to ECEF.
 fn ecef_from_degrees(
