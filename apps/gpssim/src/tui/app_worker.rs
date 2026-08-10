@@ -126,10 +126,14 @@ impl App {
     ) {
         match event {
             WorkerEvent::Started { sinks } => {
-                self.sinks_desc = sinks;
-                self.push_log("run started");
-                self.run_state = RunState::Running;
-                self.refresh_manual_snapshot();
+                if pending_terminal.is_none() {
+                    self.sinks_desc = sinks;
+                    self.push_log("run started");
+                    self.run_state = RunState::Running;
+                    self.refresh_manual_snapshot();
+                } else {
+                    self.push_log("worker sent started after terminal event");
+                }
             }
             WorkerEvent::Log(line) => self.push_log(line),
             WorkerEvent::Progress(progress) => {
@@ -162,12 +166,15 @@ impl App {
     ) {
         if pending_terminal.is_none() {
             *pending_terminal = Some(outcome);
+            self.manual_session = None;
+            self.run_state = RunState::Stopping;
         } else {
             self.push_log("worker sent multiple terminal events");
         }
     }
 
     fn reap_finished_worker(&mut self, worker: WorkerHandle) {
+        self.manual_session = None;
         let WorkerHandle {
             events,
             join,
@@ -220,6 +227,9 @@ impl App {
     }
 }
 
+#[cfg(test)]
+#[path = "app_worker_session_tests.rs"]
+mod session_tests;
 #[cfg(test)]
 #[path = "app_worker_tests.rs"]
 mod tests;

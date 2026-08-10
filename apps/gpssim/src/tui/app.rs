@@ -83,6 +83,7 @@ pub(super) struct App {
     pub(super) last_run: Option<LastRun>,
 
     pub(super) log_buffer: LogBuffer,
+    pub(super) config_scroll: u16,
     pub(super) log_scroll: u16,
     pub(super) manual_session: Option<ManualControlSession>,
 
@@ -105,6 +106,7 @@ impl App {
             progress: None,
             last_run: None,
             log_buffer,
+            config_scroll: 0,
             log_scroll: 0,
             manual_session: None,
             worker: None,
@@ -127,7 +129,15 @@ impl App {
     }
 
     pub(super) fn prefers_fast_input_poll(&self) -> bool {
-        self.manual_session.is_some() && self.run_state == RunState::Running
+        self.live_manual_session().is_some()
+    }
+
+    pub(super) fn live_manual_session(&self) -> Option<&ManualControlSession> {
+        if self.run_state == RunState::Running {
+            self.manual_session.as_ref()
+        } else {
+            None
+        }
     }
 
     pub(super) fn refresh_manual_snapshot(&mut self) {
@@ -201,17 +211,31 @@ pub(super) fn handle_key_event(app: &mut App, key: KeyEvent) {
         KeyCode::Up => {
             if !apply_manual_action(app, |session| {
                 session.adjust_speed(MANUAL_SPEED_STEP_MPS)
-            }) && app.tab == ActiveTab::Logs
-            {
-                app.log_scroll = app.log_scroll.saturating_add(1);
+            }) {
+                match app.tab {
+                    ActiveTab::Config => {
+                        app.config_scroll = app.config_scroll.saturating_add(1);
+                    }
+                    ActiveTab::Logs => {
+                        app.log_scroll = app.log_scroll.saturating_add(1);
+                    }
+                    ActiveTab::Run => {}
+                }
             }
         }
         KeyCode::Down => {
             if !apply_manual_action(app, |session| {
                 session.adjust_speed(-MANUAL_SPEED_STEP_MPS)
-            }) && app.tab == ActiveTab::Logs
-            {
-                app.log_scroll = app.log_scroll.saturating_sub(1);
+            }) {
+                match app.tab {
+                    ActiveTab::Config => {
+                        app.config_scroll = app.config_scroll.saturating_sub(1);
+                    }
+                    ActiveTab::Logs => {
+                        app.log_scroll = app.log_scroll.saturating_sub(1);
+                    }
+                    ActiveTab::Run => {}
+                }
             }
         }
         KeyCode::Char(' ') => {
@@ -273,6 +297,12 @@ fn handle_char_shortcut(app: &mut App, ch: char) {
         }
         (ActiveTab::Config, 'x') => {
             begin_edit(app, EditField::HackrfSerial);
+        }
+        (ActiveTab::Config, 'c') => {
+            app.config.clear_preconfigured_sources();
+            app.message = Some(
+                "cleared CLI-prefilled motion and location sources".to_string(),
+            );
         }
         (ActiveTab::Run, 'c') => {
             app.request_cancel();

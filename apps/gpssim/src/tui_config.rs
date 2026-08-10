@@ -168,6 +168,14 @@ impl TuiConfig {
         Ok(())
     }
 
+    pub(crate) fn clear_preconfigured_sources(&mut self) {
+        self.user_motion_ecef = None;
+        self.user_motion_llh = None;
+        self.nmea_gga = None;
+        self.location_ecef = None;
+        self.location = None;
+    }
+
     pub(crate) fn uses_manual_motion(&self) -> bool {
         self.motion_source == MotionSource::Manual
     }

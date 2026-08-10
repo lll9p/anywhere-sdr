@@ -12,11 +12,14 @@ use super::{
 };
 use crate::cli::TxBackend;
 
-const CONFIG_KEYS: &str = "Keys: Enter=start | q=quit | Tab=switch | \
-                           e=ephemerides | o=output | h=toggle hackrf | \
-                           n=toggle null | s=frequency | b=bits | d=duration \
-                           | m=motion | l=manual llh | j=heading | u=cruise | \
-                           a=accel | t=turn rate | v=verbose | i=iono";
+const CONFIG_KEYS: &str =
+    "Keys: Enter=start | q=quit | Tab=switch | Up/Down=scroll | c=clear CLI \
+     sources | e=ephemerides | o=output | h=toggle hackrf | n=toggle null | \
+     s=frequency | b=bits | d=duration | m=motion | l=manual llh | j=heading \
+     | u=cruise | a=accel | t=turn rate | v=verbose | i=iono | r=HackRF \
+     frequency | x=HackRF serial";
+const UNSET: &str = "<unset>";
+const READ_ONLY: &str = "read-only CLI prefill";
 
 const RUN_KEYS_DEFAULT: &str = "Keys: c=cancel | q=quit | Tab=switch";
 const RUN_KEYS_MANUAL: &str = "Keys: Left/Right=heading | Up/Down=speed | \
@@ -61,7 +64,8 @@ pub(super) fn ui(frame: &mut ratatui::Frame, app: &App) {
 fn render_config(frame: &mut ratatui::Frame, area: Rect, app: &App) {
     let paragraph = Paragraph::new(Text::from(config_lines(app)))
         .block(Block::default().borders(Borders::ALL).title("Config"))
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((app.config_scroll, 0));
     frame.render_widget(paragraph, area);
 }
 
@@ -73,96 +77,176 @@ fn render_run(frame: &mut ratatui::Frame, area: Rect, app: &App) {
 }
 
 fn config_lines(app: &App) -> Vec<Line<'static>> {
-    let mut lines = base_config_lines(app);
+    let mut lines = vec![Line::from(CONFIG_KEYS), Line::from("")];
+    lines.extend(motion_and_scenario_lines(app));
     lines.extend(manual_config_lines(app));
+    lines.extend(generation_and_output_lines(app));
     lines.extend(hackrf_config_lines(app));
-    lines.push(Line::from(""));
-    lines.push(Line::from(CONFIG_KEYS));
     lines
 }
 
-fn base_config_lines(app: &App) -> Vec<Line<'static>> {
+fn motion_and_scenario_lines(app: &App) -> Vec<Line<'static>> {
     vec![
-        labeled_line(
+        Line::from("Motion and scenario"),
+        config_line(
             "motion_source",
-            format!("{} (toggle: m)", app.config.motion_source.label()),
+            app.config.motion_source.label(),
+            "toggle: m",
         ),
-        labeled_line(
+        config_line(
             "ephemerides",
-            display_optional_path(app.config.ephemerides.as_deref(), "<unset>"),
+            display_optional_path(app.config.ephemerides.as_deref()),
+            "edit: e",
         ),
-        labeled_line(
-            "output",
-            resolve_output_path(&app.config).map_or_else(
-                || "<none>".to_string(),
-                |path| path.display().to_string(),
-            ),
+        config_line(
+            "user_motion_ecef",
+            display_optional_path(app.config.user_motion_ecef.as_deref()),
+            "clear: c",
         ),
-        labeled_line("tx", tx_list(app)),
-        labeled_line("frequency", app.config.frequency.to_string()),
-        labeled_line("bits", app.config.bits.to_string()),
-        labeled_line("duration", duration_text(app)),
+        config_line(
+            "user_motion_llh",
+            display_optional_path(app.config.user_motion_llh.as_deref()),
+            "clear: c",
+        ),
+        config_line(
+            "nmea_gga",
+            display_optional_path(app.config.nmea_gga.as_deref()),
+            "clear: c",
+        ),
+        config_line(
+            "location_ecef",
+            display_optional_values(app.config.location_ecef.as_deref()),
+            "clear: c",
+        ),
+        config_line(
+            "location",
+            display_optional_values(app.config.location.as_deref()),
+            "clear: c",
+        ),
+        config_line(
+            "leap",
+            display_optional_values(app.config.leap.as_deref()),
+            READ_ONLY,
+        ),
+        config_line(
+            "time",
+            display_optional(app.config.time.as_deref()),
+            READ_ONLY,
+        ),
+        config_line(
+            "time_override",
+            display_optional(app.config.time_override),
+            READ_ONLY,
+        ),
     ]
 }
 
 fn manual_config_lines(app: &App) -> Vec<Line<'static>> {
     vec![
-        labeled_line(
-            "manual_initial_llh",
-            format!(
-                "{} (edit: l)",
-                app.config
-                    .manual_motion
-                    .initial_llh
-                    .map_or_else(|| "<unset>".to_string(), format_llh)
-            ),
+        Line::from(""),
+        Line::from("Manual motion"),
+        config_line(
+            "manual_motion.initial_llh",
+            app.config
+                .manual_motion
+                .initial_llh
+                .map_or_else(|| UNSET.to_string(), format_llh),
+            "edit: l",
         ),
-        labeled_line(
-            "manual_heading_deg",
-            format!(
-                "{:.1} (edit: j)",
-                app.config.manual_motion.initial_heading_deg
-            ),
+        config_line(
+            "manual_motion.initial_heading_deg",
+            format!("{:.1}", app.config.manual_motion.initial_heading_deg),
+            "edit: j",
         ),
-        labeled_line(
-            "manual_cruise_speed_mps",
-            format!(
-                "{:.1} (edit: u)",
-                app.config.manual_motion.cruise_speed_mps
-            ),
+        config_line(
+            "manual_motion.cruise_speed_mps",
+            format!("{:.1}", app.config.manual_motion.cruise_speed_mps),
+            "edit: u",
         ),
-        labeled_line(
-            "manual_accel_limit_mps2",
-            format!(
-                "{:.1} (edit: a)",
-                app.config.manual_motion.accel_limit_mps2
-            ),
+        config_line(
+            "manual_motion.accel_limit_mps2",
+            format!("{:.1}", app.config.manual_motion.accel_limit_mps2),
+            "edit: a",
         ),
-        labeled_line(
-            "manual_turn_rate_limit_dps",
-            format!(
-                "{:.1} (edit: t)",
-                app.config.manual_motion.turn_rate_limit_dps
-            ),
+        config_line(
+            "manual_motion.turn_rate_limit_dps",
+            format!("{:.1}", app.config.manual_motion.turn_rate_limit_dps),
+            "edit: t",
         ),
+    ]
+}
+
+fn generation_and_output_lines(app: &App) -> Vec<Line<'static>> {
+    vec![
+        Line::from(""),
+        Line::from("Generation and output"),
+        config_line("duration", duration_text(app), "edit: d"),
+        config_line("output", output_text(app), "edit: o"),
+        config_line("tx", tx_list(app), "toggle: h/n"),
+        config_line("frequency", app.config.frequency.to_string(), "edit: s"),
+        config_line("bits", app.config.bits.to_string(), "edit: b"),
+        config_line(
+            "ionospheric_disable",
+            app.config.ionospheric_disable.to_string(),
+            "toggle: i",
+        ),
+        config_line(
+            "path_loss",
+            display_optional(app.config.path_loss),
+            READ_ONLY,
+        ),
+        config_line("verbose", app.config.verbose.to_string(), "toggle: v"),
     ]
 }
 
 fn hackrf_config_lines(app: &App) -> Vec<Line<'static>> {
     vec![
-        labeled_line(
-            "hackrf_rf_freq_hz",
-            format!("{} (edit: r)", app.config.hackrf_rf_freq_hz),
-        ),
-        labeled_line(
+        Line::from(""),
+        Line::from("HackRF"),
+        config_line(
             "hackrf_serial",
-            format!(
-                "{} (edit: x)",
-                app.config
-                    .hackrf_serial
-                    .as_deref()
-                    .unwrap_or("<first device>")
-            ),
+            display_optional(app.config.hackrf_serial.as_deref()),
+            "edit: x",
+        ),
+        config_line(
+            "hackrf_rf_freq_hz",
+            app.config.hackrf_rf_freq_hz.to_string(),
+            "edit: r",
+        ),
+        config_line(
+            "hackrf_txvga_gain",
+            app.config.hackrf_txvga_gain.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_amp_enable",
+            app.config.hackrf_amp_enable.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_usb_transfer_bytes",
+            app.config.hackrf_usb_transfer_bytes.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_usb_transfers",
+            app.config.hackrf_usb_transfers.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_queue_blocks",
+            app.config.hackrf_queue_blocks.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_prefill_blocks",
+            app.config.hackrf_prefill_blocks.to_string(),
+            READ_ONLY,
+        ),
+        config_line(
+            "hackrf_drop_on_underrun",
+            app.config.hackrf_drop_on_underrun.to_string(),
+            READ_ONLY,
         ),
     ]
 }
@@ -179,12 +263,13 @@ fn run_lines(app: &App) -> Vec<Line<'static>> {
     if let Some(last_run) = &app.last_run {
         lines.extend(last_run_lines(last_run));
     }
-    if let Some(session) = &app.manual_session {
+    let manual_session = app.live_manual_session();
+    if let Some(session) = manual_session {
         lines.extend(manual_run_lines(session));
     }
 
     lines.push(Line::from(""));
-    lines.push(Line::from(run_keys(app.manual_session.is_some())));
+    lines.push(Line::from(run_keys(manual_session.is_some())));
     lines
 }
 
@@ -261,6 +346,12 @@ fn manual_run_lines(session: &ManualControlSession) -> Vec<Line<'static>> {
     lines
 }
 
+fn config_line(
+    label: &'static str, value: impl Into<String>, interaction: &'static str,
+) -> Line<'static> {
+    labeled_line(label, format!("{} ({interaction})", value.into()))
+}
+
 fn labeled_line(
     label: &'static str, value: impl Into<String>,
 ) -> Line<'static> {
@@ -271,12 +362,24 @@ fn labeled_line(
     ])
 }
 
-fn display_optional_path(
-    path: Option<&std::path::Path>, fallback: &'static str,
-) -> String {
-    path.map_or_else(
-        || fallback.to_string(),
-        |value| value.display().to_string(),
+fn display_optional<T: ToString>(value: Option<T>) -> String {
+    value.map_or_else(|| UNSET.to_string(), |value| value.to_string())
+}
+
+fn display_optional_path(path: Option<&std::path::Path>) -> String {
+    path.map_or_else(|| UNSET.to_string(), |value| value.display().to_string())
+}
+
+fn display_optional_values<T: ToString>(values: Option<&[T]>) -> String {
+    values.map_or_else(
+        || UNSET.to_string(),
+        |values| {
+            values
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        },
     )
 }
 
@@ -296,18 +399,37 @@ fn tx_list(app: &App) -> String {
     }
 }
 
+fn output_text(app: &App) -> String {
+    app.config.output.as_deref().map_or_else(
+        || {
+            resolve_output_path(&app.config).map_or_else(
+                || UNSET.to_string(),
+                |path| {
+                    format!("{UNSET} (effective default: {})", path.display())
+                },
+            )
+        },
+        |path| path.display().to_string(),
+    )
+}
+
 fn duration_text(app: &App) -> String {
-    if app.config.uses_manual_motion() {
-        app.config.duration.map_or_else(
-            || "ignored in manual mode".to_string(),
-            |duration| format!("{duration} (ignored in manual mode)"),
-        )
-    } else {
-        app.config.duration.map_or_else(
-            || "<default>".to_string(),
-            |duration| duration.to_string(),
-        )
-    }
+    app.config.duration.map_or_else(
+        || {
+            if app.config.uses_manual_motion() {
+                format!("{UNSET} (ignored in manual mode)")
+            } else {
+                UNSET.to_string()
+            }
+        },
+        |duration| {
+            if app.config.uses_manual_motion() {
+                format!("{duration} (ignored in manual mode)")
+            } else {
+                duration.to_string()
+            }
+        },
+    )
 }
 
 fn run_state_label(run_state: RunState) -> &'static str {
@@ -366,3 +488,7 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, app: &App) {
         .wrap(Wrap { trim: false });
     frame.render_widget(footer, area);
 }
+
+#[cfg(test)]
+#[path = "ui_tests.rs"]
+mod tests;

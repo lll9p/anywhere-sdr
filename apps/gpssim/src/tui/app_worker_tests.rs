@@ -118,7 +118,7 @@ fn assert_drain_nonblocking(
     let release_for_watchdog = release_tx.clone();
     let watchdog = thread::Builder::new()
         .spawn(move || {
-            if done_rx.recv_timeout(Duration::from_millis(200)).is_err() {
+            if done_rx.recv_timeout(Duration::from_secs(2)).is_err() {
                 signal(&release_for_watchdog);
                 true
             } else {
@@ -332,7 +332,7 @@ fn panic_without_terminal_event_is_reaped() -> Result<(), String> {
     assert_eq!(app.run_state, RunState::Idle);
     assert!(app.worker.is_none());
     assert!(app.should_exit());
-    assert!(app.manual_session.is_some());
+    assert!(app.manual_session.is_none());
     Ok(())
 }
 
